@@ -1,0 +1,120 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    /* Stops a double-tap on a big button being interpreted as a zoom gesture,
+       which on a tablet feels like the button "didn't work". */
+    touch-action: manipulation;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased;
+    @apply dark:bg-slate-950 dark:text-slate-100;
+    font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    /* Safe-area padding for phones with a home indicator; the sticky action
+       bar at the bottom of the scanning pages sits right on top of it. */
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* Inputs are 16px minimum: anything smaller makes iOS Safari zoom the whole
+     page on focus, which is disorienting when you are standing at a gate. */
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1rem);
+  }
+
+  /* A visible focus ring matters more here than usual — some of these screens
+     are driven with a bluetooth ring scanner and keyboard tabbing. */
+  :focus-visible {
+    @apply outline-none ring-4 ring-blue-500/60;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-slate-200 bg-white p-5 shadow-sm;
+    @apply dark:border-slate-800 dark:bg-slate-900;
+  }
+
+  .label {
+    @apply mb-2 block text-sm font-semibold uppercase tracking-wide text-slate-600;
+    @apply dark:text-slate-400;
+  }
+
+  .input {
+    @apply min-h-touch w-full rounded-xl border-2 border-slate-300 bg-white px-4 py-3 text-lg;
+    @apply placeholder:text-slate-400 focus:border-blue-600;
+    @apply dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .input-error {
+    @apply border-bad focus:border-bad dark:border-bad-dark;
+  }
+
+  .btn {
+    @apply inline-flex min-h-touch items-center justify-center gap-2 rounded-xl px-6 py-3;
+    @apply text-lg font-bold transition active:scale-[0.98];
+    @apply disabled:pointer-events-none disabled:opacity-40;
+  }
+
+  .btn-primary {
+    @apply btn bg-blue-600 text-white hover:bg-blue-700;
+  }
+
+  .btn-success {
+    @apply btn bg-ok text-white hover:brightness-110;
+  }
+
+  .btn-danger {
+    @apply btn bg-bad text-white hover:brightness-110;
+  }
+
+  .btn-ghost {
+    @apply btn border-2 border-slate-300 bg-transparent text-slate-700;
+    @apply hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-semibold;
+  }
+}
+
+/* The scanner viewfinder. Kept out of Tailwind because it composites a
+   translucent cut-out over live video. */
+.viewfinder {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1rem;
+  background: #000;
+  aspect-ratio: 4 / 3;
+}
+
+.viewfinder video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.viewfinder::after {
+  content: '';
+  position: absolute;
+  inset: 18% 12%;
+  border: 3px solid rgba(255, 255, 255, 0.85);
+  border-radius: 0.75rem;
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

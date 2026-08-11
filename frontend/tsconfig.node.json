@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "skipLibCheck": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    // A composite/referenced project must emit (at least declarations), so
+    // noEmit is not allowed here — emitDeclarationOnly to a temp dir keeps
+    // `tsc -b` happy without producing build output we care about.
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "outDir": "./node_modules/.tmp/tsconfig.node",
+    "types": ["node"]
+  },
+  "include": ["vite.config.ts"]
+}

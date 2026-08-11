@@ -1,0 +1,58 @@
+project_id = "r360-warehouse"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+[local_smtp]
+# Local mail catcher — approval-request and escalation emails land here in dev
+# and never leave the machine. UI at http://127.0.0.1:54324
+enabled = true
+port = 54324
+# `port` publishes only the web UI. Without `smtp_port` the SMTP listener stays
+# inside the container, so the worker's SMTP_HOST=127.0.0.1:54325 gets
+# "Connection refused" and every email is recorded as failed — which looks
+# exactly like a broken mail configuration rather than a missing port mapping.
+smtp_port = 54325
+
+[storage]
+enabled = true
+file_size_limit = "10MiB"
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173"]
+jwt_expiry = 28800          # 8h — one full warehouse shift, so nobody is
+                            # re-authenticating with cold hands at the gate.
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+enable_signup = false       # Accounts are provisioned by Admin, not self-served.
+
+[auth.email]
+# Must stay true. The CLI maps this to GOTRUE_EXTERNAL_EMAIL_ENABLED, so
+# setting it false does not merely block new signups — it disables the email
+# provider outright and every existing user gets "Email logins are disabled".
+#
+# Self-service signup is blocked by `enable_signup = false` in the [auth]
+# section above (GOTRUE_DISABLE_SIGNUP), which is the switch that actually
+# means "accounts are provisioned by an Admin, with a role attached".
+enabled = true
+enable_signup = true
+enable_confirmations = false
+double_confirm_changes = true
+
+[analytics]
+enabled = false

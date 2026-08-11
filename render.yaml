@@ -1,0 +1,63 @@
+# Render blueprint — API + background worker.
+# The frontend deploys to Vercel (see vercel.json).
+
+services:
+  - type: web
+    name: r360-warehouse-api
+    runtime: python
+    plan: starter
+    region: singapore # closest to an India-based warehouse; keeps gate latency low
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 2
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: '3.11.9'
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: 'false'
+      # Must be the api_user role. The app refuses to start in production if
+      # this connects as a superuser, because RLS would be bypassed.
+      - key: DATABASE_URL
+        sync: false
+      - key: ADMIN_DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SUPERADMIN_EMAIL
+        sync: false
+
+  - type: worker
+    name: r360-warehouse-worker
+    runtime: python
+    plan: starter
+    region: singapore
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m app.worker
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: '3.11.9'
+      - key: ENVIRONMENT
+        value: production
+      - fromGroup: warehouse-shared
