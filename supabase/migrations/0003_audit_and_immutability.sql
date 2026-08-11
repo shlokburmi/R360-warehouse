@@ -304,7 +304,23 @@ create trigger trg_auth_user_created
   for each row execute function fn_handle_new_auth_user();
 
 -- Random, non-guessable attribution badge token (DECISIONS.md §1).
+--
+-- `set search_path` is load-bearing, not boilerplate. Supabase pre-installs
+-- pgcrypto into the `extensions` schema, so the `create extension` above is a
+-- no-op and gen_random_bytes() never lands in `public`. A `language sql` body is
+-- validated when the function is *created*, so without `extensions` on the path
+-- this statement fails outright — which is exactly how it failed against a
+-- hosted project after passing locally, where the applying session happened to
+-- have a wider search_path.
+--
+-- Naming `public` first keeps the resolution order explicit, and a missing
+-- schema in a search_path is skipped rather than an error, so this stays correct
+-- on a vanilla Postgres where pgcrypto installs into `public` instead.
 create or replace function generate_badge_code()
-returns text language sql volatile as $$
+returns text
+language sql
+volatile
+set search_path = public, extensions
+as $$
   select 'BDG-' || encode(gen_random_bytes(8), 'hex');
 $$;

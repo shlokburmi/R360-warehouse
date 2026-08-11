@@ -14,6 +14,13 @@ begin
 end;
 $$;
 
+-- pgcrypto lives in `extensions` on Supabase, so crypt() and gen_salt() below
+-- are not reachable from `public` alone. This worked by accident for a long time
+-- because the session `supabase db reset` uses happens to have a wider path; the
+-- same assumption broke migration 0003 the first time it met a hosted project.
+-- A missing schema in a search_path is skipped, so this is safe anywhere.
+set search_path = public, extensions;
+
 -- ---------------------------------------------------------------------------
 -- Local dev password for the API's non-superuser role.
 --
