@@ -56,6 +56,7 @@ export function QrScanner({ onScan, debounceMs = 2000, paused = false }: Props) 
     if (paused) return
 
     let cancelled = false
+    let watchdog: number | undefined
     const hints = new Map()
     hints.set(DecodeHintType.POSSIBLE_FORMATS, [
       BarcodeFormat.QR_CODE,
@@ -65,45 +66,104 @@ export function QrScanner({ onScan, debounceMs = 2000, paused = false }: Props) 
 
     const reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 150 })
 
+    // Two attempts, in order of preference.
+    //
+    // The first asks for the rear camera at a resolution high enough to read a
+    // small code at arm's length without dropping the frame rate — right for
+    // the phone or tablet this is actually used on.
+    //
+    // The second asks for nothing at all. A laptop has only a front camera and
+    // may not offer 1280x720 on it; depending on the browser that surfaces as
+    // an OverconstrainedError, or worse, as a stream that resolves and then
+    // never produces a frame. Retrying bare means the desktop case degrades to
+    // "the wrong camera, working" instead of "no camera", which matters because
+    // desktop is where this gets demonstrated and tested.
+    const attempts: MediaStreamConstraints[] = [
+      {
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+      },
+      { video: true },
+    ]
+
+    /** Has the element actually painted a frame, rather than merely been handed a stream? */
+    const painting = () => (videoRef.current?.videoWidth ?? 0) > 0
+
     async function start() {
       if (!videoRef.current) return
 
-      try {
-        const controls = await reader.decodeFromConstraints(
-          {
-            video: {
-              // Rear camera, and a resolution high enough to read a small code
-              // at arm's length without being so high it drops the frame rate.
-              facingMode: { ideal: 'environment' },
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-            },
-          },
-          videoRef.current,
-          (result) => {
-            if (result && !cancelled) handleCode(result.getText())
-          },
-        )
+      let lastError: unknown = null
 
-        if (cancelled) {
-          controls.stop()
-          return
-        }
-
-        controlsRef.current = controls
-        setStatus('running')
-      } catch (error) {
+      for (const constraints of attempts) {
         if (cancelled) return
-        const name = (error as Error)?.name
-        setStatus(name === 'NotAllowedError' ? 'denied' : 'unavailable')
-        setShowManual(true)
+
+        try {
+          const controls = await reader.decodeFromConstraints(
+            constraints,
+            videoRef.current,
+            (result) => {
+              if (result && !cancelled) handleCode(result.getText())
+            },
+          )
+
+          if (cancelled) {
+            controls.stop()
+            return
+          }
+
+          controlsRef.current = controls
+
+          // Acquiring a stream is not the same as painting it. Safari rejects
+          // video.play() in situations it considers un-gestured, which leaves a
+          // live MediaStream attached to an element that never renders a frame
+          // while the component reports success. That is the one failure this
+          // component must not have — its whole design is "cameras fail, so
+          // always offer the typed path", and a silent black rectangle offers
+          // nothing. So wait for a real frame before believing it worked.
+          const ok = await new Promise<boolean>((resolve) => {
+            const started = Date.now()
+            const poll = () => {
+              if (cancelled) return resolve(false)
+              if (painting()) return resolve(true)
+              if (Date.now() - started > 4000) return resolve(false)
+              watchdog = window.setTimeout(poll, 200)
+            }
+            poll()
+          })
+
+          if (cancelled) return
+
+          if (ok) {
+            setStatus('running')
+            return
+          }
+
+          // Nothing painted. Release this camera before trying the next set of
+          // constraints, or the retry competes with a device we still hold.
+          controls.stop()
+          controlsRef.current = null
+        } catch (error) {
+          lastError = error
+          if (cancelled) return
+          // A denied permission will not be fixed by relaxing constraints, so
+          // stop asking — retrying would just prompt the user again.
+          if ((error as Error)?.name === 'NotAllowedError') break
+        }
       }
+
+      if (cancelled) return
+      setStatus((lastError as Error)?.name === 'NotAllowedError' ? 'denied' : 'unavailable')
+      setShowManual(true)
     }
 
     void start()
 
     return () => {
       cancelled = true
+      if (watchdog) window.clearTimeout(watchdog)
       controlsRef.current?.stop()
       controlsRef.current = null
     }
@@ -113,7 +173,11 @@ export function QrScanner({ onScan, debounceMs = 2000, paused = false }: Props) 
     <div className="space-y-3">
       {status !== 'denied' && status !== 'unavailable' && (
         <div className="viewfinder">
-          <video ref={videoRef} muted playsInline />
+          {/* `autoPlay` is required, not decorative. Without it the element
+              depends entirely on ZXing's internal play() call succeeding, and
+              when that is rejected the stream is live but no frame is ever
+              painted. `muted` is what makes autoplay permissible at all. */}
+          <video ref={videoRef} autoPlay muted playsInline />
           {status === 'starting' && (
             <p className="absolute inset-0 flex items-center justify-center text-white">
               Starting camera…
