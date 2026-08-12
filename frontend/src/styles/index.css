@@ -3,6 +3,54 @@
 @tailwind utilities;
 
 @layer base {
+  /* -------------------------------------------------------------------
+     shadcn surface tokens.
+     Declared here so a component pasted in from shadcn/21st.dev inherits
+     this app's theme instead of arriving with its own palette. Light values
+     live on :root; `.dark` overrides only what changes, which is why the
+     class-based dark mode switch is a single source of truth.
+     ------------------------------------------------------------------- */
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --primary: 221 83% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 20% 35%;
+    --accent: 300 30% 94%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 72% 42%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 32% 88%;
+    --input: 214 32% 84%;
+    --ring: 221 83% 53%;
+    --radius: 1rem;
+  }
+
+  .dark {
+    --background: 240 20% 5%;
+    --foreground: 210 40% 96%;
+    --card: 240 14% 9%;
+    --card-foreground: 210 40% 96%;
+    --primary: 221 83% 60%;
+    --primary-foreground: 222 47% 11%;
+    --secondary: 240 10% 16%;
+    --secondary-foreground: 210 40% 96%;
+    --muted: 240 10% 16%;
+    --muted-foreground: 215 20% 72%;
+    --accent: 290 20% 18%;
+    --accent-foreground: 210 40% 96%;
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 10% 20%;
+    --input: 240 10% 24%;
+    --ring: 221 83% 60%;
+  }
+
   html {
     -webkit-text-size-adjust: 100%;
     /* Stops a double-tap on a big button being interpreted as a zoom gesture,
@@ -12,7 +60,7 @@
 
   body {
     @apply bg-slate-50 text-slate-900 antialiased;
-    @apply dark:bg-slate-950 dark:text-slate-100;
+    @apply dark:bg-[#08080d] dark:text-slate-100;
     font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
     /* Safe-area padding for phones with a home indicator; the sticky action
        bar at the bottom of the scanning pages sits right on top of it. */
@@ -32,23 +80,61 @@
   :focus-visible {
     @apply outline-none ring-4 ring-blue-500/60;
   }
+
+  /* Numbers that are compared against each other (scanned vs expected, counts
+     in a table) line up column-wise rather than drifting by glyph width. */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
 }
 
 @layer components {
+  /* -------------------------------------------------------------------
+     THE PAGE WASH
+     The reference design's gradient, promoted to a reusable layer. Fixed
+     rather than scrolled so it behaves as a backdrop instead of a very tall
+     element, and pointer-events-none so it can never eat a tap meant for a
+     control underneath.
+     ------------------------------------------------------------------- */
+  .page-wash {
+    @apply pointer-events-none fixed inset-0 -z-10 bg-hero-wash bg-cover;
+    @apply dark:bg-hero-wash-dark;
+    background-blend-mode: overlay, screen;
+  }
+
+  .page-wash-drift {
+    @apply animate-wash-drift;
+  }
+
+  /* -------------------------------------------------------------------
+     SURFACES
+     Frosted glass over the wash. The blur is what keeps text legible on top
+     of a gradient — without it, body copy sits directly on a mid-tone and
+     contrast collapses wherever the ramp happens to be darkest.
+     ------------------------------------------------------------------- */
   .card {
+    @apply rounded-2xl border border-white/70 bg-white/80 p-5 shadow-glass backdrop-blur-xl;
+    @apply dark:border-white/10 dark:bg-white/[0.04] dark:shadow-glass-dark;
+  }
+
+  /* An opaque variant for anything printed or photographed — a sticker sheet
+     or badge card must not inherit a translucent background, because a
+     printer renders it as whatever happened to be behind it. */
+  .card-solid {
     @apply rounded-2xl border border-slate-200 bg-white p-5 shadow-sm;
     @apply dark:border-slate-800 dark:bg-slate-900;
   }
 
   .label {
-    @apply mb-2 block text-sm font-semibold uppercase tracking-wide text-slate-600;
-    @apply dark:text-slate-400;
+    @apply mb-2 block text-sm font-bold uppercase tracking-wide text-slate-700;
+    @apply dark:text-slate-300;
   }
 
   .input {
-    @apply min-h-touch w-full rounded-xl border-2 border-slate-300 bg-white px-4 py-3 text-lg;
-    @apply placeholder:text-slate-400 focus:border-blue-600;
-    @apply dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100;
+    @apply min-h-touch w-full rounded-xl border-2 border-slate-300/80 bg-white/70 px-4 py-3 text-lg;
+    @apply backdrop-blur transition-colors placeholder:text-slate-400;
+    @apply focus:border-blue-600 focus:bg-white;
+    @apply dark:border-white/15 dark:bg-white/5 dark:text-slate-100 dark:focus:bg-white/10;
     @apply disabled:cursor-not-allowed disabled:opacity-50;
   }
 
@@ -56,31 +142,67 @@
     @apply border-bad focus:border-bad dark:border-bad-dark;
   }
 
+  /* -------------------------------------------------------------------
+     BUTTONS
+     Kept as CSS classes, not swapped for the CVA <Button>, because 20 pages
+     use them and rewriting those call sites would be changing behaviour to
+     get a restyle. The two are visually identical by construction — same
+     gradients, same radius, same touch height — so a page can migrate to
+     <Button> later without a visual diff.
+     ------------------------------------------------------------------- */
   .btn {
     @apply inline-flex min-h-touch items-center justify-center gap-2 rounded-xl px-6 py-3;
-    @apply text-lg font-bold transition active:scale-[0.98];
+    @apply text-lg font-bold transition-all duration-200 active:scale-[0.98];
     @apply disabled:pointer-events-none disabled:opacity-40;
   }
 
   .btn-primary {
-    @apply btn bg-blue-600 text-white hover:bg-blue-700;
+    @apply btn bg-gradient-to-b from-blue-600 to-blue-700 text-white;
+    @apply shadow-lg shadow-blue-600/25 hover:from-blue-500 hover:to-blue-600;
   }
 
   .btn-success {
-    @apply btn bg-ok text-white hover:brightness-110;
+    @apply btn bg-gradient-to-b from-ok to-green-800 text-white;
+    @apply shadow-lg shadow-ok/25 hover:brightness-110;
   }
 
   .btn-danger {
-    @apply btn bg-bad text-white hover:brightness-110;
+    @apply btn bg-gradient-to-b from-bad to-red-800 text-white;
+    @apply shadow-lg shadow-bad/25 hover:brightness-110;
   }
 
   .btn-ghost {
-    @apply btn border-2 border-slate-300 bg-transparent text-slate-700;
-    @apply hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800;
+    @apply btn border-2 border-slate-300/80 bg-white/60 text-slate-800 backdrop-blur;
+    @apply hover:bg-white dark:border-white/15 dark:bg-white/5 dark:text-slate-100 dark:hover:bg-white/10;
+  }
+
+  /* The reference design's gradient-bordered CTA: a gradient sheet with the
+     button inset by a hair, so the border itself carries the colour. */
+  .btn-gradient-ring {
+    @apply rounded-[1.05rem] bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500 p-0.5;
+    @apply shadow-lg shadow-blue-500/20;
   }
 
   .chip {
-    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-semibold;
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-bold;
+    /* A neutral hairline rather than `ring-current/20`: Tailwind 3 cannot apply
+       an opacity modifier to currentColor, and the invalid class fails the
+       build here while being silently dropped from a .tsx file. */
+    @apply ring-1 ring-inset ring-black/5 dark:ring-white/10;
+  }
+
+  /* Nav pill in the header. Active state is a filled gradient rather than a
+     flat blue so it reads as raised at a glance on a busy screen. */
+  .nav-pill {
+    @apply block whitespace-nowrap rounded-xl px-4 py-2 text-base font-bold transition-all;
+  }
+
+  .nav-pill-active {
+    @apply bg-gradient-to-b from-blue-600 to-blue-700 text-white shadow-md shadow-blue-600/30;
+  }
+
+  .nav-pill-idle {
+    @apply text-slate-700 hover:bg-white/70 dark:text-slate-300 dark:hover:bg-white/10;
   }
 }
 
@@ -110,11 +232,32 @@
   pointer-events: none;
 }
 
+/* Print: the wash and every frosted surface become plain white. A gradient
+   backdrop on a sticker sheet wastes toner and makes the QR harder to scan,
+   which is the one thing those pages exist to produce. */
+@media print {
+  .page-wash {
+    display: none !important;
+  }
+
+  .card,
+  .card-solid {
+    background: #fff !important;
+    backdrop-filter: none !important;
+    box-shadow: none !important;
+    border-color: #cbd5e1 !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .page-wash-drift {
+    animation: none !important;
   }
 }

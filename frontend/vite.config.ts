@@ -41,6 +41,26 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true, // reachable from a phone on the same network for real device testing
+    // Proxy the API through the dev server so the browser only ever talks to
+    // one origin.
+    //
+    // Talking straight to http://127.0.0.1:8000 works until it doesn't: recent
+    // macOS gates page requests to loopback behind a Local Network privacy
+    // prompt, `localhost` resolves to ::1 while uvicorn binds 127.0.0.1, and
+    // testing from a phone on the LAN cannot reach the laptop's loopback at
+    // all. Every one of those surfaces as a bare `fetch` rejection — which the
+    // app can only report as "No connection", because that is all the browser
+    // tells it.
+    //
+    // Proxying makes the request same-origin and side-steps the lot. Production
+    // is unaffected: Vercel sets VITE_API_URL to the absolute Render URL and
+    // this block does not exist in a built bundle.
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+    },
   },
   build: {
     sourcemap: true,

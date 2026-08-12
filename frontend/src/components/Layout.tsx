@@ -1,8 +1,10 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { useOnline, usePendingScans } from '@/hooks/useOnline'
 import { flushQueue } from '@/lib/offlineQueue'
+import { GradientBackdrop, ThemeToggle } from '@/components/ui'
+import { cn } from '@/lib/utils'
 
 const NAV: { page: string; to: string; label: string }[] = [
   { page: 'dashboard', to: '/dashboard', label: 'Dashboard' },
@@ -20,38 +22,28 @@ const NAV: { page: string; to: string; label: string }[] = [
   { page: 'admin', to: '/admin', label: 'Staff' },
 ]
 
-function useDarkMode() {
-  const [dark, setDark] = useState(() => {
-    const stored = localStorage.getItem('r360-theme')
-    // Defaults to dark: PRD §6 asks for a dark mode for outdoor use, and the
-    // gate — where the app is used most — is outdoors.
-    return stored ? stored === 'dark' : true
-  })
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', dark)
-    localStorage.setItem('r360-theme', dark ? 'dark' : 'light')
-  }, [dark])
-
-  return [dark, setDark] as const
-}
-
 export function Layout({ children }: { children: ReactNode }) {
   const { me, signOut } = useAuth()
   const navigate = useNavigate()
   const online = useOnline()
   const pending = usePendingScans()
-  const [dark, setDark] = useDarkMode()
 
   const items = NAV.filter((item) => me?.allowed_pages.includes(item.page))
 
   return (
-    <div className="min-h-screen">
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
+    <div className="relative min-h-screen">
+      {/* Mounted once, here, rather than per page — a backdrop that re-animated
+          on every navigation would be noticeable in exactly the way a backdrop
+          should not be. */}
+      <GradientBackdrop />
+
+      <header className="sticky top-0 z-30 border-b border-white/40 bg-white/60 backdrop-blur-xl dark:border-white/10 dark:bg-black/40">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
           <div className="min-w-0 flex-1">
-            <p className="truncate text-lg font-black">R360 Warehouse</p>
-            <p className="truncate text-sm text-slate-500 dark:text-slate-400">
+            <p className="truncate bg-gradient-to-r from-blue-700 via-purple-600 to-pink-600 bg-clip-text text-lg font-black text-transparent dark:from-blue-300 dark:via-purple-300 dark:to-pink-300">
+              R360 Warehouse
+            </p>
+            <p className="truncate text-sm text-slate-600 dark:text-slate-400">
               {me?.full_name} · {me?.role_label}
             </p>
           </div>
@@ -76,14 +68,7 @@ export function Layout({ children }: { children: ReactNode }) {
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={() => setDark(!dark)}
-            className="rounded-lg p-2 text-xl"
-            aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-          >
-            {dark ? '☀' : '☾'}
-          </button>
+          <ThemeToggle />
 
           <button
             type="button"
@@ -91,7 +76,7 @@ export function Layout({ children }: { children: ReactNode }) {
               await signOut()
               navigate('/login')
             }}
-            className="rounded-lg px-3 py-2 text-base font-semibold text-slate-600 dark:text-slate-300"
+            className="rounded-xl px-3 py-2 text-base font-semibold text-slate-700 transition-colors hover:bg-white/70 dark:text-slate-300 dark:hover:bg-white/10"
           >
             Sign out
           </button>
@@ -105,11 +90,7 @@ export function Layout({ children }: { children: ReactNode }) {
                   <NavLink
                     to={item.to}
                     className={({ isActive }) =>
-                      `block whitespace-nowrap rounded-lg px-4 py-2 text-base font-bold ${
-                        isActive
-                          ? 'bg-blue-600 text-white'
-                          : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-                      }`
+                      cn('nav-pill', isActive ? 'nav-pill-active' : 'nav-pill-idle')
                     }
                   >
                     {item.label}
