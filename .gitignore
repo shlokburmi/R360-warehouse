@@ -19,6 +19,10 @@ dist-ssr/
 *.local
 .vite/
 
+# Tesseract runtime, staged out of node_modules by frontend/scripts/copy-ocr-assets.mjs.
+# ~13MB of wasm and model data, versioned by package.json rather than by git.
+frontend/public/tesseract/
+
 # Supabase local stack
 supabase/.branches/
 supabase/.temp/
