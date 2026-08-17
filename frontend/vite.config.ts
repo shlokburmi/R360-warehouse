@@ -27,11 +27,42 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Deliberately excludes .wasm and .gz, which is what keeps the ~13MB
+        // Tesseract runtime *out* of the precache manifest. Precaching it would
+        // mean every guard's phone downloading an OCR engine during install to
+        // run a scanner that never uses it.
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // The one exception to that: worker.min.js matches the glob above and
+        // would otherwise be precached on its own — 128KB of a runtime whose
+        // other 6MB isn't there.
+        globIgnores: ['**/tesseract/**'],
         // API responses are never served from cache. A stale box count shown as
         // current is worse than no box count at all.
         navigateFallbackDenylist: [/^\/api/],
-        runtimeCaching: [],
+        // Raised from the 2MB default: the individual core .wasm is 3.1MB and
+        // Workbox will refuse to cache a response larger than this.
+        maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
+        runtimeCaching: [
+          {
+            // The OCR runtime, cached on first use rather than at install.
+            //
+            // CacheFirst is right here in a way it would never be for API data:
+            // these files are immutable for a given dependency version, so
+            // "stale" is not a state they can be in. The matcher's station pays
+            // the ~6MB download once and then reads challans offline forever;
+            // the dashboard-only users never fetch it at all.
+            urlPattern: /\/tesseract\/.*\.(wasm|js|gz)$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'ocr-runtime',
+              expiration: { maxEntries: 12 },
+              // Without this, an opaque cross-origin-style response could be
+              // cached as a success and poison the engine until someone clears
+              // site data by hand.
+              cacheableResponse: { statuses: [200] },
+            },
+          },
+        ],
       },
     }),
   ],

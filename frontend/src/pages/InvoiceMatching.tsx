@@ -3,8 +3,9 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ApiError, get, post } from '@/lib/api'
 import { Scanner } from '@/components/Scanner'
 import { BadgeScan } from '@/components/BadgeScan'
+import { OrderNoScanner, type OrderNoReading } from '@/components/OrderNoScanner'
 import { Banner, Card } from '@/components/ui'
-import type { AttributionResult, Invoice } from '@/types'
+import type { AttributionResult, Invoice, OrderNoResult } from '@/types'
 
 /**
  * PRD §5.4 — Invoice matching (Invoice Matching Ladies #1 and #2).
@@ -15,7 +16,7 @@ import type { AttributionResult, Invoice } from '@/types'
  * exactly that order and shows one step at a time — this is a station where
  * someone is holding a box in one hand.
  */
-type Step = 'scan_invoice' | 'confirm_match' | 'scan_badge' | 'done'
+type Step = 'scan_invoice' | 'read_order_no' | 'confirm_match' | 'scan_badge' | 'done'
 
 export function InvoiceMatchingPage() {
   const queryClient = useQueryClient()
@@ -39,11 +40,37 @@ export function InvoiceMatchingPage() {
       )
       setInvoice(found)
       setResult(null)
-      setStep('confirm_match')
+      // An Order No already on file is not read again. Re-reading it could only
+      // either agree (no gain) or disagree (a conflict the server refuses), so
+      // the second scan costs the matcher time to buy nothing.
+      setStep(found.order_no ? 'confirm_match' : 'read_order_no')
     } catch (err) {
       setError(err as ApiError)
     }
   }
+
+  /**
+   * The Order No is metadata, not a control point, so a failure here must not
+   * strand the invoice. On error the matcher is moved on to the match check
+   * anyway and the message is shown — stopping CONTROL POINT 5 because a camera
+   * could not read a printed field would be the wrong trade.
+   */
+  const saveOrderNo = useMutation({
+    mutationFn: (reading: OrderNoReading) =>
+      post<OrderNoResult>('/invoices/order-no', {
+        invoice_number: invoice?.invoice_number,
+        ...reading,
+      }),
+    onSuccess: (data) => {
+      setInvoice(data.invoice)
+      setError(null)
+      setStep('confirm_match')
+    },
+    onError: (err) => {
+      setError(err as ApiError)
+      setStep('confirm_match')
+    },
+  })
 
   const verify = useMutation({
     mutationFn: (badgeCode: string) =>
@@ -77,6 +104,27 @@ export function InvoiceMatchingPage() {
         </Card>
       )}
 
+      {step === 'read_order_no' && invoice && (
+        <Card
+          title="2 · Read the Order No"
+          subtitle={`Invoice ${invoice.invoice_number} — top-right of the challan`}
+        >
+          <OrderNoScanner
+            invoiceNumber={invoice.invoice_number}
+            busy={saveOrderNo.isPending}
+            onConfirm={(reading) => saveOrderNo.mutate(reading)}
+          />
+          <button
+            type="button"
+            className="btn-ghost mt-3 w-full text-sm"
+            onClick={() => setStep('confirm_match')}
+            disabled={saveOrderNo.isPending}
+          >
+            Skip — no Order No on this challan
+          </button>
+        </Card>
+      )}
+
       {step === 'confirm_match' && invoice && (
         <>
           <Card title={invoice.invoice_number} subtitle={invoice.customer_name ?? undefined}>
@@ -90,6 +138,14 @@ export function InvoiceMatchingPage() {
                 <dt className="text-slate-500 dark:text-slate-400">Quantity</dt>
                 <dd className="text-4xl font-black tabular-nums">{invoice.units}</dd>
               </div>
+              {invoice.order_no && (
+                <div className="col-span-2">
+                  <dt className="text-slate-500 dark:text-slate-400">Order No</dt>
+                  <dd className="font-mono text-lg font-bold tracking-wide">
+                    {invoice.order_no}
+                  </dd>
+                </div>
+              )}
             </dl>
 
             {invoice.suggested_locations.length > 0 && (
@@ -109,7 +165,7 @@ export function InvoiceMatchingPage() {
             )}
           </Card>
 
-          <Card title="2 · Confirm the product matches">
+          <Card title="3 · Confirm the product matches">
             <p className="mb-4 text-base">
               Fetch the product, place it on top of the invoice, and check the SKU and
               quantity above match what you are holding.
@@ -131,7 +187,7 @@ export function InvoiceMatchingPage() {
       )}
 
       {step === 'scan_badge' && invoice && (
-        <Card title="3 · Scan your badge" subtitle={invoice.invoice_number}>
+        <Card title="4 · Scan your badge" subtitle={invoice.invoice_number}>
           <BadgeScan
             label="Confirm you verified this invoice"
             busy={verify.isPending}

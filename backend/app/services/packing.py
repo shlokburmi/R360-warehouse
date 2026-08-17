@@ -9,6 +9,7 @@ identifies which of several matchers or packers physically handled the item. So
 the session's role. Both have to be right for a record to exist.
 """
 
+import re
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -18,6 +19,13 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from app.core.errors import AppError
 
 BADGE_HINT = "Hold the badge steady under the scanner, or type the code on it."
+
+# The Order No printed on the delivery challan header, e.g. CP002458380_0001.
+# Kept identical to the check constraint in 0015_order_no_ocr.sql — the database
+# is the authority, and this copy exists only so a bad read is refused with a
+# usable message instead of an integrity error.
+ORDER_NO_RE = re.compile(r"^CP\d{9}_\d{4}$")
+ORDER_NO_HINT = "Expected the form CP002458380_0001 — two letters, nine digits, underscore, four digits."
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +95,7 @@ async def resolve_badge(
 # ---------------------------------------------------------------------------
 
 _INVOICE_SELECT = """
-    select invoice_id, invoice_number, sku, units, customer_name, description,
+    select invoice_id, invoice_number, order_no, sku, units, customer_name, description,
            is_open, stage,
            verified_by, verified_by_name, verified_at,
            packed_by, packed_by_name, packed_at,
@@ -184,6 +192,106 @@ async def lookup_for_matching(conn: AsyncConnection, invoice_number: str) -> Dic
 
     invoice["suggested_locations"] = [dict(r) for r in locations.mappings()]
     return invoice
+
+
+# ---------------------------------------------------------------------------
+# Order No capture (OCR)
+# ---------------------------------------------------------------------------
+
+
+async def record_order_no(
+    conn: AsyncConnection,
+    invoice_number: str,
+    order_no: Optional[str],
+    source: str,
+    actor_id: str,
+    raw_text: Optional[str] = None,
+    confidence: Optional[float] = None,
+    was_corrected: bool = False,
+) -> Dict[str, Any]:
+    """Attach the challan's Order No to an invoice, and log how it was read.
+
+    Two properties this function is built around:
+
+    **A failed read is still recorded.** `order_no` may be None — the camera saw
+    the challan and could not produce a conforming string. That row is the point:
+    a station whose reads miss all morning has a smeared lens or a bad crop
+    region, and that is only visible if the misses were written down. A miss
+    leaves `invoices.order_no` untouched rather than nulling it, so a good value
+    already captured is never destroyed by a later bad attempt.
+
+    **Re-reading is allowed; silently changing the value is not.** If a different
+    Order No is already attached, this refuses. Two challans disagreeing about
+    which order a shipment belongs to is a discrepancy for a human to resolve,
+    not something to settle by letting the most recent scan win — the same
+    principle as the count-mismatch handling at CONTROL POINT 3.
+    """
+    invoice = await get_invoice_by_number(conn, invoice_number)
+
+    if order_no is not None:
+        order_no = order_no.strip().upper()
+        if not ORDER_NO_RE.match(order_no):
+            raise AppError(
+                f"{order_no} is not a valid Order No.",
+                code="bad_order_no",
+                http_status=422,
+                hint=ORDER_NO_HINT,
+            )
+
+    existing = invoice["order_no"]
+    if order_no is not None and existing is not None and existing != order_no:
+        raise AppError(
+            f"Invoice {invoice['invoice_number']} is already booked against order "
+            f"{existing}.",
+            code="order_no_conflict",
+            http_status=409,
+            hint=(
+                "Raise an exception rather than overwriting — two different order "
+                "numbers on one invoice needs a human decision."
+            ),
+        )
+
+    # The scan log is written whether or not the read succeeded, and before the
+    # invoice is touched. If the update below were to fail, the evidence that
+    # someone pointed a camera at this challan still survives.
+    await conn.execute(
+        text(
+            """
+            insert into order_no_scans
+                (invoice_id, raw_text, parsed_order_no, confidence, source, was_corrected,
+                 scanned_by)
+            values
+                (:invoice_id, :raw_text, :parsed, :confidence, :source, :was_corrected,
+                 :who)
+            """
+        ),
+        {
+            "invoice_id": str(invoice["invoice_id"]),
+            "raw_text": raw_text,
+            "parsed": order_no,
+            "confidence": confidence,
+            "source": source,
+            "was_corrected": was_corrected,
+            "who": actor_id,
+        },
+    )
+
+    if order_no is not None and existing is None:
+        await conn.execute(
+            text("update invoices set order_no = :order_no where id = :id"),
+            {"order_no": order_no, "id": str(invoice["invoice_id"])},
+        )
+
+    after = await get_invoice(conn, invoice["invoice_id"])
+    return {
+        "invoice": after,
+        "recorded": order_no is not None,
+        "message": (
+            f"Order {order_no} attached to invoice {after['invoice_number']}."
+            if order_no is not None
+            else "Could not read an Order No from the challan. Type it instead."
+        ),
+    }
 
 
 async def verify_invoice(

@@ -1,7 +1,7 @@
 """Invoice matching, packing, out-scan and batch release — PRD §5.4-5.6."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response, status
@@ -41,6 +41,7 @@ class InvoiceOut(BaseModel):
 
     invoice_id: UUID
     invoice_number: str
+    order_no: Optional[str] = None
     sku: str
     units: int
     customer_name: Optional[str] = None
@@ -86,6 +87,48 @@ class VerifyIn(BadgeIn):
 
 class PackIn(VerifyIn):
     carton_code: Optional[str] = Field(default=None, max_length=60)
+
+
+class OrderNoIn(BaseModel):
+    """An attempt to read the Order No off a delivery challan.
+
+    `order_no` is optional on purpose — the client posts a null when OCR ran and
+    produced nothing usable, so the miss is recorded rather than discarded. It is
+    the one endpoint here where "I failed" is a legitimate, recorded outcome.
+    """
+
+    invoice_number: str = Field(min_length=3, max_length=60)
+    order_no: Optional[str] = Field(default=None, max_length=40)
+    source: Literal["ocr", "manual"]
+
+    # The engine's unedited output. Capped rather than unbounded: it is evidence,
+    # not a document store, and the challan header block is a few hundred
+    # characters at most.
+    raw_text: Optional[str] = Field(default=None, max_length=2000)
+    confidence: Optional[float] = Field(default=None, ge=0, le=100)
+    was_corrected: bool = False
+
+    @field_validator("invoice_number")
+    @classmethod
+    def _upper_invoice(cls, v: str) -> str:
+        return v.strip().upper()
+
+    @field_validator("order_no")
+    @classmethod
+    def _upper_order(cls, v: Optional[str]) -> Optional[str]:
+        # An empty string from a cleared input field means "no read", not "the
+        # order number is the empty string" — which would fail the regex and
+        # report a validation error for what is really a miss.
+        if v is None:
+            return None
+        cleaned = v.strip().upper()
+        return cleaned or None
+
+
+class OrderNoResult(BaseModel):
+    invoice: InvoiceOut
+    recorded: bool
+    message: str
 
 
 class AttributionResult(BaseModel):
@@ -198,6 +241,31 @@ async def lookup_invoice(
     the wrong aisle is avoided rather than discovered.
     """
     return await packing_service.lookup_for_matching(conn, invoice_number)
+
+
+@router.post("/invoices/order-no", response_model=OrderNoResult)
+async def record_order_no(
+    payload: OrderNoIn,
+    conn: AsyncConnection = Depends(get_db),
+    user: CurrentUser = Depends(matcher_or_ops),
+):
+    """PRD §5.4: attach the challan's Order No to the invoice.
+
+    Not a control point. Nothing is gated on this value, so it takes the session
+    user rather than a badge scan — the matcher's badge is spent on
+    `/invoices/verify`, which is the step that actually attributes handling.
+    Making them scan twice to record a field would buy no accountability.
+    """
+    return await packing_service.record_order_no(
+        conn,
+        invoice_number=payload.invoice_number,
+        order_no=payload.order_no,
+        source=payload.source,
+        actor_id=user.id,
+        raw_text=payload.raw_text,
+        confidence=payload.confidence,
+        was_corrected=payload.was_corrected,
+    )
 
 
 @router.post("/invoices/verify", response_model=AttributionResult)

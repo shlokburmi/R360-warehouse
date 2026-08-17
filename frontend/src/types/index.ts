@@ -230,6 +230,8 @@ export type BadgeHolder = {
 export type Invoice = {
   invoice_id: string
   invoice_number: string
+  /** Order No off the challan header, e.g. CP002458380_0001. Null until read. */
+  order_no: string | null
   sku: string
   units: number
   customer_name: string | null
@@ -247,6 +249,13 @@ export type Invoice = {
   batch_status: string | null
   out_scanned_at: string | null
   suggested_locations: { location_code: string; units: number }[]
+}
+
+export type OrderNoResult = {
+  invoice: Invoice
+  /** False when the read missed — the attempt is logged, the invoice untouched. */
+  recorded: boolean
+  message: string
 }
 
 export type AttributionResult = {
