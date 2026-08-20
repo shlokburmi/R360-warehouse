@@ -1,6 +1,11 @@
 {
   "app": {
-    "name": "R360 Warehouse"
+    "name": "R360 Warehouse",
+    "signing_in": "Signing in…",
+    "no_profile_title": "Cannot load your profile",
+    "no_profile_body": "Sign out and sign in again. If it keeps happening, ask an Admin to check your account.",
+    "wrong_role_title": "This page is not for your role",
+    "wrong_role_body": "You are signed in as {{role}}. Ask Ops if you need access."
   },
   "common": {
     "cancel": "Cancel",

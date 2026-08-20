@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from 'react'
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { Layout } from '@/components/Layout'
 import { Banner, Spinner } from '@/components/ui'
@@ -33,19 +34,38 @@ import { LoadingPage } from '@/pages/Loading'
  * user, not a security boundary, and treating it as one is how gaps appear.
  */
 function Protected({ page, children }: { page?: string; children: ReactNode }) {
-  const { session, me, loading, error } = useAuth()
+  const { t } = useTranslation()
+  const { session, me, loading, error, signOut } = useAuth()
   const location = useLocation()
+  const navigate = useNavigate()
 
-  if (loading) return <Spinner label="Signing in…" />
+  if (loading) return <Spinner label={t('app.signing_in')} />
 
   if (!session) return <Navigate to="/login" state={{ from: location }} replace />
 
   if (error || !me) {
     return (
-      <div className="mx-auto max-w-lg p-6">
-        <Banner tone="bad" title="Cannot load your profile">
-          {error ?? 'Please sign out and back in.'}
+      <div className="mx-auto max-w-lg space-y-4 p-6">
+        <Banner tone="bad" title={t('app.no_profile_title')}>
+          {t('app.no_profile_body')}
         </Banner>
+        {/* The escape hatch this state was missing.
+        
+            The usual cause is a session that outlived the profile it points at —
+            the database was re-seeded, ids regenerated, and the browser kept the
+            old JWT. That is only fixable by signing out, and `Layout` (which owns
+            the sign-out button) is not rendered here. So without this the user is
+            stuck on this screen with no way forward at all. */}
+        <button
+          type="button"
+          className="btn-primary w-full"
+          onClick={async () => {
+            await signOut()
+            navigate('/login', { replace: true })
+          }}
+        >
+          {t('common.sign_out')}
+        </button>
       </div>
     )
   }
@@ -53,8 +73,10 @@ function Protected({ page, children }: { page?: string; children: ReactNode }) {
   if (page && !me.allowed_pages.includes(page)) {
     return (
       <Layout>
-        <Banner tone="warn" title="This page is not for your role">
-          You are signed in as {me.role_label}. Ask Ops if you need access.
+        <Banner tone="warn" title={t('app.wrong_role_title')}>
+          {t('app.wrong_role_body', {
+            role: t(`roles.${me.role}`, { defaultValue: me.role_label }),
+          })}
         </Banner>
       </Layout>
     )
