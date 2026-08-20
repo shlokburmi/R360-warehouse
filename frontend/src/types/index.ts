@@ -324,7 +324,14 @@ export type PickupCarton = {
 export type Pickup = {
   pickup_id: string
   pickup_code: string
-  status: 'registered' | 'verifying' | 'verified' | 'departed' | 'cancelled'
+  status:
+    | 'registered'
+    | 'verifying'
+    | 'verified'
+    /** CP7 passed, waiting on an Ops decision before the gate opens. */
+    | 'exit_pending'
+    | 'departed'
+    | 'cancelled'
   vehicle_number: string
   courier_name: string | null
   transporter_name: string | null
@@ -340,6 +347,12 @@ export type Pickup = {
   time_in: string | null
   time_out: string | null
   released_by_name: string | null
+  exit_requested_at: string | null
+  exit_requested_by_name: string | null
+  exit_approved_at: string | null
+  exit_approved_by_name: string | null
+  exit_rejected_note: string | null
+  exit_waiting_seconds: number | null
   message: string
   persons: Person[]
   cartons: PickupCarton[]
@@ -452,4 +465,81 @@ export type PhotoRetention = {
   retained_for_block: number
   retention_days: number
   enabled: boolean
+}
+
+// --- Phase 5 workflow: assignment, load approval, exit approval -------------
+
+export type PackingState = {
+  invoice_id: string
+  invoice_number: string
+  sku: string | null
+  required_units: number
+  packed_units: number
+  remaining_units: number
+  ready_to_close: boolean
+  is_open: boolean
+  verified_by: string | null
+  verified_by_name: string | null
+  assigned_to: string | null
+  assigned_to_name: string | null
+  packed_by: string | null
+  packed_by_name: string | null
+  packed_at: string | null
+}
+
+export type AssignResult = {
+  invoice: Invoice
+  packing: PackingState
+  assigned_to: BadgeHolder
+  message: string
+}
+
+/** A product-box scan, plus where the carton now stands. */
+export type PackScanResult = ScanResult & {
+  packed_units?: number
+  required_units?: number
+  remaining_units?: number
+  ready_to_close?: boolean
+}
+
+export type BatchAwaitingCount = {
+  batch_id: string
+  batch_code: string
+  batch_status: string
+  planned_carton_count: number
+  carton_count: number
+  created_at: string
+}
+
+export type LoadApproval = {
+  id: string
+  batch_id: string
+  batch_code: string
+  batch_status: string
+  counted_cartons: number
+  expected_cartons: number
+  counted_by: string | null
+  counted_by_name: string | null
+  counted_at: string
+  status: 'pending' | 'approved' | 'rejected'
+  decided_by: string | null
+  decided_by_name: string | null
+  decided_at: string | null
+  note: string | null
+  is_current: boolean
+  /** Whether the guard's number agreed with the system's. */
+  matches: boolean
+  waiting_seconds: number | null
+}
+
+export type ExitRequestResult = {
+  pickup: Pickup
+  requested: boolean
+  message: string
+}
+
+export type ExitDecisionResult = {
+  pickup: Pickup
+  approved: boolean
+  message: string
 }

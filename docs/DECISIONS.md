@@ -487,6 +487,98 @@ need different fixes, so they cannot be one field.
 
 ---
 
+## Part CG — Phase 5: the four steps the floor had and the software did not
+
+Walking the process aloud with Ops surfaced four steps that were part of the
+real workflow from the start and had never been built. All four are enforced in
+the database (§B3), and all four are shaped after CONTROL POINT 1, because that
+is the one whose shape has already been argued out.
+
+### CG1. Assignment by scanning a colleague's badge does not weaken §CC2
+
+The floor step: a lead scans the packer's badge card and the carton becomes hers.
+That looks like it should violate the badge rules, and it does not, so the
+distinction is worth stating precisely.
+
+§CC2's invariant is that **no operation tells anyone the code of a badge that is
+currently in someone's pocket.** Reading a card that is physically present is the
+intended use — `resolve_badge_holder(code)` has always taken a scanned code and
+returned its holder, for any signed-in user, because that is exactly what a
+station tablet does. **Physical custody of the badge is the control**, and it
+still is here. No grant changed, no column became readable, and the audit
+redaction from 0013 is untouched.
+
+What that leaves intact is the part that matters: the verifier and the packer
+must still be two different people, and a single person can only defeat that by
+holding two badges — which was equally true before `packing_assignments` existed.
+
+CONTROL POINT 5 is now also checked *at assignment*, not only at packing. The
+rule is unchanged; catching it earlier means the refusal lands while the lead is
+still holding the card rather than after the carton is packed.
+
+### CG2. A pack must go to the person it was assigned to
+
+Without `fn_packing_matches_assignment`, assignment would be advisory: a lead
+could scan Kavitha's badge and the carton could still be recorded against Anitha.
+Then "assigned to" and "packed by" could disagree, and the assignment record
+would be **worse than useless — it would look like evidence while not being any.**
+
+Reassignment is a new row superseding the old (PRD §7), never an edit. "This
+carton moved from Kavitha to Anitha at 14:20, by Lakshmi" has to stay answerable.
+
+### CG3. Packing is a scanning step, because CP3 and CP6 left a gap
+
+CONTROL POINT 3 checks units-per-box against the PO at offloading. CONTROL POINT
+6 checks cartons-assigned against cartons-scanned at out-scan. Between them was a
+gap wide enough to lose a product box in: **it could be counted into the
+warehouse and never appear in any carton, and every existing control point would
+still pass.**
+
+So the packer now scans each product box into the carton, and the carton cannot
+close until the number scanned equals the number the invoice promises. The
+mechanism is copied from CP3 deliberately — same ledger, same
+one-accept-per-sticker index, same derived-never-written counting — because that
+machinery has already survived the offline queue, double scans, and two devices
+racing on one sticker.
+
+There is deliberately **no exemption** for goods with no product stickers issued.
+An earlier draft skipped the check in that case so that existing tests could keep
+packing invoices out of thin air, and the result was a rule that switched itself
+off depending on unrelated data elsewhere in the database — which is worse than
+not having the rule. The test helpers now produce the goods instead, which is
+what the floor does.
+
+### CG4. Two approval gates on the outbound side
+
+The guard counts the cartons on the bay and Ops decides; nothing is released for
+loading without that decision. Then the loaded, verified vehicle waits for a
+second Ops decision before the gate opens.
+
+Both copy CP1's shape, including the part people skip: **the approver must hold a
+role entitled to approve, not merely be a different person.** A first draft
+checked only `approver ≠ requester`, which reduces to "name any colleague" — a
+guard could nominate a packer and open the gate. That is CP1's mistake made
+twice, and `fn_gate_guard` in 0004 already had the answer.
+
+The expected carton count is captured at count time rather than recomputed, so
+the record says what the two numbers were **when the human looked**. A later
+carton movement would otherwise silently rewrite history. And the guard's screen
+shows the system's number only *after* they commit to theirs — a count that opens
+by telling you the answer is a confirmation, not a count.
+
+Approving an exit records the approval; it does not open the gate. The guard
+still performs the release, so the gate opening stays attached to the person
+standing at it — the same reasoning as §CD4.
+
+### CG5. A rejection returns the vehicle to `verified`
+
+`exit_pending → verified` is a legal transition so the guard can re-request once
+whatever Ops asked about is dealt with. The alternative is a pickup wedged in a
+state with no way out but SQL, which is the class of problem the Admin screen was
+built to remove.
+
+---
+
 ## Part D — What running the stack changed
 
 These are defects found by actually booting the system, not by reading it. They

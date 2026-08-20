@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, get, post, postControlPoint } from '@/lib/api'
+import { useErrorText } from '@/hooks/useErrorText'
 import { useAuth } from '@/hooks/useAuth'
 import { useScanning } from '@/hooks/useScanning'
 import { Scanner } from '@/components/Scanner'
@@ -18,6 +20,8 @@ import type { Box, GateEntry, Progress, StickerSheet } from '@/types'
  * Ops decides (accept short / recount / reject).
  */
 export function UnitScanningPage() {
+  const { t } = useTranslation()
+  const errorText = useErrorText()
   const { entryId = '' } = useParams()
   const queryClient = useQueryClient()
   const { me } = useAuth()
@@ -78,7 +82,7 @@ export function UnitScanningPage() {
   })
 
   if (entry.isLoading) return <Spinner />
-  if (!entry.data) return <Banner tone="bad" title="Truck not found" />
+  if (!entry.data) return <Banner tone="bad" title={t('units.truck_not_found')} />
 
   const isOps = me?.role === 'ops_manager' || me?.role === 'admin'
   const activeBox = boxes.data?.find((b) => b.id === activeBoxId) ?? null
@@ -89,7 +93,7 @@ export function UnitScanningPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <h1 className="text-2xl font-black">{entry.data.vehicle_number}</h1>
           <p className="text-base text-slate-500 dark:text-slate-400">
             {entry.data.entry_code} · {entry.data.vendor_name}
@@ -99,20 +103,19 @@ export function UnitScanningPage() {
       </div>
 
       {error && (
-        <Banner tone={error.isControlPoint ? 'bad' : 'warn'} title={error.message}>
+        <Banner tone={error.isControlPoint ? 'bad' : 'warn'} title={errorText(error).title}>
           {error.hint}
         </Banner>
       )}
 
       {heldBoxes.length > 0 && (
         <Banner tone="bad" title={`${heldBoxes.length} box(es) held — Ops decision needed`}>
-          Held goods do not enter the warehouse. Ops must accept the shortfall, order a recount,
-          or reject the box.
+          {t('units.held_body')}
         </Banner>
       )}
 
       {!hasUnitStickers && (
-        <Card title="Unit stickers" subtitle="One sticker per individual unit">
+        <Card title={t('units.unit_stickers')} subtitle={t('units.one_per_unit')}>
           {isOps ? (
             <button
               type="button"
@@ -123,7 +126,7 @@ export function UnitScanningPage() {
               {issueUnitStickers.isPending ? 'Generating…' : 'Generate unit stickers'}
             </button>
           ) : (
-            <Banner tone="warn" title="Waiting for Ops to issue unit stickers" />
+            <Banner tone="warn" title={t('units.waiting_ops')} />
           )}
         </Card>
       )}
@@ -142,12 +145,12 @@ export function UnitScanningPage() {
       {hasUnitStickers && (
         <>
           <ProgressCounter
-            label="Units scanned"
+            label={t('units.units_scanned')}
             scanned={progress.data?.scanned ?? 0}
             total={progress.data?.total ?? 0}
           />
 
-          <Card title="Choose a box to scan into">
+          <Card title={t('units.choose_box')}>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {openBoxes.map((box) => (
                 <button
@@ -169,7 +172,7 @@ export function UnitScanningPage() {
               ))}
             </div>
             {openBoxes.length === 0 && (
-              <p className="text-base text-slate-500">No boxes are open for scanning.</p>
+              <p className="text-base text-slate-500">{t('units.none_open')}</p>
             )}
           </Card>
 
@@ -181,7 +184,7 @@ export function UnitScanningPage() {
                 total={activeBox.expected_units}
               />
 
-              <Card title="Scan unit stickers">
+              <Card title={t('units.title')}>
                 <label className="mb-3 flex items-center gap-3 rounded-xl border-2 border-slate-300 p-3 dark:border-slate-700">
                   <input
                     type="checkbox"
@@ -190,7 +193,7 @@ export function UnitScanningPage() {
                     onChange={(event) => setQuarantine(event.target.checked)}
                   />
                   <span className="text-base font-semibold">
-                    Scan into quarantine (damaged units)
+                    {t('units.quarantine_scan')}
                   </span>
                 </label>
 
@@ -203,7 +206,7 @@ export function UnitScanningPage() {
                     {feedback.map((item) => (
                       <li
                         key={item.id}
-                        className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-base ${
+                        className={`flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2 text-base ${
                           item.tone === 'ok'
                             ? 'bg-ok-bg text-ok dark:bg-ok-darkbg dark:text-ok-dark'
                             : item.tone === 'warn'
@@ -230,14 +233,14 @@ export function UnitScanningPage() {
               disabled={finish.isPending}
               onClick={() => finish.mutate()}
             >
-              Finish offloading
+              {t('units.finish')}
             </button>
           )}
         </>
       )}
 
       {boxes.data && (
-        <Card title="All boxes">
+        <Card title={t('units.all_boxes')}>
           <ul className="divide-y divide-slate-200 dark:divide-slate-800">
             {boxes.data.map((box) => (
               <li key={box.id} className="flex items-center justify-between gap-3 py-3">
@@ -269,6 +272,8 @@ export function UnitScanningPage() {
  * the field nobody fills in.
  */
 function BoxCloseCard({ box, onDone }: { box: Box; onDone: () => void }) {
+  const { t } = useTranslation()
+  const errorText = useErrorText()
   const queryClient = useQueryClient()
   const [damage, setDamage] = useState<'none' | 'packaging' | 'product' | null>(
     (box.damage_level as 'none' | 'packaging' | 'product' | null) ?? null,
@@ -337,7 +342,7 @@ function BoxCloseCard({ box, onDone }: { box: Box; onDone: () => void }) {
     <Card title={`Close box ${box.box_number}`}>
       {error && (
         <div className="mb-4">
-          <Banner tone={error.isControlPoint ? 'bad' : 'warn'} title={error.message}>
+          <Banner tone={error.isControlPoint ? 'bad' : 'warn'} title={errorText(error).title}>
             {error.hint}
           </Banner>
         </div>
@@ -354,7 +359,7 @@ function BoxCloseCard({ box, onDone }: { box: Box; onDone: () => void }) {
 
       {!damageRecorded ? (
         <>
-          <p className="label">Any visible damage?</p>
+          <p className="label">{t('units.any_damage')}</p>
           <div className="mb-4 flex gap-2">
             {(['none', 'packaging', 'product'] as const).map((level) => (
               <button
@@ -381,7 +386,7 @@ function BoxCloseCard({ box, onDone }: { box: Box; onDone: () => void }) {
                 rows={2}
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
-                placeholder="Describe the damage (required)"
+                placeholder={t('units.describe_damage')}
               />
               <label className="btn-ghost mb-3 w-full cursor-pointer">
                 📷 Add photo ({photoPaths.length})
@@ -397,7 +402,7 @@ function BoxCloseCard({ box, onDone }: { box: Box; onDone: () => void }) {
                 />
               </label>
               <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
-                A photo is required — it is the evidence for the vendor claim.
+                {t('units.photo_required')}
               </p>
             </>
           )}
@@ -412,7 +417,7 @@ function BoxCloseCard({ box, onDone }: { box: Box; onDone: () => void }) {
             }
             onClick={() => saveDamage.mutate()}
           >
-            Record damage check
+            {t('units.record_damage')}
           </button>
         </>
       ) : (
@@ -436,7 +441,7 @@ function BoxCloseCard({ box, onDone }: { box: Box; onDone: () => void }) {
                 tone="bad"
                 title={`${box.scanned_units} of ${box.expected_units} units scanned`}
               >
-                Closing now will hold the box and raise an exception for Ops.
+                {t('units.closing_holds')}
               </Banner>
             </div>
           )}

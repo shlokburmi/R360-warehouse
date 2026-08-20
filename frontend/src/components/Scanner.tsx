@@ -1,4 +1,5 @@
 import { Suspense, lazy } from 'react'
+import { useTranslation } from 'react-i18next'
 
 /**
  * Lazily-loaded wrapper around the camera scanner.
@@ -25,11 +26,12 @@ type Props = {
 }
 
 export function Scanner(props: Props) {
+  const { t } = useTranslation()
   return (
     <Suspense
       fallback={
         <div className="flex h-48 items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-800">
-          <span className="text-lg text-slate-500">Loading scanner…</span>
+          <span className="text-lg text-slate-500">{t('scanner.loading')}</span>
         </div>
       }
     >

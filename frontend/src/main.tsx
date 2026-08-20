@@ -3,6 +3,9 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App'
+// Imported for its side effect: i18next must be initialised before the first
+// component calls useTranslation, and before React paints a single label.
+import './i18n'
 import './styles/index.css'
 
 const queryClient = new QueryClient({

@@ -37,15 +37,20 @@ REJECT_MESSAGES = {
     "batch_not_released": "This carton has not been released for pickup. Do not load it.",
     "no_pickup_registered": "No vehicle has been registered for this batch yet.",
     "wrong_pickup": "That pickup is already closed.",
+    # Packing a product box into a carton (Phase 5)
+    "wrong_invoice": "This product does not belong to that invoice. Check the paperwork.",
+    "unit_not_in_stock": "This product box was never counted in at offloading. Call Ops.",
+    "invoice_already_full": "This carton is already full. Start the next one.",
 }
 
 _INSERT_SCAN = text(
     """
     insert into scan_events
-      (client_event_id, scan_type, raw_code, gate_entry_id, box_id,
+      (client_event_id, scan_type, raw_code, gate_entry_id, box_id, invoice_id,
        accepted, scanned_by, scanned_at, was_offline, device_label, disposition)
     values
       (:client_event_id, :scan_type, :raw_code, :gate_entry_id, :box_id,
+       cast(:invoice_id as uuid),
        false, auth.uid(), :scanned_at, :was_offline, :device_label,
        cast(:disposition as unit_disposition))
     returning id, accepted, reject_reason::text as reject_reason,
@@ -93,7 +98,10 @@ async def _existing_scan(conn: AsyncConnection, client_event_id: UUID) -> Option
 
 
 async def record_scan(
-    conn: AsyncConnection, scan: ScanIn, scan_type: str
+    conn: AsyncConnection,
+    scan: ScanIn,
+    scan_type: str,
+    invoice_id: Optional[UUID] = None,
 ) -> Dict[str, Any]:
     """Record one scan. Idempotent on `client_event_id`.
 
@@ -101,6 +109,11 @@ async def record_scan(
     normal, expected outcome that the operator needs to see and act on, not an
     error condition. Rejections are recorded too — "the scanner didn't work" is
     then a checkable claim.
+
+    `invoice_id` is only used by `pack_unit`, where the carton being filled
+    cannot be derived from the scanned code — a product sticker knows which box
+    it arrived in, not which order it is going out on. Every other scan type
+    leaves it null and lets the resolver work it out.
     """
     prior = await _existing_scan(conn, scan.client_event_id)
     if prior is not None:
@@ -125,6 +138,7 @@ async def record_scan(
         "raw_code": scan.raw_code,
         "gate_entry_id": None,   # resolved from the sticker by the trigger
         "box_id": None,
+        "invoice_id": str(invoice_id) if invoice_id else None,
         "scanned_at": _clamp_scanned_at(scan.scanned_at),
         "was_offline": scan.was_offline,
         "device_label": scan.device_label,
@@ -213,11 +227,21 @@ async def record_scan(
 
 
 async def record_batch(
-    conn: AsyncConnection, scans: List[ScanIn], scan_type: str
+    conn: AsyncConnection,
+    scans: List[ScanIn],
+    scan_type: str,
+    invoice_id: Optional[UUID] = None,
 ) -> Dict[str, Any]:
-    """Drain an offline queue. Replayed in the order the scans happened."""
+    """Drain an offline queue. Replayed in the order the scans happened.
+
+    `invoice_id` applies to `pack_unit` only, and the whole group shares it —
+    the device queues one carton's product boxes together because the carton is
+    what the count is against.
+    """
     ordered = sorted(scans, key=lambda s: s.scanned_at)
-    results = [await record_scan(conn, s, scan_type) for s in ordered]
+    results = [
+        await record_scan(conn, s, scan_type, invoice_id=invoice_id) for s in ordered
+    ]
 
     return {
         "results": results,

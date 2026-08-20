@@ -1,28 +1,31 @@
 import { type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { useOnline, usePendingScans } from '@/hooks/useOnline'
 import { flushQueue } from '@/lib/offlineQueue'
-import { GradientBackdrop, ThemeToggle } from '@/components/ui'
+import { GradientBackdrop, LanguageToggle, ThemeToggle } from '@/components/ui'
 import { cn } from '@/lib/utils'
 
-const NAV: { page: string; to: string; label: string }[] = [
-  { page: 'dashboard', to: '/dashboard', label: 'Dashboard' },
-  { page: 'approvals', to: '/approvals', label: 'Approvals' },
-  { page: 'gate-entry', to: '/gate-entry', label: 'Gate Entry' },
-  { page: 'box-counting', to: '/entries', label: 'Trucks' },
-  { page: 'putaway', to: '/putaway', label: 'Putaway' },
-  { page: 'invoice-matching', to: '/invoice-matching', label: 'Matching' },
-  { page: 'packing', to: '/packing', label: 'Packing' },
-  { page: 'batches', to: '/batches', label: 'Out-Scan' },
-  { page: 'pickup', to: '/pickup', label: 'Pickup' },
-  { page: 'stock', to: '/stock', label: 'Stock' },
-  { page: 'exceptions', to: '/exceptions', label: 'Exceptions' },
-  { page: 'reports', to: '/reports', label: 'Reports' },
-  { page: 'admin', to: '/admin', label: 'Staff' },
+const NAV: { page: string; to: string; key: string }[] = [
+  { page: 'dashboard', to: '/dashboard', key: 'nav.dashboard' },
+  { page: 'approvals', to: '/approvals', key: 'nav.approvals' },
+  { page: 'gate-entry', to: '/gate-entry', key: 'nav.gate_entry' },
+  { page: 'box-counting', to: '/entries', key: 'nav.trucks' },
+  { page: 'putaway', to: '/putaway', key: 'nav.putaway' },
+  { page: 'invoice-matching', to: '/invoice-matching', key: 'nav.matching' },
+  { page: 'packing', to: '/packing', key: 'nav.packing' },
+  { page: 'batches', to: '/batches', key: 'nav.out_scan' },
+  { page: 'loading', to: '/loading', key: 'nav.loading' },
+  { page: 'pickup', to: '/pickup', key: 'nav.pickup' },
+  { page: 'stock', to: '/stock', key: 'nav.stock' },
+  { page: 'exceptions', to: '/exceptions', key: 'nav.exceptions' },
+  { page: 'reports', to: '/reports', key: 'nav.reports' },
+  { page: 'admin', to: '/admin', key: 'nav.staff' },
 ]
 
 export function Layout({ children }: { children: ReactNode }) {
+  const { t } = useTranslation()
   const { me, signOut } = useAuth()
   const navigate = useNavigate()
   const online = useOnline()
@@ -38,13 +41,18 @@ export function Layout({ children }: { children: ReactNode }) {
       <GradientBackdrop />
 
       <header className="sticky top-0 z-30 border-b border-white/40 bg-white/60 backdrop-blur-xl dark:border-white/10 dark:bg-black/40">
-        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
-          <div className="min-w-0 flex-1">
+        {/* Wraps rather than compresses. Adding the language switch put six
+              controls on this row, and on a 360px phone the identity block was
+              being squeezed to a few characters. Letting the controls drop to a
+              second line keeps every target thumb-sized, which matters more here
+              than a single-line header. */}
+          <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-2 gap-y-2 px-3 py-3 sm:gap-x-3 sm:px-4">
+          <div className="min-w-0 flex-[1_1_60%] sm:flex-1">
             <p className="truncate bg-gradient-to-r from-blue-700 via-purple-600 to-pink-600 bg-clip-text text-lg font-black text-transparent dark:from-blue-300 dark:via-purple-300 dark:to-pink-300">
-              R360 Warehouse
+              {t('app.name')}
             </p>
             <p className="truncate text-sm text-slate-600 dark:text-slate-400">
-              {me?.full_name} · {me?.role_label}
+              {me?.full_name} · {me ? t(`roles.${me.role}`, { defaultValue: me.role_label }) : ''}
             </p>
           </div>
 
@@ -53,7 +61,7 @@ export function Layout({ children }: { children: ReactNode }) {
               work is landing or queuing. */}
           {!online && (
             <span className="chip bg-warn-bg text-warn dark:bg-warn-darkbg dark:text-warn-dark">
-              Offline
+              {t('common.offline')}
             </span>
           )}
 
@@ -62,12 +70,13 @@ export function Layout({ children }: { children: ReactNode }) {
               type="button"
               onClick={() => void flushQueue()}
               className="chip bg-info-bg text-info dark:bg-info-darkbg dark:text-info-dark"
-              title="Tap to retry sync"
+              title={t('common.sync_now')}
             >
-              {pending} to sync
+              {t('common.pending_scans', { count: pending })}
             </button>
           )}
 
+          <LanguageToggle />
           <ThemeToggle />
 
           <button
@@ -78,13 +87,17 @@ export function Layout({ children }: { children: ReactNode }) {
             }}
             className="rounded-xl px-3 py-2 text-base font-semibold text-slate-700 transition-colors hover:bg-white/70 dark:text-slate-300 dark:hover:bg-white/10"
           >
-            Sign out
+            {t('common.sign_out')}
           </button>
         </div>
 
+        {/* Wraps rather than scrolls. Thirteen destinations do not fit one line
+            below about 1100px, and a horizontal scroller clipped the last pill
+            mid-word — which looks like a bug, not an affordance. Wrapping costs a
+            second row of header on a phone and guarantees nothing is ever cut. */}
         {items.length > 1 && (
-          <nav className="mx-auto max-w-5xl overflow-x-auto px-2 pb-2">
-            <ul className="flex gap-1">
+          <nav className="mx-auto max-w-5xl px-2 pb-2">
+            <ul className="flex flex-wrap gap-1">
               {items.map((item) => (
                 <li key={item.to}>
                   <NavLink
@@ -93,7 +106,7 @@ export function Layout({ children }: { children: ReactNode }) {
                       cn('nav-pill', isActive ? 'nav-pill-active' : 'nav-pill-idle')
                     }
                   >
-                    {item.label}
+                    {t(item.key)}
                   </NavLink>
                 </li>
               ))}

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { get } from '@/lib/api'
 import { Card, EmptyState, Spinner } from '@/components/ui'
@@ -11,23 +12,23 @@ import { Card, EmptyState, Spinner } from '@/components/ui'
  * into WhatsApp.
  */
 const REPORTS = [
-  { key: 'vendor-accuracy', label: 'Vendor accuracy', path: '/reports/vendor-accuracy' },
-  { key: 'exception-log', label: 'Exception log', path: '/reports/exception-log' },
-  { key: 'gate-register', label: 'Gate register (in)', path: '/reports/gate-register' },
+  { key: 'vendor-accuracy', labelKey: 'reports.vendor_accuracy', path: '/reports/vendor-accuracy' },
+  { key: 'exception-log', labelKey: 'reports.exception_log', path: '/reports/exception-log' },
+  { key: 'gate-register', labelKey: 'reports.gate_register_in', path: '/reports/gate-register' },
   {
     key: 'outbound-register',
-    label: 'Gate register (out)',
+    labelKey: 'reports.gate_register_out',
     path: '/reports/outbound-register',
   },
   {
     key: 'packer-productivity',
-    label: 'Packer productivity',
+    labelKey: 'reports.packer_productivity',
     path: '/reports/packer-productivity',
   },
-  { key: 'daily-activity', label: 'Daily activity', path: '/reports/daily-activity' },
+  { key: 'daily-activity', labelKey: 'reports.daily_activity', path: '/reports/daily-activity' },
   {
     key: 'operator-productivity',
-    label: 'Operator productivity',
+    labelKey: 'reports.operator_productivity',
     path: '/reports/operator-productivity',
   },
 ] as const
@@ -62,6 +63,7 @@ function download(filename: string, csv: string) {
 }
 
 export function ReportsPage() {
+  const { t } = useTranslation()
   const [active, setActive] = useState<ReportKey>('vendor-accuracy')
   const report = REPORTS.find((r) => r.key === active)!
 
@@ -74,7 +76,7 @@ export function ReportsPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-black">Reports</h1>
+      <h1 className="text-2xl font-black">{t('reports.title')}</h1>
 
       <div className="flex flex-wrap gap-2">
         {REPORTS.map((item) => (
@@ -88,13 +90,13 @@ export function ReportsPage() {
                 : 'border-2 border-slate-300 dark:border-slate-700'
             }`}
           >
-            {item.label}
+            {t(item.labelKey)}
           </button>
         ))}
       </div>
 
       <Card
-        title={report.label}
+        title={t(report.labelKey)}
         action={
           rows.length > 0 && (
             <button
@@ -107,7 +109,7 @@ export function ReportsPage() {
                 )
               }
             >
-              Export CSV
+              {t('reports.export_csv')}
             </button>
           )
         }
@@ -115,7 +117,7 @@ export function ReportsPage() {
         {data.isLoading ? (
           <Spinner />
         ) : rows.length === 0 ? (
-          <EmptyState title="No data for this report yet" />
+          <EmptyState title={t('reports.no_data')} />
         ) : (
           <div className="-mx-5 overflow-x-auto px-5">
             <table className="w-full text-left text-base">

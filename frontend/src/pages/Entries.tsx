@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { ApiError, get, post } from '@/lib/api'
@@ -13,6 +14,7 @@ import type { GateEntry } from '@/types'
  * is never "what is the state of this entity" — it is "what do I do now".
  */
 export function EntriesPage() {
+  const { t } = useTranslation()
   const { me } = useAuth()
   const queryClient = useQueryClient()
 
@@ -31,7 +33,7 @@ export function EntriesPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['entries'] }),
   })
 
-  if (entries.isLoading) return <Spinner label="Loading trucks…" />
+  if (entries.isLoading) return <Spinner label={t('entries.loading')} />
 
   const isGuard = me?.role === 'security_guard'
   const isOps = me?.role === 'ops_manager' || me?.role === 'admin'
@@ -40,7 +42,7 @@ export function EntriesPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-black">Trucks On Site</h1>
+      <h1 className="text-2xl font-black">{t('entries.title')}</h1>
 
       {admit.isError && (
         <Banner tone="bad" title={(admit.error as ApiError).message}>
@@ -49,7 +51,7 @@ export function EntriesPage() {
       )}
 
       {entries.data?.length === 0 && (
-        <EmptyState title="No active trucks" hint="Nothing is waiting to be processed." />
+        <EmptyState title={t('entries.none')} hint={t('entries.none_hint')} />
       )}
 
       {entries.data?.map((entry) => (
@@ -70,7 +72,7 @@ export function EntriesPage() {
           <div className="flex flex-wrap gap-3">
             {entry.status === 'pending_approval' && (
               <span className="text-base text-slate-500 dark:text-slate-400">
-                Waiting for Ops approval — the gate is locked.
+                {t('entries.awaiting_ops')}
               </span>
             )}
 
@@ -81,32 +83,32 @@ export function EntriesPage() {
                 disabled={admit.isPending}
                 onClick={() => admit.mutate(entry.id)}
               >
-                Open gate · record time in
+                {t('entries.open_gate_in')}
               </button>
             )}
 
             {['inside', 'counting'].includes(entry.status) && (isGuard || isOps) && (
               <Link to={`/entries/${entry.id}/boxes`} className="btn-primary flex-1">
-                Count boxes
+                {t('entries.count_boxes')}
               </Link>
             )}
 
             {['box_verified', 'offloading'].includes(entry.status) &&
               (isOffloader || isOps) && (
                 <Link to={`/entries/${entry.id}/units`} className="btn-primary flex-1">
-                  Scan units
+                  {t('entries.scan_units')}
                 </Link>
               )}
 
             {entry.status === 'offloaded' && (isInbound || isOps) && (
               <Link to={`/entries/${entry.id}/reconciliation`} className="btn-primary flex-1">
-                Verify inbound counts
+                {t('entries.verify_counts')}
               </Link>
             )}
 
             {isOps && ['inside', 'counting', 'box_verified', 'offloading'].includes(entry.status) && (
               <Link to={`/entries/${entry.id}/boxes`} className="btn-ghost">
-                Stickers
+                {t('entries.stickers')}
               </Link>
             )}
           </div>

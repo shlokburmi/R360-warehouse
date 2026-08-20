@@ -8,7 +8,13 @@ from fastapi import APIRouter, Body, Depends, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from app.api.deps import CurrentUser, get_current_user, get_db, require_roles
+from app.api.deps import (
+    CurrentUser,
+    get_current_user,
+    get_db,
+    require_ops,
+    require_roles,
+)
 from app.schemas.gate import PersonOut, PersonIn, VEHICLE_RE
 from app.schemas.warehouse import ScanIn, ScanResult
 from app.services import pickup as pickup_service
@@ -73,6 +79,15 @@ class PickupOut(BaseModel):
     time_out: Optional[datetime] = None
     released_by_name: Optional[str] = None
 
+    # Exit approval (Phase 5). A verified vehicle no longer leaves on the
+    # guard's word alone.
+    exit_requested_at: Optional[datetime] = None
+    exit_requested_by_name: Optional[str] = None
+    exit_approved_at: Optional[datetime] = None
+    exit_approved_by_name: Optional[str] = None
+    exit_rejected_note: Optional[str] = None
+    exit_waiting_seconds: Optional[int] = None
+
     message: str = ""
     persons: List[PersonOut] = Field(default_factory=list)
     cartons: List[PickupCarton] = Field(default_factory=list)
@@ -109,6 +124,23 @@ class PickupCreate(BaseModel):
 class PickupVerifyResult(BaseModel):
     pickup: PickupOut
     verified: bool
+    message: str
+
+
+class ExitRequestResult(BaseModel):
+    pickup: PickupOut
+    requested: bool
+    message: str
+
+
+class ExitDecision(BaseModel):
+    approve: bool
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
+class ExitDecisionResult(BaseModel):
+    pickup: PickupOut
+    approved: bool
     message: str
 
 
@@ -150,6 +182,23 @@ async def register_pickup(
         payload.courier_name,
         payload.transporter_name,
     )
+
+
+# Declared before /{pickup_id}: FastAPI matches in declaration order, so a
+# literal path registered after the parameterised one is swallowed by it and
+# arrives as an invalid UUID.
+@router.get("/awaiting-exit", response_model=List[PickupOut])
+async def awaiting_exit(
+    conn: AsyncConnection = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Vehicles loaded, verified, and waiting on an Ops decision.
+
+    Readable by the guard as well as Ops: the guard standing at the gate is the
+    person being asked "how long?", and telling them to go and find out is not an
+    answer.
+    """
+    return await pickup_service.awaiting_exit_approval(conn)
 
 
 @router.get("/{pickup_id}", response_model=PickupOut)
@@ -209,3 +258,38 @@ async def cancel_pickup(
 ):
     """Courier left without loading, wrong vehicle, and so on."""
     return await pickup_service.cancel_pickup(conn, pickup_id, reason)
+
+
+# ---------------------------------------------------------------------------
+# Exit approval (Phase 5)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{pickup_id}/request-exit", response_model=ExitRequestResult)
+async def request_exit(
+    pickup_id: UUID,
+    conn: AsyncConnection = Depends(get_db),
+    user: CurrentUser = Depends(guard_or_ops),
+):
+    """The guard asks Ops to open the gate.
+
+    Deliberately separate from verification: CONTROL POINT 7 answers "is every
+    carton on the truck", this answers "may it go" (DECISIONS.md §CD4).
+    """
+    return await pickup_service.request_exit(conn, pickup_id)
+
+
+@router.post("/{pickup_id}/exit-decision", response_model=ExitDecisionResult)
+async def decide_exit(
+    pickup_id: UUID,
+    payload: ExitDecision,
+    conn: AsyncConnection = Depends(get_db),
+    user: CurrentUser = Depends(require_ops),
+):
+    """Ops approves or holds the vehicle.
+
+    Approving records the approval; it does not open the gate. The guard still
+    performs the release, so the gate opening stays attached to the person
+    standing at it.
+    """
+    return await pickup_service.decide_exit(conn, pickup_id, payload.approve, payload.note)

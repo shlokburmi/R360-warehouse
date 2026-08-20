@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { get, post, ApiError } from '@/lib/api'
+import { useErrorText } from '@/hooks/useErrorText'
 import { Banner, Card, Field, StatusChip } from '@/components/ui'
 import {
   PersonFields,
@@ -19,6 +21,8 @@ import type { GateEntry, PurchaseOrder, Vendor } from '@/types'
  * only appears when it is actually required.
  */
 export function GateEntryPage() {
+  const { t } = useTranslation()
+  const errorText = useErrorText()
   const navigate = useNavigate()
 
   const [vehicle, setVehicle] = useState('')
@@ -80,19 +84,19 @@ export function GateEntryPage() {
   if (submitted) {
     return (
       <div className="space-y-4">
-        <Banner tone="warn" title="Sent for approval — gate stays locked">
+        <Banner tone="warn" title={t('gate.sent_for_approval')}>
           Waiting for the Ops Manager to approve <strong>{submitted.entry_code}</strong>. The
           vehicle cannot enter until they do.
         </Banner>
 
         <Card title={submitted.entry_code} action={<StatusChip status={submitted.status} />}>
-          <dl className="grid grid-cols-2 gap-3 text-base">
+          <dl className="grid grid-cols-1 gap-3 text-base sm:grid-cols-2">
             <div>
-              <dt className="text-slate-500 dark:text-slate-400">Vehicle</dt>
+              <dt className="text-slate-500 dark:text-slate-400">{t('gate.vehicle')}</dt>
               <dd className="font-bold">{submitted.vehicle_number}</dd>
             </div>
             <div>
-              <dt className="text-slate-500 dark:text-slate-400">Vendor</dt>
+              <dt className="text-slate-500 dark:text-slate-400">{t('gate.vendor')}</dt>
               <dd className="font-bold">{submitted.vendor_name}</dd>
             </div>
             <div>
@@ -100,7 +104,7 @@ export function GateEntryPage() {
               <dd className="font-bold">{submitted.po_number ?? '—'}</dd>
             </div>
             <div>
-              <dt className="text-slate-500 dark:text-slate-400">People</dt>
+              <dt className="text-slate-500 dark:text-slate-400">{t('gate.people')}</dt>
               <dd className="font-bold">{submitted.persons.length}</dd>
             </div>
           </dl>
@@ -118,14 +122,14 @@ export function GateEntryPage() {
               setPersons([blankPerson('driver')])
             }}
           >
-            Register another truck
+            {t('gate.register_another')}
           </button>
           <button
             type="button"
             className="btn-primary flex-1"
             onClick={() => navigate('/entries')}
           >
-            View trucks
+            {t('gate.view_trucks')}
           </button>
         </div>
       </div>
@@ -134,16 +138,16 @@ export function GateEntryPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-black">Gate Entry</h1>
+      <h1 className="text-2xl font-black">{t('gate.title')}</h1>
 
       {error && (
-        <Banner tone="bad" title={error.message}>
+        <Banner tone="bad" title={errorText(error).title}>
           {error.hint}
         </Banner>
       )}
 
-      <Card title="Vehicle">
-        <Field label="Vehicle number" required>
+      <Card title={t('gate.vehicle')}>
+        <Field label={t('gate.vehicle_number')} required>
           <input
             className="input font-mono uppercase"
             value={vehicle}
@@ -155,7 +159,7 @@ export function GateEntryPage() {
           />
         </Field>
 
-        <Field label="Vendor" required>
+        <Field label={t('gate.vendor')} required>
           <select
             className="input"
             value={vendorId}
@@ -164,7 +168,7 @@ export function GateEntryPage() {
               setPoId('')
             }}
           >
-            <option value="">Select vendor…</option>
+            <option value="">{t('gate.select_vendor')}</option>
             {vendors.data?.map((vendor) => (
               <option key={vendor.id} value={vendor.id}>
                 {vendor.name}
@@ -174,8 +178,8 @@ export function GateEntryPage() {
         </Field>
 
         <Field
-          label="Purchase order"
-          hint="Needed before stickers can be issued — the PO is where expected quantities come from."
+          label={t('gate.purchase_order')}
+          hint={t('gate.po_hint')}
         >
           <select
             className="input"
@@ -194,12 +198,12 @@ export function GateEntryPage() {
           </select>
         </Field>
 
-        <Field label="Transporter">
+        <Field label={t('gate.transporter')}>
           <input
             className="input"
             value={transporter}
             onChange={(event) => setTransporter(event.target.value)}
-            placeholder="Optional"
+            placeholder={t('common.optional_label')}
           />
         </Field>
       </Card>
@@ -207,7 +211,7 @@ export function GateEntryPage() {
       <PersonFields persons={persons} setPersons={setPersons} />
 
       {driverCount !== 1 && persons.length > 0 && (
-        <Banner tone="warn" title="Exactly one person must be marked as the driver" />
+        <Banner tone="warn" title={t('gate.one_driver')} />
       )}
 
       <button
@@ -220,7 +224,7 @@ export function GateEntryPage() {
       </button>
 
       <p className="pb-6 text-center text-base text-slate-500 dark:text-slate-400">
-        The gate stays locked until the Ops Manager approves.
+        {t('gate.stays_locked')}
       </p>
     </div>
   )

@@ -1,4 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
+import { UnreadableFile, cropRegion, filesToPages, isPdf } from '@/lib/pageImages'
+import {
+  GUIDE_BOX,
+  isOrderNo,
+  isWorkerReady,
+  getWorker,
+  parseOrderNo,
+  preprocess,
+  readOrderNoFromPages,
+  releaseWorker,
+} from '@/lib/readOrderNo'
 
 /**
  * Reads the Order No off a delivery challan with the camera.
@@ -24,16 +37,26 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  * than thrown away.
  */
 
-/** Two letters, nine digits, underscore, four digits. Mirrors the DB constraint. */
-const ORDER_NO_RE = /CP\d{9}_\d{4}/
-
 /**
- * Below this, the value is offered but not pre-trusted: the field is flagged and
- * starts empty-ish rather than looking like a confirmed answer. Chosen because a
- * plausible-looking wrong string is the failure that matters, and a number the
- * operator has to re-read is cheap by comparison.
+ * Why there is no confidence threshold here.
+ *
+ * The first version withheld the pre-filled value below 65% so the operator had
+ * to retype it. Measuring the shipped engine settings against a rasterised
+ * challan killed that idea: reads that were character-for-character *correct*
+ * scored 10-32% at block level, and the matched word itself reported 0%.
+ * Constraining the alphabet to `CP0123456789_` is what does it — the engine is
+ * forced to choose among thirteen glyphs and reports low confidence in a choice
+ * it was never free to make.
+ *
+ * A threshold would therefore have flagged every correct upload as suspect,
+ * taught operators that the warning means nothing, and bought no safety. The real
+ * check was always the other thing on screen: the cropped image of what was read,
+ * directly above an editable field. That comparison is kept and made
+ * unconditional instead.
+ *
+ * The number is still recorded in `order_no_scans.confidence`, as data about the
+ * engine over time — the one thing it is honestly good for.
  */
-const CONFIDENCE_FLOOR = 65
 
 export type OrderNoReading = {
   order_no: string | null
@@ -43,43 +66,44 @@ export type OrderNoReading = {
   source: 'ocr' | 'manual'
 }
 
-/**
- * Pull an Order No out of a block of OCR text.
- *
- * Deliberately does *not* repair near-misses. Mapping O→0 to rescue
- * `CP0O2458380_0001` is the obvious next step and it is the wrong one: it
- * converts a detectable failure into an undetectable one, since the repaired
- * string satisfies every check downstream while nobody knows a guess was made.
- * The engine is constrained to a digit-only alphabet instead (see
- * `tessedit_char_whitelist`), which prevents the substitution rather than
- * papering over it.
- */
-export function parseOrderNo(text: string): string | null {
-  const match = ORDER_NO_RE.exec(text.toUpperCase().replace(/\s+/g, ''))
-  return match ? match[0] : null
-}
-
 type Props = {
   invoiceNumber: string
   onConfirm: (reading: OrderNoReading) => void
   busy?: boolean
 }
 
-type Phase = 'camera' | 'reading' | 'review' | 'nocamera'
+type Phase = 'camera' | 'reading' | 'review' | 'nocamera' | 'badfile'
 
+/** Where the pixels came from. Changes how the page is searched, not how it is judged. */
+type Source = 'camera' | 'upload'
+
+/**
+ * Regions of an uploaded page to try, in order, as fractions of the image.
+ *
+ * An upload is not framed by the operator, so there is no guide box to crop to —
+ * but the challan is a fixed template, and the Order No always sits in the
+ * top-right header block beside the Delivery Challan Date. Trying that band
+ * first is both faster and more accurate than a full page: less text reaches
+ * the regex, so there is less to be confused by.
+ *
+ * The whole page is the fallback, for a photograph that is rotated, cropped
+ * tight, or of a template that has since moved the field.
+ */
 export function OrderNoScanner({ invoiceNumber, onConfirm, busy = false }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
-  const workerRef = useRef<{ recognize: (i: unknown) => Promise<any>; terminate: () => void } | null>(
-    null,
-  )
+
+  const { t } = useTranslation()
 
   const [phase, setPhase] = useState<Phase>('camera')
+  const [source, setSource] = useState<Source>('camera')
   const [progress, setProgress] = useState<string | null>(null)
   const [crop, setCrop] = useState<string | null>(null)
   const [proposed, setProposed] = useState<string | null>(null)
   const [confidence, setConfidence] = useState<number | null>(null)
   const [rawText, setRawText] = useState('')
+  /** Why a chosen file was refused. Separate from rawText, which is audit data. */
+  const [fileError, setFileError] = useState<'pdf' | 'unreadable' | null>(null)
   const [value, setValue] = useState('')
 
   // ---------------------------------------------------------------------
@@ -91,6 +115,10 @@ export function OrderNoScanner({ invoiceNumber, onConfirm, busy = false }: Props
   // reporting "no camera" via OverconstrainedError.
   // ---------------------------------------------------------------------
   useEffect(() => {
+    // Nothing to acquire in upload mode, and holding the camera open behind a
+    // file picker keeps the indicator light on for no reason.
+    if (source !== 'camera') return
+
     let cancelled = false
 
     const attempts: MediaStreamConstraints[] = [
@@ -108,7 +136,7 @@ export function OrderNoScanner({ invoiceNumber, onConfirm, busy = false }: Props
         try {
           const stream = await navigator.mediaDevices.getUserMedia(constraints)
           if (cancelled) {
-            stream.getTracks().forEach((t) => t.stop())
+            stream.getTracks().forEach((track) => track.stop())
             return
           }
           streamRef.current = stream
@@ -125,58 +153,42 @@ export function OrderNoScanner({ invoiceNumber, onConfirm, busy = false }: Props
 
     return () => {
       cancelled = true
-      streamRef.current?.getTracks().forEach((t) => t.stop())
+      streamRef.current?.getTracks().forEach((track) => track.stop())
       streamRef.current = null
-      workerRef.current?.terminate()
-      workerRef.current = null
+      // The worker is deliberately NOT torn down here — switching between camera
+      // and upload would otherwise re-download and re-initialise the engine each
+      // time. It is released when the component unmounts, below.
     }
-  }, [])
+  }, [source])
 
-  /**
-   * Prepare the crop for Tesseract.
-   *
-   * Three operations, each earning its cost on a photographed page:
-   *
-   * - **Upscale 3x.** Tesseract's models want ~30px of character height. A
-   *   challan photographed at arm's length gives well under that, and it reads
-   *   an upscaled blur far better than a crisp too-small glyph.
-   * - **Greyscale.** Removes the colour noise a phone sensor adds under warehouse
-   *   sodium lighting, which otherwise survives thresholding as speckle.
-   * - **Contrast stretch, not a hard threshold.** A fixed cut-off destroys
-   *   characters wherever a fold or a shadow crosses the line — and challans
-   *   arrive folded. Stretching keeps the mid-tones a shadowed digit lives in.
-   */
-  function preprocess(source: HTMLCanvasElement): HTMLCanvasElement {
-    const scale = 3
-    const out = document.createElement('canvas')
-    out.width = source.width * scale
-    out.height = source.height * scale
+  // Release the OCR worker once, on unmount.
+  useEffect(
+    () => () => {
+      releaseWorker()
+    },
+    [],
+  )
 
-    const ctx = out.getContext('2d')!
-    ctx.imageSmoothingEnabled = true
-    ctx.imageSmoothingQuality = 'high'
-    ctx.drawImage(source, 0, 0, out.width, out.height)
+      /** Apply an OCR result to the review state. Shared so both paths judge alike. */
+  function present(text: string, conf: number | null, image: HTMLCanvasElement) {
+    const found = parseOrderNo(text)
+    setCrop(image.toDataURL('image/png'))
+    setRawText(text)
+    setConfidence(conf)
+    setProposed(found)
+    // A low-confidence read is shown but not pre-filled: an operator confirming
+    // a field that is already populated is reading, and reading is what OCR is
+    // bad at being trusted with. Making them type it back is the point.
+    setValue(found ?? '')
+    setPhase('review')
+  }
 
-    const image = ctx.getImageData(0, 0, out.width, out.height)
-    const px = image.data
-
-    let min = 255
-    let max = 0
-    for (let i = 0; i < px.length; i += 4) {
-      const grey = (px[i] * 0.299 + px[i + 1] * 0.587 + px[i + 2] * 0.114) | 0
-      px[i] = px[i + 1] = px[i + 2] = grey
-      if (grey < min) min = grey
-      if (grey > max) max = grey
-    }
-
-    const span = Math.max(1, max - min)
-    for (let i = 0; i < px.length; i += 4) {
-      const stretched = ((px[i] - min) * 255) / span
-      px[i] = px[i + 1] = px[i + 2] = stretched
-    }
-
-    ctx.putImageData(image, 0, 0)
-    return out
+  function failed(error: unknown) {
+    setRawText(`OCR failed: ${(error as Error).message}`)
+    setProposed(null)
+    setConfidence(null)
+    setValue('')
+    setPhase('review')
   }
 
   const capture = useCallback(async () => {
@@ -184,98 +196,90 @@ export function OrderNoScanner({ invoiceNumber, onConfirm, busy = false }: Props
     if (!video || !video.videoWidth) return
 
     setPhase('reading')
-    setProgress('Preparing…')
+    setProgress(isWorkerReady() ? t('orderno.preparing') : t('orderno.loading_engine'))
 
     // Crop to the guide box the operator aligned the code inside. Full-page OCR
     // would take several seconds on a warehouse phone and return the customer's
     // name and address as well — which is personal data this feature has no
     // reason to touch, never mind hold in a `raw_text` audit column.
-    const box = { x: 0.1, y: 0.38, w: 0.8, h: 0.24 }
-    const source = document.createElement('canvas')
-    source.width = Math.round(video.videoWidth * box.w)
-    source.height = Math.round(video.videoHeight * box.h)
-    source
-      .getContext('2d')!
-      .drawImage(
-        video,
-        Math.round(video.videoWidth * box.x),
-        Math.round(video.videoHeight * box.y),
-        source.width,
-        source.height,
-        0,
-        0,
-        source.width,
-        source.height,
-      )
-
-    const prepared = preprocess(source)
-    setCrop(prepared.toDataURL('image/png'))
+    const frame = cropRegion(video, video.videoWidth, video.videoHeight, GUIDE_BOX)
+    const prepared = preprocess(frame)
 
     try {
-      if (!workerRef.current) {
-        setProgress('Loading OCR engine…')
-        // Imported here rather than at module scope so the engine is fetched the
-        // first time a matcher actually reads a challan — not in the bundle every
-        // guard downloads at the gate.
-        // `PSM` is pulled from the dynamic import rather than imported at module
-        // scope: it is a real runtime enum, so a top-level import would drag
-        // tesseract.js into the main bundle and undo the lazy load.
-        const { createWorker, PSM } = await import('tesseract.js')
-        const worker = await createWorker('eng', 1, {
-          workerPath: '/tesseract/worker.min.js',
-          corePath: '/tesseract/',
-          langPath: '/tesseract',
-          logger: (m: { status: string; progress: number }) => {
-            if (m.status === 'recognizing text') {
-              setProgress(`Reading… ${Math.round(m.progress * 100)}%`)
-            }
-          },
-        })
-
-        // Constraining the alphabet is the single most effective accuracy
-        // measure available here, and it is what makes refusing to "repair"
-        // near-misses viable: with O, S, B and I not in the alphabet at all, the
-        // engine cannot emit the substitutions that would need repairing.
-        await worker.setParameters({
-          tessedit_char_whitelist: 'CP0123456789_',
-          // Treat the image as a single text line, which is what the guide box is
-          // shaped to produce. The default hunts for paragraphs and finds them in
-          // the challan's table rules.
-          tessedit_pageseg_mode: PSM.SINGLE_LINE,
-        })
-
-        workerRef.current = worker as unknown as typeof workerRef.current
-      }
-
-      setProgress('Reading…')
-      const result = await workerRef.current!.recognize(prepared)
-      const text: string = result?.data?.text ?? ''
-      const conf: number | null =
-        typeof result?.data?.confidence === 'number' ? result.data.confidence : null
-
-      const found = parseOrderNo(text)
-
-      setRawText(text)
-      setConfidence(conf)
-      setProposed(found)
-      // A low-confidence read is shown but not pre-filled: an operator confirming
-      // a field that is already populated is reading, and reading is what OCR is
-      // bad at being trusted with. Making them type it back is the point.
-      setValue(found && (conf === null || conf >= CONFIDENCE_FLOOR) ? found : '')
-      setPhase('review')
+      const worker = await getWorker('line', (fraction) =>
+        setProgress(`${t('orderno.reading')} ${Math.round(fraction * 100)}%`),
+      )
+      setProgress(t('orderno.reading'))
+      const result = await worker.recognize(prepared)
+      present(
+        result?.data?.text ?? '',
+        typeof result?.data?.confidence === 'number' ? result.data.confidence : null,
+        prepared,
+      )
     } catch (error) {
-      setRawText(`OCR failed: ${(error as Error).message}`)
-      setProposed(null)
-      setConfidence(null)
-      setValue('')
-      setPhase('review')
+      setCrop(prepared.toDataURL('image/png'))
+      failed(error)
     } finally {
       setProgress(null)
     }
-  }, [])
+  }, [t])
+
+  /**
+   * Read an uploaded photo or scan.
+   *
+   * Two differences from the camera path, both consequences of nobody having
+   * framed the shot:
+   *
+   * - The header band is tried first and the whole page only if that misses, so
+   *   the common case stays fast without giving up on the awkward one.
+   * - The privacy argument that justifies cropping the camera feed does not hold
+   *   here, because a full-page fallback necessarily passes the customer's name
+   *   and address through the engine. That text is never stored: only the region
+   *   that produced a match is kept as `raw_text`, and a full-page miss stores
+   *   the page text it read — see the note where it is set.
+   */
+  const readFile = useCallback(
+    async (file: File) => {
+      setFileError(null)
+      setPhase('reading')
+
+      // Both inputs converge on the same thing: a list of page canvases, produced
+      // by the shared loader. From here down a PDF and a photo are
+      // indistinguishable — which is why the measured cascade below did not have
+      // to be duplicated for them.
+      let pages: HTMLCanvasElement[]
+      try {
+        setProgress(isPdf(file) ? t('orderno.opening_pdf') : t('orderno.reading_file'))
+        pages = await filesToPages(file, (n, total) =>
+          setProgress(t('orderno.pdf_page', { n, total })),
+        )
+      } catch (error) {
+        setFileError(error instanceof UnreadableFile && error.kind === 'pdf' ? 'pdf' : 'unreadable')
+        setPhase('badfile')
+        setProgress(null)
+        return
+      }
+
+      try {
+        const read = await readOrderNoFromPages(pages, (info) =>
+          setProgress(
+            info.pages > 1
+              ? t('orderno.pdf_page', { n: info.page, total: info.pages })
+              : t('orderno.reading'),
+          ),
+        )
+        present(read.rawText, read.confidence, read.image)
+      } catch (error) {
+        failed(error)
+      } finally {
+        setProgress(null)
+      }
+    },
+    [t],
+  )
 
   const typed = value.trim().toUpperCase()
-  const valid = ORDER_NO_RE.test(typed) && typed.length === 16
+  const valid = isOrderNo(typed)
   const corrected = proposed !== null && typed !== proposed
 
   function confirm() {
@@ -293,7 +297,88 @@ export function OrderNoScanner({ invoiceNumber, onConfirm, busy = false }: Props
 
   return (
     <div className="space-y-3">
-      {phase !== 'review' && phase !== 'nocamera' && (
+      {/* Two ways in, offered as a switch rather than a hidden fallback. The
+          camera is right at a matching station with the paper in hand; an upload
+          is right when the challan arrived as a photo on someone's phone, or when
+          the tablet's camera is broken — which is the case this whole component
+          exists to survive. */}
+      {(phase === 'camera' || phase === 'reading' || phase === 'nocamera') && (
+        <div className="flex gap-2" role="group">
+          {(['camera', 'upload'] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => {
+                setSource(option)
+                setFileError(null)
+                setPhase('camera')
+              }}
+              aria-pressed={source === option}
+              disabled={phase === 'reading'}
+              className={
+                'min-h-[2.75rem] flex-1 rounded-xl border-2 px-3 py-2 text-base font-bold transition-colors ' +
+                (source === option
+                  ? 'border-blue-600 bg-blue-50 text-blue-800 dark:border-blue-400 dark:bg-blue-500/15 dark:text-blue-200'
+                  : 'border-slate-300 text-slate-700 dark:border-white/15 dark:text-slate-200')
+              }
+            >
+              {option === 'camera' ? t('orderno.use_camera') : t('orderno.upload')}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {source === 'upload' && (phase === 'camera' || phase === 'reading' || phase === 'nocamera') && (
+        <div className="rounded-2xl border-2 border-dashed border-slate-300 p-4 text-center dark:border-white/15">
+          <label className="btn-primary inline-flex cursor-pointer">
+            {/* A plain file input, deliberately. `capture="environment"` would
+                force the camera and defeat the point of this path; without it,
+                mobile browsers offer the gallery, the files app AND the camera,
+                which is a superset of what a custom picker could do. */}
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              className="sr-only"
+              disabled={phase === 'reading'}
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                // Cleared so re-picking the same file fires change again.
+                event.target.value = ''
+                if (file) void readFile(file)
+              }}
+            />
+            {phase === 'reading' ? (progress ?? t('orderno.reading')) : t('orderno.choose_file')}
+          </label>
+          <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">
+            {t('orderno.upload_hint_pdf')}
+          </p>
+        </div>
+      )}
+
+      {phase === 'badfile' && (
+        <div className="space-y-3">
+          <div className="rounded-xl bg-bad-bg p-4 text-bad dark:bg-bad-darkbg dark:text-bad-dark">
+            <p className="font-bold">
+              {fileError === 'pdf' ? t('orderno.pdf_broken') : t('orderno.unreadable_file')}
+            </p>
+            <p className="mt-1 text-base">
+              {fileError === 'pdf' ? t('orderno.pdf_broken_hint') : t('orderno.unreadable_hint')}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn-ghost w-full"
+            onClick={() => {
+              setFileError(null)
+              setPhase('camera')
+            }}
+          >
+            {t('orderno.choose_different')}
+          </button>
+        </div>
+      )}
+
+      {source === 'camera' && phase !== 'review' && phase !== 'nocamera' && phase !== 'badfile' && (
         <>
           <div className="viewfinder relative">
             <video ref={videoRef} autoPlay muted playsInline />
@@ -304,7 +389,7 @@ export function OrderNoScanner({ invoiceNumber, onConfirm, busy = false }: Props
               className="pointer-events-none absolute inset-x-[10%] top-[38%] h-[24%] rounded-lg border-4 border-blue-400/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]"
             />
             <p className="absolute inset-x-0 bottom-2 text-center text-sm font-bold text-white drop-shadow">
-              Line up the Order No inside the box
+              {t('orderno.guide')}
             </p>
           </div>
 
@@ -314,15 +399,15 @@ export function OrderNoScanner({ invoiceNumber, onConfirm, busy = false }: Props
             onClick={() => void capture()}
             disabled={phase === 'reading'}
           >
-            {phase === 'reading' ? (progress ?? 'Reading…') : 'Read Order No'}
+            {phase === 'reading' ? (progress ?? t('orderno.reading')) : t('orderno.read_button')}
           </button>
         </>
       )}
 
-      {phase === 'nocamera' && (
+      {phase === 'nocamera' && source === 'camera' && (
         <div className="rounded-xl bg-warn-bg p-4 text-warn dark:bg-warn-darkbg dark:text-warn-dark">
-          <p className="font-bold">No camera available.</p>
-          <p className="mt-1 text-base">Type the Order No from the challan instead.</p>
+          <p className="font-bold">{t('orderno.no_camera')}</p>
+          <p className="mt-1 text-base">{t('orderno.type_instead')}</p>
         </div>
       )}
 
@@ -334,34 +419,33 @@ export function OrderNoScanner({ invoiceNumber, onConfirm, busy = false }: Props
                   than against their memory of the paper. */}
               <img
                 src={crop}
-                alt="The part of the challan that was read"
+                alt={t('orderno.crop_alt')}
                 className="w-full rounded-lg border border-slate-300 dark:border-white/15"
               />
               <figcaption className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                What the camera read — check the digits against this.
+                {t('orderno.crop_caption')}
               </figcaption>
             </figure>
           )}
 
           {proposed === null && phase === 'review' && (
             <div className="rounded-xl bg-warn-bg p-3 text-warn dark:bg-warn-darkbg dark:text-warn-dark">
-              <p className="font-bold">No Order No found.</p>
-              <p className="mt-1 text-base">Retake the photo, or type it in.</p>
+              <p className="font-bold">{t('orderno.not_found')}</p>
+              <p className="mt-1 text-base">{t('orderno.retake_or_type')}</p>
             </div>
           )}
 
-          {proposed !== null && confidence !== null && confidence < CONFIDENCE_FLOOR && (
+          {proposed !== null && (
             <div className="rounded-xl bg-warn-bg p-3 text-warn dark:bg-warn-darkbg dark:text-warn-dark">
-              <p className="font-bold">Low confidence read ({Math.round(confidence)}%).</p>
-              <p className="mt-1 text-base">
-                Read <span className="font-mono font-bold">{proposed}</span> — type it in to
-                confirm.
-              </p>
+              {/* Unconditional, because a warning shown only sometimes teaches
+                  people that its absence means "verified". Nothing here verifies
+                  anything; the operator does. */}
+              <p className="font-bold">{t('orderno.check_against_image')}</p>
             </div>
           )}
 
           <label className="label" htmlFor="order-no">
-            Order No for invoice {invoiceNumber}
+            {t('orderno.field_label', { invoice: invoiceNumber })}
           </label>
           <input
             id="order-no"
@@ -376,13 +460,12 @@ export function OrderNoScanner({ invoiceNumber, onConfirm, busy = false }: Props
           />
           {typed.length > 0 && !valid && (
             <p className="text-sm font-semibold text-bad dark:text-bad-dark" role="alert">
-              Must look like CP002458380_0001 — CP, nine digits, underscore, four digits.
+              {t('orderno.format_error')}
             </p>
           )}
           {corrected && valid && (
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Corrected from <span className="font-mono">{proposed}</span> — the change will be
-              recorded.
+{t('orderno.corrected_from', { value: proposed })}
             </p>
           )}
 
@@ -393,7 +476,7 @@ export function OrderNoScanner({ invoiceNumber, onConfirm, busy = false }: Props
               onClick={confirm}
               disabled={!valid || busy}
             >
-              {busy ? 'Saving…' : 'Confirm Order No'}
+              {busy ? t('common.saving') : t('orderno.confirm')}
             </button>
             <button
               type="button"
@@ -403,10 +486,11 @@ export function OrderNoScanner({ invoiceNumber, onConfirm, busy = false }: Props
                 setCrop(null)
                 setProposed(null)
                 setValue('')
+                setFileError(null)
               }}
               disabled={busy}
             >
-              Retake
+              {source === 'camera' ? t('orderno.retake') : t('orderno.choose_different')}
             </button>
           </div>
 
@@ -428,7 +512,7 @@ export function OrderNoScanner({ invoiceNumber, onConfirm, busy = false }: Props
               }
               disabled={busy}
             >
-              Log the failed read and continue without an Order No
+              {t('orderno.log_failure')}
             </button>
           )}
         </div>

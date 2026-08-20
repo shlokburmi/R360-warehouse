@@ -67,6 +67,77 @@
     padding-bottom: env(safe-area-inset-bottom);
   }
 
+  /* ---------------------------------------------------------------------
+     Kannada
+     ---------------------------------------------------------------------
+     No webfont is downloaded. This is an offline-first PWA, so a hosted
+     Kannada face would mean a warehouse with no wifi rendering the entire UI
+     in tofu boxes. Android and iOS both ship a Kannada font, so the stack
+     names the common ones and lets the device supply the glyphs.
+
+     The line-height bump is not cosmetic. Kannada stacks vowel signs and
+     consonant conjuncts above and below the baseline, so its glyphs occupy
+     noticeably more vertical space than Latin at the same font-size. At the
+     app's default leading the marks collide with the line above, which on a
+     status chip or a button label reads as a rendering fault. */
+  html.lang-kn body {
+    font-family: 'Noto Sans Kannada', 'Tunga', 'Kedage', ui-sans-serif, system-ui,
+      sans-serif;
+    line-height: 1.7;
+  }
+
+  /* Kannada words for these actions are longer than the English ones, and the
+     buttons they sit in are sized for a gloved thumb rather than for text.
+     Allowing a wrap is what stops "ಮೇಲಿನವರಿಗೆ ಕಳುಹಿಸಲಾಗಿದೆ" from spilling out of
+     its chip. */
+  html.lang-kn .chip,
+  html.lang-kn button {
+    white-space: normal;
+  }
+
+  /* ---------------------------------------------------------------------
+     Horizontal overflow
+     ---------------------------------------------------------------------
+     This app is full of long unbreakable tokens — badge codes, order numbers
+     like CP002458380_0001, rack codes like A-01-04-02-03, staff emails. At
+     360px any one of them can push the page wider than the viewport, and the
+     symptom is the whole UI sliding sideways under the operator's thumb.
+
+     Fixed by letting those tokens wrap rather than by clipping them: an
+     unreachable code is worse than an ugly line break. Genuinely wide content
+     (the Reports table) keeps its own `overflow-x-auto` container and scrolls
+     independently. */
+  p,
+  dd,
+  dt,
+  li,
+  span,
+  a,
+  td,
+  th,
+  h1,
+  h2,
+  h3 {
+    overflow-wrap: break-word;
+  }
+
+  /* The other half of the same problem, and the less obvious one.
+     
+     A flex item's default `min-width: auto` means it refuses to shrink below its
+     content. So a single long token inside a flex row does not wrap — it widens
+     the row, then the card, then the page, and the whole UI slides sideways under
+     the operator's thumb. `min-width: 0` lets the item shrink so the wrapping
+     above can actually happen.
+     
+     Scoped to content containers rather than applied to `*`: buttons, chips and
+     the viewfinder are sized deliberately and must keep their intrinsic width. */
+  .card > *,
+  .card-solid > *,
+  main li > div,
+  main dl > div {
+    min-width: 0;
+  }
+
   /* Inputs are 16px minimum: anything smaller makes iOS Safari zoom the whole
      page on focus, which is disorienting when you are standing at a gate. */
   input,

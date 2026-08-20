@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, get, post, postControlPoint } from '@/lib/api'
+import { useErrorText } from '@/hooks/useErrorText'
 import { Scanner } from '@/components/Scanner'
 import { useScanning } from '@/hooks/useScanning'
 import { PersonFields, type PersonDraft, blankPerson } from '@/components/PersonFields'
@@ -13,7 +15,7 @@ import {
   Spinner,
   StatusChip,
 } from '@/components/ui'
-import type { AwaitingPickup, Pickup, PickupVerifyResult } from '@/types'
+import type { AwaitingPickup, ExitRequestResult, Pickup, PickupVerifyResult } from '@/types'
 
 /**
  * PRD §5.7 and Step 10 — Pickup verification and gate exit. CONTROL POINT 7.
@@ -24,6 +26,7 @@ import type { AwaitingPickup, Pickup, PickupVerifyResult } from '@/types'
  * released carton has been physically scanned onto the vehicle.
  */
 export function PickupPage() {
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [openPickupId, setOpenPickupId] = useState<string | null>(null)
   const [registering, setRegistering] = useState<AwaitingPickup | null>(null)
@@ -36,7 +39,10 @@ export function PickupPage() {
 
   const active = useQuery({
     queryKey: ['pickups'],
-    queryFn: () => get<Pickup[]>('/pickups?status=registered&status=verifying&status=verified'),
+    queryFn: () =>
+      get<Pickup[]>(
+        '/pickups?status=registered&status=verifying&status=verified&status=exit_pending',
+      ),
     refetchInterval: 20_000,
   })
 
@@ -71,10 +77,10 @@ export function PickupPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-black">Pickup & Gate Exit</h1>
+      <h1 className="text-2xl font-black">{t('pickup.title')}</h1>
 
       {active.data && active.data.length > 0 && (
-        <Card title="Vehicles on site">
+        <Card title={t('pickup.vehicles_onsite')}>
           <ul className="divide-y divide-slate-200 dark:divide-slate-800">
             {active.data.map((pickup) => (
               <li
@@ -105,19 +111,19 @@ export function PickupPage() {
       )}
 
       <Card
-        title="Batches waiting for collection"
-        subtitle="Register the vehicle when the courier arrives"
+        title={t('pickup.waiting')}
+        subtitle={t('pickup.register_hint')}
       >
         {awaiting.data?.length === 0 ? (
           <EmptyState
-            title="Nothing waiting for pickup"
-            hint="Batches appear here once Ops has released them."
+            title={t('pickup.none')}
+            hint={t('pickup.none_hint')}
           />
         ) : (
           <ul className="divide-y divide-slate-200 dark:divide-slate-800">
             {awaiting.data?.map((batch) => (
               <li key={batch.batch_id} className="flex items-center justify-between gap-3 py-3">
-                <div>
+                <div className="min-w-0">
                   <p className="font-bold">{batch.batch_code}</p>
                   <p className="text-sm text-slate-500 dark:text-slate-400">
                     {batch.carton_count} cartons · released by {batch.released_by_name}
@@ -128,7 +134,7 @@ export function PickupPage() {
                   className="btn-primary"
                   onClick={() => setRegistering(batch)}
                 >
-                  Register vehicle
+                  {t('pickup.register_vehicle')}
                 </button>
               </li>
             ))}
@@ -148,6 +154,8 @@ function RegisterPickup({
   onCancel: () => void
   onDone: (pickup: Pickup) => void
 }) {
+  const { t } = useTranslation()
+  const errorText = useErrorText()
   const [vehicle, setVehicle] = useState('')
   const [courier, setCourier] = useState('')
   const [persons, setPersons] = useState<PersonDraft[]>([blankPerson('driver')])
@@ -185,25 +193,25 @@ function RegisterPickup({
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-black">Register Vehicle</h1>
+        <div className="min-w-0">
+          <h1 className="text-2xl font-black">{t('pickup.register_vehicle_title')}</h1>
           <p className="text-base text-slate-500 dark:text-slate-400">
             Collecting {batch.batch_code} · {batch.carton_count} cartons
           </p>
         </div>
         <button type="button" className="text-base font-semibold text-slate-500" onClick={onCancel}>
-          Cancel
+          {t('common.cancel')}
         </button>
       </div>
 
       {error && (
-        <Banner tone="bad" title={error.message}>
+        <Banner tone="bad" title={errorText(error).title}>
           {error.hint}
         </Banner>
       )}
 
-      <Card title="Vehicle">
-        <Field label="Vehicle number" required>
+      <Card title={t('gate.vehicle')}>
+        <Field label={t('gate.vehicle_number')} required>
           <input
             className="input font-mono uppercase"
             value={vehicle}
@@ -214,12 +222,12 @@ function RegisterPickup({
             spellCheck={false}
           />
         </Field>
-        <Field label="Courier / customer">
+        <Field label={t('pickup.courier')}>
           <input
             className="input"
             value={courier}
             onChange={(event) => setCourier(event.target.value)}
-            placeholder="Optional"
+            placeholder={t('common.optional_label')}
           />
         </Field>
       </Card>
@@ -227,7 +235,7 @@ function RegisterPickup({
       <PersonFields persons={persons} setPersons={setPersons} />
 
       {driverCount !== 1 && (
-        <Banner tone="warn" title="Exactly one person must be marked as the driver" />
+        <Banner tone="warn" title={t('gate.one_driver')} />
       )}
 
       <button
@@ -243,6 +251,8 @@ function RegisterPickup({
 }
 
 function PickupDetail({ pickupId, onBack }: { pickupId: string; onBack: () => void }) {
+  const { t } = useTranslation()
+  const errorText = useErrorText()
   const queryClient = useQueryClient()
   const [error, setError] = useState<ApiError | null>(null)
   const [verifyResult, setVerifyResult] = useState<PickupVerifyResult | null>(null)
@@ -268,6 +278,16 @@ function PickupDetail({ pickupId, onBack }: { pickupId: string; onBack: () => vo
     onError: (err) => setError(err as ApiError),
   })
 
+  const requestExit = useMutation({
+    mutationFn: () => post<ExitRequestResult>(`/pickups/${pickupId}/request-exit`),
+    onSuccess: () => {
+      setError(null)
+      void queryClient.invalidateQueries({ queryKey: ['pickup', pickupId] })
+      void queryClient.invalidateQueries({ queryKey: ['pickups'] })
+    },
+    onError: (err) => setError(err as ApiError),
+  })
+
   const release = useMutation({
     mutationFn: () => post<Pickup>(`/pickups/${pickupId}/release`),
     onSuccess: () => {
@@ -279,7 +299,7 @@ function PickupDetail({ pickupId, onBack }: { pickupId: string; onBack: () => vo
   })
 
   if (pickup.isLoading) return <Spinner />
-  if (!pickup.data) return <Banner tone="bad" title="Pickup not found" />
+  if (!pickup.data) return <Banner tone="bad" title={t('pickup.not_found')} />
 
   const p = pickup.data
   const loading = p.status === 'registered' || p.status === 'verifying'
@@ -287,7 +307,7 @@ function PickupDetail({ pickupId, onBack }: { pickupId: string; onBack: () => vo
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <h1 className="text-2xl font-black">{p.vehicle_number}</h1>
           <p className="text-base text-slate-500 dark:text-slate-400">
             {p.pickup_code} · {p.batch_code}
@@ -297,32 +317,32 @@ function PickupDetail({ pickupId, onBack }: { pickupId: string; onBack: () => vo
         <div className="flex items-center gap-3">
           <StatusChip status={p.status} />
           <button type="button" className="text-base font-semibold text-slate-500" onClick={onBack}>
-            Back
+            {t('common.back')}
           </button>
         </div>
       </div>
 
       {error && (
-        <Banner tone={error.isControlPoint ? 'bad' : 'warn'} title={error.message}>
+        <Banner tone={error.isControlPoint ? 'bad' : 'warn'} title={errorText(error).title}>
           {error.hint}
         </Banner>
       )}
 
       {verifyResult && !verifyResult.verified && (
         <Banner tone="bad" title={verifyResult.message}>
-          The vehicle cannot leave until every carton is accounted for. Ops has been
+          {t('pickup.cannot_leave')}
           notified.
         </Banner>
       )}
 
       <ProgressCounter
-        label="Cartons loaded"
+        label={t('pickup.cartons_loaded')}
         scanned={p.verified_cartons}
         total={p.released_cartons}
       />
 
       {loading && (
-        <Card title="Scan each carton as it is loaded">
+        <Card title={t('pickup.scan_each')}>
           <Scanner onScan={(code) => void submit(code)} />
 
           {feedback.length > 0 && (
@@ -330,7 +350,7 @@ function PickupDetail({ pickupId, onBack }: { pickupId: string; onBack: () => vo
               {feedback.map((item) => (
                 <li
                   key={item.id}
-                  className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-base ${
+                  className={`flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2 text-base ${
                     item.tone === 'ok'
                       ? 'bg-ok-bg text-ok dark:bg-ok-darkbg dark:text-ok-dark'
                       : item.tone === 'warn'
@@ -360,19 +380,57 @@ function PickupDetail({ pickupId, onBack }: { pickupId: string; onBack: () => vo
         </button>
       )}
 
+      {/* CONTROL POINT 7 passing is no longer enough on its own: the guard asks,
+          Ops decides, and only then does the gate open. If Ops sent it back, the
+          reason is shown here rather than in a notification the guard may never
+          have seen. */}
       {p.status === 'verified' && (
         <>
-          <Banner tone="ok" title={`All ${p.released_cartons} cartons verified present`}>
-            Verified by {p.verified_by_name}. The vehicle may leave.
+          <Banner
+            tone={p.exit_rejected_note ? 'warn' : 'ok'}
+            title={
+              p.exit_rejected_note
+                ? t('exitapproval.held', { note: p.exit_rejected_note })
+                : `All ${p.released_cartons} cartons verified present`
+            }
+          >
+            {p.verified_by_name}
           </Banner>
           <button
             type="button"
-            className="btn-success w-full"
-            disabled={release.isPending}
-            onClick={() => release.mutate()}
+            className="btn-primary w-full"
+            disabled={requestExit.isPending}
+            onClick={() => requestExit.mutate()}
           >
-            Open gate · record time out
+            {t('exitapproval.request')}
           </button>
+        </>
+      )}
+
+      {p.status === 'exit_pending' && (
+        <>
+          <Banner tone="info" title={t('exitapproval.requested')}>
+            {p.exit_requested_at &&
+              t('exitapproval.waiting_since', {
+                time: new Date(p.exit_requested_at).toLocaleTimeString(),
+              })}
+          </Banner>
+
+          {p.exit_approved_at ? (
+            <>
+              <Banner tone="ok" title={t('exitapproval.approved_open_gate')}>
+                {p.exit_approved_by_name}
+              </Banner>
+              <button
+                type="button"
+                className="btn-success w-full"
+                disabled={release.isPending}
+                onClick={() => release.mutate()}
+              >
+                {t('pickup.open_gate_out')}
+              </button>
+            </>
+          ) : null}
         </>
       )}
 
@@ -382,7 +440,7 @@ function PickupDetail({ pickupId, onBack }: { pickupId: string; onBack: () => vo
         </Banner>
       )}
 
-      <Card title="People on the vehicle">
+      <Card title={t('pickup.people')}>
         <ul className="space-y-1 text-base">
           {p.persons.map((person) => (
             <li key={person.visitor_id} className="flex items-center gap-2">
@@ -393,7 +451,7 @@ function PickupDetail({ pickupId, onBack }: { pickupId: string; onBack: () => vo
               <span className="font-mono text-sm text-slate-500">{person.mobile}</span>
               {person.has_id_photo && (
                 <span className="chip bg-ok-bg text-ok dark:bg-ok-darkbg dark:text-ok-dark">
-                  ID on file
+                  {t('approvals.id_on_file')}
                 </span>
               )}
             </li>
@@ -401,7 +459,7 @@ function PickupDetail({ pickupId, onBack }: { pickupId: string; onBack: () => vo
         </ul>
       </Card>
 
-      <Card title="Cartons in this batch">
+      <Card title={t('batches.cartons_in_batch')}>
         <ul className="divide-y divide-slate-200 dark:divide-slate-800">
           {p.cartons.map((carton) => (
             <li key={carton.invoice_id} className="flex items-center justify-between gap-3 py-3">

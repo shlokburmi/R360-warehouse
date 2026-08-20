@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import QRCode from 'qrcode'
 import type { BadgeIssued } from '@/types'
 
@@ -23,6 +24,7 @@ export function BadgeCardPrint({
   issued: BadgeIssued
   onDone: () => void
 }) {
+  const { t } = useTranslation()
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -49,7 +51,7 @@ export function BadgeCardPrint({
 
       <div
         id="badge-card"
-        className="mx-auto w-[340px] rounded-xl border-2 border-slate-900 bg-white p-5 text-center text-black"
+        className="mx-auto w-[340px] max-w-full rounded-xl border-2 border-slate-900 bg-white p-5 text-center text-black"
       >
         <p className="text-xs font-bold uppercase tracking-widest">Reward360 Warehouse</p>
         <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider">
@@ -68,12 +70,15 @@ export function BadgeCardPrint({
         </p>
       </div>
 
+      {/* Screen-only controls translate; the card above deliberately does not —
+          it is ink on paper read by couriers and auditors, and we cannot assume
+          the printer has a Kannada face loaded. */}
       <div className="no-print mt-4 flex flex-col gap-3 sm:flex-row">
         <button type="button" className="btn-primary flex-1" onClick={() => window.print()}>
-          Print badge
+          {t('badge.print')}
         </button>
         <button type="button" className="btn-ghost flex-1" onClick={onDone}>
-          Done — I have printed it
+          {t('badge.printed_done')}
         </button>
       </div>
     </div>

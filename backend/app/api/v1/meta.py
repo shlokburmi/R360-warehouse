@@ -2,7 +2,7 @@
 
 import secrets
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 from uuid import UUID
 
 import httpx
@@ -40,11 +40,11 @@ class MeOut(BaseModel):
 # else; the point of listing it here is that the navigation is derived from one
 # table rather than scattered across components.
 PAGE_ACCESS: Dict[str, List[str]] = {
-    "security_guard": ["gate-entry", "box-counting", "pickup", "my-entries"],
+    "security_guard": ["gate-entry", "box-counting", "pickup", "my-entries", "loading"],
     "ops_manager": [
         "dashboard", "approvals", "stickers", "box-counting", "unit-scanning",
         "exceptions", "reports", "gate-entry", "reconciliation", "pickup",
-        "putaway", "stock", "invoice-matching", "packing", "batches",
+        "putaway", "stock", "invoice-matching", "packing", "batches", "loading",
     ],
     # The offloading team shelves goods too on a busy shift, so they get putaway.
     "offloading": ["unit-scanning", "exceptions", "putaway"],
@@ -56,6 +56,7 @@ PAGE_ACCESS: Dict[str, List[str]] = {
         "dashboard", "approvals", "stickers", "box-counting", "unit-scanning",
         "exceptions", "reports", "gate-entry", "reconciliation", "pickup",
         "putaway", "stock", "invoice-matching", "packing", "batches", "admin",
+        "loading",
     ],
 }
 

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Scanner } from '@/components/Scanner'
 import { Banner } from '@/components/ui'
 
@@ -22,6 +23,7 @@ export function BadgeScan({
   onBadge: (badgeCode: string) => void
   busy?: boolean
 }) {
+  const { t } = useTranslation()
   const [typed, setTyped] = useState('')
   const [showManual, setShowManual] = useState(false)
 
@@ -40,7 +42,7 @@ export function BadgeScan({
             className="btn-ghost w-full"
             onClick={() => setShowManual(true)}
           >
-            Type badge code instead
+            {t('badge.type_instead')}
           </button>
         </>
       ) : (
@@ -59,10 +61,10 @@ export function BadgeScan({
             onChange={(event) => setTyped(event.target.value)}
             autoCorrect="off"
             spellCheck={false}
-            aria-label="Badge code"
+            aria-label={t('badge.code')}
           />
           <button type="submit" className="btn-primary" disabled={typed.trim().length < 4 || busy}>
-            Confirm
+            {t('common.confirm')}
           </button>
         </form>
       )}

@@ -22,7 +22,10 @@ _SELECT = """
            released_cartons, verified_cartons, remaining_cartons,
            registered_at, registered_by_name,
            verified_at, verified_by_name,
-           time_in, time_out, released_by_name
+           time_in, time_out, released_by_name,
+           exit_requested_at, exit_requested_by_name,
+           exit_approved_at, exit_approved_by_name,
+           exit_rejected_note, exit_waiting_seconds
       from v_pickup_status
 """
 
@@ -33,8 +36,18 @@ def _message(row: Dict[str, Any]) -> str:
             f"Vehicle {row['vehicle_number']} released at "
             f"{row['time_out']:%H:%M} with {row['verified_cartons']} cartons."
         )
+    if row["status"] == "exit_pending":
+        return (
+            f"All {row['released_cartons']} cartons verified — waiting for Ops to "
+            "approve the gate"
+        )
     if row["status"] == "verified":
-        return f"All {row['released_cartons']} cartons verified — vehicle can leave"
+        if row.get("exit_rejected_note"):
+            return f"Ops sent this back: {row['exit_rejected_note']}"
+        return (
+            f"All {row['released_cartons']} cartons verified — request the gate to be "
+            "opened"
+        )
     if row["status"] == "cancelled":
         return "Pickup cancelled."
     if row["remaining_cartons"] == 0 and row["released_cartons"] > 0:
@@ -307,11 +320,23 @@ async def release_vehicle(conn: AsyncConnection, pickup_id: UUID) -> Dict[str, A
             http_status=409,
         )
 
-    if pickup["status"] != "verified":
+    if pickup["status"] == "verified":
+        raise ControlPointError(
+            f"Vehicle {pickup['vehicle_number']} has not been approved to leave yet.",
+            hint="Request exit approval, then Ops opens the gate.",
+        )
+
+    if pickup["status"] != "exit_pending":
         raise ControlPointError(
             "Vehicle cannot leave until every released carton is verified present "
             "(CONTROL POINT 7).",
             hint=f"{pickup['remaining_cartons']} carton(s) still to scan.",
+        )
+
+    if pickup["exit_approved_at"] is None:
+        raise ControlPointError(
+            f"Ops has not approved {pickup['vehicle_number']} leaving yet.",
+            hint="The gate stays shut until the approval is recorded.",
         )
 
     result = await conn.execute(
@@ -319,7 +344,7 @@ async def release_vehicle(conn: AsyncConnection, pickup_id: UUID) -> Dict[str, A
             """
             update pickups
                set status = 'departed', released_by = auth.uid(), time_out = now()
-             where id = :id and status = 'verified'
+             where id = :id and status = 'exit_pending'
             """
         ),
         {"id": str(pickup_id)},
@@ -372,3 +397,177 @@ async def cancel_pickup(
     )
 
     return await get_pickup(conn, pickup_id)
+
+
+# ---------------------------------------------------------------------------
+# Exit approval (Phase 5)
+# ---------------------------------------------------------------------------
+
+
+async def request_exit(conn: AsyncConnection, pickup_id: UUID) -> Dict[str, Any]:
+    """The guard asks for the gate to be opened.
+
+    Separate from verification on purpose. CONTROL POINT 7 answers "is every
+    carton on the truck"; this answers "may it go". Collapsing them would mean
+    the last carton scan opened a gate, and DECISIONS.md §CD4 already argues why
+    that is the wrong basis for the decision.
+    """
+    pickup = await get_pickup(conn, pickup_id)
+
+    if pickup["status"] == "departed":
+        raise AppError(
+            f"{pickup['pickup_code']} already departed at {pickup['time_out']:%H:%M}.",
+            code="already_departed",
+            http_status=409,
+        )
+
+    if pickup["status"] == "exit_pending":
+        return {
+            "pickup": pickup,
+            "requested": True,
+            "message": f"Already waiting for Ops — asked at {pickup['exit_requested_at']:%H:%M}.",
+        }
+
+    if pickup["status"] != "verified":
+        raise ControlPointError(
+            "Every carton has to be verified on the vehicle first (CONTROL POINT 7).",
+            hint=f"{pickup['remaining_cartons']} carton(s) still to scan.",
+        )
+
+    result = await conn.execute(
+        text(
+            """
+            update pickups
+               set status = 'exit_pending',
+                   exit_requested_by = auth.uid(),
+                   exit_requested_at = now(),
+                   exit_rejected_note = null,
+                   -- A new request carries no approval, regardless of how the
+                   -- row was left by a previous round.
+                   exit_approved_by = null,
+                   exit_approved_at = null
+             where id = :id and status = 'verified'
+            """
+        ),
+        {"id": str(pickup_id)},
+    )
+
+    if result.rowcount == 0:
+        raise AppError(
+            "You are not permitted to request exit for this vehicle.",
+            code="not_permitted",
+            http_status=403,
+        )
+
+    await notifications.notify_ops(
+        conn,
+        title=f"Gate exit requested: {pickup['vehicle_number']}",
+        body=(
+            f"{pickup['pickup_code']} — all {pickup['released_cartons']} cartons of batch "
+            f"{pickup['batch_code']} are loaded and verified. The vehicle is waiting at "
+            "the gate for your approval."
+        ),
+    )
+
+    after = await get_pickup(conn, pickup_id)
+    return {
+        "pickup": after,
+        "requested": True,
+        "message": f"Sent to Ops. {after['vehicle_number']} waits until they approve.",
+    }
+
+
+async def decide_exit(
+    conn: AsyncConnection, pickup_id: UUID, approve: bool, note: Optional[str] = None
+) -> Dict[str, Any]:
+    """Ops decides whether the vehicle may leave.
+
+    Approving records the approval but does *not* open the gate. The guard still
+    performs the release, so the gate opening stays attached to the person
+    standing at it — which is the same reasoning as §CD4.
+    """
+    pickup = await get_pickup(conn, pickup_id)
+
+    if pickup["status"] == "departed":
+        raise AppError(
+            f"{pickup['pickup_code']} already departed.",
+            code="already_departed",
+            http_status=409,
+        )
+
+    if pickup["status"] != "exit_pending":
+        raise AppError(
+            f"{pickup['pickup_code']} has not requested exit approval.",
+            code="wrong_state",
+            http_status=409,
+            hint="The guard requests it once every carton is loaded.",
+        )
+
+    if not approve and not (note or "").strip():
+        raise AppError(
+            "Say why the vehicle is being held.",
+            code="missing_field",
+            http_status=422,
+            hint="The guard needs to know what to fix.",
+        )
+
+    if approve:
+        result = await conn.execute(
+            text(
+                """
+                update pickups
+                   set exit_approved_by = auth.uid(), exit_approved_at = now(),
+                       exit_rejected_note = null
+                 where id = :id and status = 'exit_pending'
+                """
+            ),
+            {"id": str(pickup_id)},
+        )
+    else:
+        # Back to 'verified' so the guard can re-request once whatever Ops asked
+        # about is dealt with, rather than the pickup being stuck.
+        #
+        # The approval columns are cleared too, and that is the important part.
+        # A pickup stays `exit_pending` after an approval, so Ops changing their
+        # mind while the vehicle is still on the pad is a legitimate second
+        # decision — and if the reject only withdrew the *request*, the guard
+        # could ask again and release against consent that had been taken back.
+        result = await conn.execute(
+            text(
+                """
+                update pickups
+                   set status = 'verified', exit_rejected_note = :note,
+                       exit_requested_by = null, exit_requested_at = null,
+                       exit_approved_by = null, exit_approved_at = null
+                 where id = :id and status = 'exit_pending'
+                """
+            ),
+            {"id": str(pickup_id), "note": note},
+        )
+
+    if result.rowcount == 0:
+        raise AppError(
+            "You are not permitted to decide gate exits.",
+            code="not_permitted",
+            http_status=403,
+        )
+
+    after = await get_pickup(conn, pickup_id)
+    return {
+        "pickup": after,
+        "approved": approve,
+        "message": (
+            f"{after['vehicle_number']} approved to leave — the guard opens the gate."
+            if approve
+            else f"{after['vehicle_number']} held: {note}"
+        ),
+    }
+
+
+async def awaiting_exit_approval(conn: AsyncConnection) -> List[Dict[str, Any]]:
+    """Vehicles loaded, verified, and waiting on Ops. Oldest first — a truck at a
+    gate with the engine running is the most expensive thing to keep waiting."""
+    rows = await conn.execute(
+        text(_SELECT + " where status = 'exit_pending' order by exit_requested_at")
+    )
+    return [dict(r) for r in rows.mappings()]

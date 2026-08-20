@@ -302,3 +302,96 @@ class TestTheLogIsEvidence:
             await db.execute(
                 text("delete from order_no_scans where parsed_order_no = :n"), {"n": GOOD}
             )
+
+
+class TestFindingAnInvoiceFromTheChallan:
+    """The reverse direction: OCR read an Order No, which invoice is it?
+
+    This is what the file-upload path on the matching screen depends on. Note that
+    the lookup is also the *validation* of the OCR read — a misread cannot resolve
+    to the wrong invoice, only to none — so these refusals matter more than usual.
+    """
+
+    async def test_a_captured_order_no_finds_its_invoice(self, db, matcher):
+        invoice_number = await _an_invoice(db)
+        await act_as(db, matcher["id"])
+
+        await packing_service.record_order_no(
+            db,
+            invoice_number=invoice_number,
+            order_no=GOOD,
+            source="ocr",
+            actor_id=str(matcher["id"]),
+            confidence=90.0,
+        )
+
+        found = await packing_service.get_invoice_by_order_no(db, GOOD)
+        assert found["invoice_number"] == invoice_number
+        assert found["order_no"] == GOOD
+
+    async def test_lowercase_from_a_read_still_resolves(self, db, matcher):
+        invoice_number = await _an_invoice(db)
+        await act_as(db, matcher["id"])
+        await packing_service.record_order_no(
+            db,
+            invoice_number=invoice_number,
+            order_no=GOOD,
+            source="ocr",
+            actor_id=str(matcher["id"]),
+        )
+        found = await packing_service.get_invoice_by_order_no(db, GOOD.lower())
+        assert found["invoice_number"] == invoice_number
+
+    async def test_an_uncaptured_order_no_is_a_clean_404(self, db, matcher):
+        """The ordinary case for a challan nobody has read yet — not an error state."""
+        await act_as(db, matcher["id"])
+        with pytest.raises(AppError) as err:
+            await packing_service.get_invoice_by_order_no(db, "CP999999999_9999")
+        assert err.value.code == "unknown_order_no"
+        assert err.value.http_status == 404
+
+    @pytest.mark.parametrize(
+        "misread",
+        ["CP0O2458380_0001", "CP0024S8380_0001", "SC002458380_0001", "CP002458380-0001"],
+    )
+    async def test_a_misread_is_refused_before_it_reaches_the_database(
+        self, db, matcher, misread
+    ):
+        """This is why the upload path needs no human confirmation step.
+
+        A misread cannot resolve to a different real invoice. It either fails the
+        format check here or matches nothing at all.
+        """
+        await act_as(db, matcher["id"])
+        with pytest.raises(AppError) as err:
+            await packing_service.get_invoice_by_order_no(db, misread)
+        assert err.value.code == "bad_order_no"
+
+    async def test_two_invoices_on_one_order_refuse_to_guess(self, db, matcher):
+        """0015 deliberately left order_no non-unique, so this is reachable."""
+        await act_as(db, matcher["id"])
+        rows = await db.execute(
+            text(
+                """
+                select invoice_number from v_invoice_status
+                 where is_open and verified_at is null and order_no is null
+                 limit 2
+                """
+            )
+        )
+        numbers = [r["invoice_number"] for r in rows.mappings()]
+        if len(numbers) < 2:
+            pytest.skip("Need two open unverified invoices")
+
+        for number in numbers:
+            await packing_service.record_order_no(
+                db,
+                invoice_number=number,
+                order_no=GOOD,
+                source="manual",
+                actor_id=str(matcher["id"]),
+            )
+
+        with pytest.raises(AppError) as err:
+            await packing_service.get_invoice_by_order_no(db, GOOD)
+        assert err.value.code == "ambiguous_order_no"

@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import {
   AnimatedGroup,
   Banner,
   GradientBackdrop,
+  LanguageToggle,
   ThemeToggle,
   heroTransitionVariants,
 } from '@/components/ui'
@@ -23,6 +25,7 @@ import {
  * moving parts for a visual refresh.
  */
 export function LoginPage() {
+  const { t } = useTranslation()
   const { session, signIn } = useAuth()
   const location = useLocation()
   const [email, setEmail] = useState('')
@@ -54,7 +57,7 @@ export function LoginPage() {
 
       {/* Login has no header, so the toggle floats. Someone starting a night
           shift should not have to sign in under a white screen first. */}
-      <ThemeToggle className="absolute right-4 top-4" />
+      <ThemeToggle className="absolute right-3 top-3 sm:right-4 sm:top-4" />
 
       <AnimatedGroup
         variants={{
@@ -67,13 +70,25 @@ export function LoginPage() {
       >
         <div className="mb-8 text-center">
           <h1 className="bg-gradient-to-r from-blue-700 via-purple-600 to-pink-600 bg-clip-text text-4xl font-black tracking-tight text-transparent sm:text-5xl dark:from-blue-300 dark:via-purple-300 dark:to-pink-300">
-            R360 Warehouse
+            {t('app.name')}
           </h1>
           {/* Says what the system is for rather than "Sign in to continue".
               A guard on their first shift learns more from one line here than
               from the label on the button below it. */}
           <p className="mx-auto mt-3 max-w-sm text-lg text-slate-700 dark:text-slate-300">
-            Gate to gate, every box counted and attributable.
+            {t('login.hero_tagline')}
+          </p>
+        </div>
+
+        {/* Above the form, not below it and not in a menu. Someone who cannot
+            read English cannot be asked to read an English label to find this,
+            so it is the first interactive thing on the screen and each option is
+            written in its own script. */}
+        <div className="card mb-4">
+          <p className="label mb-2">{t('login.choose_language')}</p>
+          <LanguageToggle variant="cards" />
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+            {t('login.language_hint')}
           </p>
         </div>
 
@@ -82,7 +97,7 @@ export function LoginPage() {
 
           <div>
             <label htmlFor="email" className="label">
-              Email
+              {t('login.email')}
             </label>
             <input
               id="email"
@@ -98,7 +113,7 @@ export function LoginPage() {
 
           <div>
             <label htmlFor="password" className="label">
-              Password
+              {t('login.password')}
             </label>
             <input
               id="password"
@@ -117,19 +132,19 @@ export function LoginPage() {
               inset over it. */}
           <div className="btn-gradient-ring">
             <button type="submit" className="btn-primary w-full" disabled={busy}>
-              {busy ? 'Signing in…' : 'Sign In'}
+              {busy ? t('login.signing_in') : t('login.sign_in')}
             </button>
           </div>
         </form>
 
         {import.meta.env.DEV && (
           <div className="card mt-4 text-sm">
-            <p className="font-bold">Demo accounts (local only)</p>
+            <p className="font-bold">{t('login.demo_accounts')}</p>
             <p className="mt-1 text-slate-600 dark:text-slate-400">
               guard@r360.local · boopathi@r360.local · offload@r360.local ·
               inbound@r360.local · admin@r360.local
               <br />
-              Password: <code>Warehouse@123</code>
+              {t('login.demo_password')}: <code>Warehouse@123</code>
             </p>
           </div>
         )}

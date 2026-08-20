@@ -150,7 +150,14 @@ async def scan_unit(
 @router.post("/scan/sync", response_model=ScanBatchResult)
 async def sync_offline_scans(
     payload: ScanBatchIn,
-    scan_type: str = Query(pattern="^(box_verify|unit_verify|out_scan|gate_exit)$"),
+    scan_type: str = Query(pattern="^(box_verify|unit_verify|pack_unit|out_scan|gate_exit)$"),
+    invoice_id: Optional[UUID] = Query(
+        default=None,
+        description=(
+            "Required for pack_unit: which carton the queued product boxes went into. "
+            "A product sticker knows the box it arrived in, not the order it leaves on."
+        ),
+    ),
     conn: AsyncConnection = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
@@ -160,7 +167,7 @@ async def sync_offline_scans(
     client-minted id, so replays are absorbed. That is what lets the device
     retry blindly instead of trying to work out what landed.
     """
-    return await scan_service.record_batch(conn, payload.scans, scan_type)
+    return await scan_service.record_batch(conn, payload.scans, scan_type, invoice_id)
 
 
 # ===========================================================================

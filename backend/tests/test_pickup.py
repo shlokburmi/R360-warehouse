@@ -12,7 +12,13 @@ import pytest
 from sqlalchemy import text
 
 from tests.conftest import rejected
-from tests.test_packing import _batch_of, _packed_invoices, _out_scan, people  # noqa: F401
+from tests.test_packing import (  # noqa: F401
+    _approve_load,
+    _batch_of,
+    _out_scan,
+    _packed_invoices,
+    people,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -28,6 +34,9 @@ async def _released_batch(db, people, count=3):
     await db.execute(
         text("update batches set status = 'complete' where id = :id"), {"id": batch_id}
     )
+    # Migration 0018: the guard's carton count has to be approved before a batch
+    # can be released to the pickup area.
+    await _approve_load(db, batch_id, people)
     await db.execute(
         text(
             """
@@ -81,6 +90,35 @@ async def _pickup(db, batch_id, guard_id, vehicle="KA05CD9999"):
         {"p": pickup_id, "v": visitor_id},
     )
     return pickup_id
+
+
+async def _request_and_approve_exit(db, pickup_id, actors, people):
+    """The guard asks for the gate to be opened and Ops approves.
+
+    Added by migration 0018. The two people must differ, so the guard requests
+    and Ops decides — the same separation as CONTROL POINT 1 at the other end of
+    the process.
+    """
+    await db.execute(
+        text(
+            """
+            update pickups
+               set status = 'exit_pending', exit_requested_by = :guard
+             where id = :id
+            """
+        ),
+        {"guard": actors["guard"], "id": pickup_id},
+    )
+    await db.execute(
+        text(
+            """
+            update pickups
+               set exit_approved_by = :ops, exit_approved_at = now()
+             where id = :id
+            """
+        ),
+        {"ops": people["ops"]["id"], "id": pickup_id},
+    )
 
 
 async def _exit_scan(db, code, who):
@@ -289,6 +327,7 @@ class TestControlPoint7:
             ),
             {"who": actors["guard"], "id": pickup_id},
         )
+        await _request_and_approve_exit(db, pickup_id, actors, people)
         await db.execute(
             text(
                 """
@@ -328,6 +367,7 @@ class TestControlPoint7:
             ),
             {"who": actors["guard"], "id": pickup_id},
         )
+        await _request_and_approve_exit(db, pickup_id, actors, people)
 
         async with rejected(db, containing="named user"):
             await db.execute(
@@ -400,6 +440,31 @@ class TestPickupAccess:
             ),
             {"who": actors["guard"], "id": pickup_id},
         )
+        await db.execute(
+            text(
+                """
+                update pickups set status = 'exit_pending', exit_requested_by = :who
+                 where id = :id
+                """
+            ),
+            {"who": actors["guard"], "id": pickup_id},
+        )
+
+        # Ops approves, not the guard. Stepping out of the guard's role to do it
+        # is the point: migration 0018 refuses an approval from the person who
+        # requested it, and refuses one from anybody who is not Ops.
+        await db.execute(text("reset role"))
+        await db.execute(
+            text(
+                """
+                update pickups set exit_approved_by = :ops, exit_approved_at = now()
+                 where id = :id
+                """
+            ),
+            {"ops": people["ops"]["id"], "id": pickup_id},
+        )
+        await db.execute(text("set local role authenticated"))
+
         await db.execute(
             text(
                 "update pickups set status = 'departed', released_by = :who where id = :id"

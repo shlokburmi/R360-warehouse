@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.api.deps import CurrentUser, get_current_user, get_db, require_ops, require_roles
+from app.core.errors import AppError
 from app.schemas.warehouse import ScanIn, ScanResult
 from app.services import packing as packing_service
 from app.services import scans as scan_service
@@ -231,7 +232,8 @@ async def list_invoices(
 
 @router.get("/invoices/lookup", response_model=InvoiceOut)
 async def lookup_invoice(
-    invoice_number: str = Query(min_length=3, max_length=60),
+    invoice_number: Optional[str] = Query(default=None, min_length=3, max_length=60),
+    order_no: Optional[str] = Query(default=None, min_length=3, max_length=40),
     conn: AsyncConnection = Depends(get_db),
     user: CurrentUser = Depends(matcher_or_ops),
 ):
@@ -239,7 +241,27 @@ async def lookup_invoice(
 
     Called on the invoice scan, before the matcher walks to a rack — so a trip to
     the wrong aisle is avoided rather than discovered.
+
+    Two ways to identify it. `invoice_number` is the scanned or typed barcode
+    value. `order_no` is for the case where the matcher has only the challan: OCR
+    reads the Order No off the page and the invoice is found from that. Exactly
+    one is required — accepting both would leave the server deciding which the
+    caller meant, and the two can disagree.
     """
+    if (invoice_number is None) == (order_no is None):
+        raise AppError(
+            "Provide either an invoice number or an Order No.",
+            code="bad_request",
+            http_status=422,
+        )
+
+    if order_no is not None:
+        invoice = await packing_service.get_invoice_by_order_no(conn, order_no)
+        # Routed back through the same gate as a scanned lookup so an invoice found
+        # by Order No is held to identical rules — closed and already-verified are
+        # refused the same way rather than only on the barcode path.
+        return await packing_service.lookup_for_matching(conn, invoice["invoice_number"])
+
     return await packing_service.lookup_for_matching(conn, invoice_number)
 
 
@@ -408,3 +430,119 @@ async def ready_to_batch(
 ) -> List[Dict[str, Any]]:
     """Cartons packed but not yet assigned to a batch."""
     return await packing_service.list_invoices(conn, "packed")
+
+
+# ---------------------------------------------------------------------------
+# Packing assignment and product-box scanning (Phase 5)
+# ---------------------------------------------------------------------------
+
+
+class PackingState(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    invoice_id: UUID
+    invoice_number: str
+    sku: Optional[str] = None
+    required_units: int
+    packed_units: int
+    remaining_units: int
+    ready_to_close: bool
+    is_open: bool = True
+    verified_by: Optional[UUID] = None
+    verified_by_name: Optional[str] = None
+    assigned_to: Optional[UUID] = None
+    assigned_to_name: Optional[str] = None
+    packed_by: Optional[UUID] = None
+    packed_by_name: Optional[str] = None
+    packed_at: Optional[datetime] = None
+
+
+class AssignIn(BaseModel):
+    """Assign a carton by scanning the packer's badge card.
+
+    The badge code is the assignee's, read off a card physically present at the
+    bench. That is what `resolve_badge_holder` is for, and it is why this needs no
+    relaxation of the badge rules in DECISIONS.md §CC2.
+    """
+
+    invoice_number: str = Field(min_length=3, max_length=64)
+    badge_code: str = Field(min_length=4, max_length=64)
+    note: Optional[str] = Field(default=None, max_length=280)
+
+    @field_validator("invoice_number")
+    @classmethod
+    def _upper(cls, v: str) -> str:
+        return v.strip().upper()
+
+
+class AssignResult(BaseModel):
+    invoice: InvoiceOut
+    packing: PackingState
+    assigned_to: BadgeHolder
+    message: str
+
+
+class PackScanResult(ScanResult):
+    """A product-box scan, plus where the carton now stands.
+
+    Extends ScanResult rather than replacing it so the frontend's existing scan
+    handling — including the offline queue's idempotent replay — applies
+    unchanged.
+    """
+
+    packed_units: Optional[int] = None
+    required_units: Optional[int] = None
+    remaining_units: Optional[int] = None
+    ready_to_close: Optional[bool] = None
+
+
+@router.post("/invoices/assign", response_model=AssignResult)
+async def assign_invoice(
+    payload: AssignIn,
+    conn: AsyncConnection = Depends(get_db),
+    user: CurrentUser = Depends(require_roles("packer", "invoice_matcher", "ops_manager")),
+):
+    """Hand a carton to a named packer.
+
+    Matchers can do this as well as packers, because the matcher is usually the
+    person physically handing the box over.
+    """
+    return await packing_service.assign_invoice(
+        conn, payload.invoice_number, payload.badge_code, payload.note
+    )
+
+
+@router.get("/invoices/{invoice_id}/packing", response_model=PackingState)
+async def invoice_packing_state(
+    invoice_id: UUID,
+    conn: AsyncConnection = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    return await packing_service.packing_state(conn, invoice_id)
+
+
+@router.post("/invoices/{invoice_id}/pack-scan", response_model=PackScanResult)
+async def scan_product_box(
+    invoice_id: UUID,
+    payload: ScanIn,
+    response: Response,
+    conn: AsyncConnection = Depends(get_db),
+    user: CurrentUser = Depends(packer_or_ops),
+):
+    """Scan one product box into this carton.
+
+    A rejected scan comes back 200 with `accepted: false`, like every other
+    scanning endpoint — it is a result to render, not an error to catch, and the
+    rejection is recorded either way.
+    """
+    result = await packing_service.scan_product_box(conn, invoice_id, payload)
+    return result
+
+
+@router.get("/packing/assigned-to-me", response_model=List[PackingState])
+async def assigned_to_me(
+    conn: AsyncConnection = Depends(get_db),
+    user: CurrentUser = Depends(packer_or_ops),
+):
+    """The packer's own queue. Nobody else's work appears here."""
+    return await packing_service.assigned_to_me(conn)

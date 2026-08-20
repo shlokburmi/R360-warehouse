@@ -17,6 +17,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.core.errors import AppError
+from app.schemas.warehouse import ScanIn
+from app.services import scans
 
 BADGE_HINT = "Hold the badge steady under the scanner, or type the code on it."
 
@@ -149,6 +151,54 @@ async def get_invoice(conn: AsyncConnection, invoice_id: UUID) -> Dict[str, Any]
     if row is None:
         raise AppError("Invoice not found.", code="not_found", http_status=404)
     return dict(row)
+
+
+async def get_invoice_by_order_no(conn: AsyncConnection, order_no: str) -> Dict[str, Any]:
+    """Find the invoice already booked against this Order No.
+
+    The reverse of `record_order_no`, for the case where a matcher has the challan
+    but not the invoice: OCR reads the Order No off the page and this says which
+    invoice it belongs to.
+
+    Two failure modes are reported separately on purpose, because the operator's
+    next action differs. *No* invoice carries this Order No — the usual case for a
+    challan whose number has not been captured yet — means "scan the invoice
+    instead". *Several* do, which the schema permits deliberately (0015 declined to
+    make order_no unique), means a human has to choose and the machine must not.
+    """
+    order_no = order_no.strip().upper()
+    if not ORDER_NO_RE.match(order_no):
+        raise AppError(
+            f"{order_no} is not a valid Order No.",
+            code="bad_order_no",
+            http_status=422,
+            hint=ORDER_NO_HINT,
+        )
+
+    rows = (
+        await conn.execute(
+            text(_INVOICE_SELECT + " where order_no = :order_no order by invoice_number"),
+            {"order_no": order_no},
+        )
+    ).mappings().all()
+
+    if not rows:
+        raise AppError(
+            f"No invoice is booked against order {order_no}.",
+            code="unknown_order_no",
+            http_status=404,
+            hint="Scan or type the invoice number instead, then read the Order No.",
+        )
+
+    if len(rows) > 1:
+        raise AppError(
+            f"{len(rows)} invoices are booked against order {order_no}.",
+            code="ambiguous_order_no",
+            http_status=409,
+            hint="Scan the invoice itself so the right one is picked.",
+        )
+
+    return dict(rows[0])
 
 
 async def lookup_for_matching(conn: AsyncConnection, invoice_number: str) -> Dict[str, Any]:
@@ -675,5 +725,157 @@ async def packing_productivity(
             """
         ),
         {"from_date": from_date},
+    )
+    return [dict(r) for r in rows.mappings()]
+
+
+# ---------------------------------------------------------------------------
+# Packing assignment and product-box scanning (Phase 5)
+# ---------------------------------------------------------------------------
+
+
+async def assign_invoice(
+    conn: AsyncConnection,
+    invoice_number: str,
+    badge_code: str,
+    note: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Assign a carton to a packer by scanning her badge card.
+
+    Reads a card that is physically present, which is what `resolve_badge_holder`
+    has always been for — so this needs no relaxation of the rule in
+    DECISIONS.md §CC2 that nobody can *look up* a badge code. Physical custody of
+    the card is the control, exactly as it is when a packer presents her own.
+
+    Every refusal below is also enforced by `fn_packing_assignment_guard`. These
+    checks exist to produce the sentence the lead needs to read, not to be the
+    boundary — see DECISIONS.md §B3.
+    """
+    invoice = await get_invoice_by_number(conn, invoice_number)
+
+    if not invoice["is_open"]:
+        raise AppError(
+            f"Invoice {invoice['invoice_number']} is closed.",
+            code="invoice_closed",
+            http_status=409,
+        )
+
+    if invoice["packed_at"] is not None:
+        raise AppError(
+            f"Invoice {invoice['invoice_number']} was already packed by "
+            f"{invoice['packed_by_name']}.",
+            code="already_packed",
+            http_status=409,
+        )
+
+    if invoice["verified_at"] is None:
+        raise AppError(
+            f"Invoice {invoice['invoice_number']} has not been verified by an "
+            "invoice matcher yet.",
+            code="control_point_failed",
+            http_status=409,
+            hint="The matcher must scan the invoice and her badge first.",
+        )
+
+    badge = await resolve_badge(conn, badge_code, ["packer"])
+
+    if str(badge["profile_id"]) == str(invoice["verified_by"]):
+        raise AppError(
+            f"{badge['full_name']} verified this invoice and cannot also pack it "
+            "(CONTROL POINT 5).",
+            code="control_point_failed",
+            http_status=409,
+            hint="Assign it to someone else.",
+        )
+
+    await conn.execute(
+        text(
+            """
+            insert into packing_assignments (invoice_id, assigned_to, assigned_by, note)
+            values (:invoice_id, :to, auth.uid(), :note)
+            """
+        ),
+        {"invoice_id": str(invoice["invoice_id"]), "to": str(badge["profile_id"]), "note": note},
+    )
+
+    state = await packing_state(conn, invoice["invoice_id"])
+    return {
+        "invoice": await get_invoice(conn, invoice["invoice_id"]),
+        "packing": state,
+        "assigned_to": badge,
+        "message": (
+            f"{invoice['invoice_number']} assigned to {badge['full_name']} — "
+            f"{state['required_units']} product boxes to scan."
+        ),
+    }
+
+
+async def packing_state(conn: AsyncConnection, invoice_id: UUID) -> Dict[str, Any]:
+    """How far along this carton is: assigned to whom, how many boxes are in."""
+    row = (
+        await conn.execute(
+            text(
+                """
+                select invoice_id, invoice_number, sku, required_units, packed_units,
+                       remaining_units, ready_to_close, is_open,
+                       verified_by, verified_by_name,
+                       assigned_to, assigned_to_name,
+                       packed_by, packed_by_name, packed_at
+                  from v_invoice_packing where invoice_id = :id
+                """
+            ),
+            {"id": str(invoice_id)},
+        )
+    ).mappings().first()
+
+    if row is None:
+        raise AppError("That invoice does not exist.", code="not_found", http_status=404)
+    return dict(row)
+
+
+async def scan_product_box(
+    conn: AsyncConnection, invoice_id: UUID, scan: ScanIn
+) -> Dict[str, Any]:
+    """Scan one product box into a carton.
+
+    The refusal path is deliberately the same as every other scanning step: the
+    scan is *recorded* with a reason rather than raised, because a rejected scan
+    is evidence and because a packing bench doing 200 of these an hour needs the
+    reject to be a line on the screen, not an exception.
+    """
+    state = await packing_state(conn, invoice_id)
+
+    if state["packed_at"] is not None:
+        raise AppError(
+            f"Invoice {state['invoice_number']} is already packed.",
+            code="already_packed",
+            http_status=409,
+        )
+
+    result = await scans.record_scan(conn, scan, "pack_unit", invoice_id=invoice_id)
+    after = await packing_state(conn, invoice_id)
+
+    result["packed_units"] = after["packed_units"]
+    result["required_units"] = after["required_units"]
+    result["remaining_units"] = after["remaining_units"]
+    result["ready_to_close"] = after["ready_to_close"]
+    return result
+
+
+async def assigned_to_me(conn: AsyncConnection) -> List[Dict[str, Any]]:
+    """The packer's own queue. Nobody else's work appears here."""
+    rows = await conn.execute(
+        text(
+            """
+            select invoice_id, invoice_number, sku, required_units, packed_units,
+                   remaining_units, ready_to_close,
+                   assigned_to, assigned_to_name, verified_by_name
+              from v_invoice_packing
+             where assigned_to = auth.uid()
+               and packed_at is null
+               and is_open
+             order by invoice_number
+            """
+        )
     )
     return [dict(r) for r in rows.mappings()]

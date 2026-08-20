@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, get, post } from '@/lib/api'
+import { useErrorText } from '@/hooks/useErrorText'
 import { useAuth } from '@/hooks/useAuth'
 import { Banner, Card, EmptyState, Spinner, StatusChip } from '@/components/ui'
 import type { WarehouseException } from '@/types'
@@ -39,6 +41,8 @@ const GENERAL_RESOLUTIONS = [
 ]
 
 export function ExceptionsPage() {
+  const { t } = useTranslation()
+  const errorText = useErrorText()
   const queryClient = useQueryClient()
   const { me } = useAuth()
   const [showResolved, setShowResolved] = useState(false)
@@ -87,12 +91,12 @@ export function ExceptionsPage() {
     onError: (err) => setError(err as ApiError),
   })
 
-  if (exceptions.isLoading) return <Spinner label="Loading exceptions…" />
+  if (exceptions.isLoading) return <Spinner label={t('exceptions.loading')} />
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-black">Exceptions</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-black">{t('exceptions.title')}</h1>
         <button
           type="button"
           className="btn-ghost"
@@ -103,13 +107,13 @@ export function ExceptionsPage() {
       </div>
 
       {error && (
-        <Banner tone="bad" title={error.message}>
+        <Banner tone="bad" title={errorText(error).title}>
           {error.hint}
         </Banner>
       )}
 
       {exceptions.data?.length === 0 && (
-        <EmptyState title="No open exceptions" hint="Nothing is held." />
+        <EmptyState title={t('exceptions.none')} hint={t('exceptions.none_hint')} />
       )}
 
       {exceptions.data?.map((exception) => {
@@ -127,20 +131,20 @@ export function ExceptionsPage() {
             }`}
             action={<StatusChip status={exception.status} />}
           >
-            <dl className="mb-4 grid grid-cols-2 gap-3 text-base">
+            <dl className="mb-4 grid grid-cols-1 gap-3 text-base sm:grid-cols-2">
               <div>
-                <dt className="text-slate-500 dark:text-slate-400">Reported by</dt>
+                <dt className="text-slate-500 dark:text-slate-400">{t('exceptions.reported_by')}</dt>
                 <dd className="font-bold">{exception.reported_by_name}</dd>
               </div>
               <div>
-                <dt className="text-slate-500 dark:text-slate-400">When</dt>
+                <dt className="text-slate-500 dark:text-slate-400">{t('exceptions.when')}</dt>
                 <dd className="font-bold">
                   {new Date(exception.reported_at).toLocaleString()}
                 </dd>
               </div>
               {exception.entry_code && (
                 <div>
-                  <dt className="text-slate-500 dark:text-slate-400">Gate entry</dt>
+                  <dt className="text-slate-500 dark:text-slate-400">{t('exceptions.gate_entry')}</dt>
                   <dd className="font-bold">{exception.entry_code}</dd>
                 </div>
               )}
@@ -155,7 +159,7 @@ export function ExceptionsPage() {
             {Object.keys(exception.details).length > 0 && (
               <dl className="mb-4 rounded-xl bg-slate-100 p-3 text-base dark:bg-slate-800">
                 {Object.entries(exception.details).map(([key, value]) => (
-                  <div key={key} className="flex justify-between gap-3 py-0.5">
+                  <div key={key} className="flex flex-wrap justify-between gap-3 py-0.5">
                     <dt className="text-slate-500 dark:text-slate-400">
                       {key.replace(/_/g, ' ')}
                     </dt>
@@ -174,7 +178,7 @@ export function ExceptionsPage() {
               </Banner>
             ) : !isOps ? (
               <p className="text-base text-slate-500 dark:text-slate-400">
-                Waiting for an Ops decision. Goods stay held until then.
+                {t('exceptions.awaiting_ops')}
               </p>
             ) : isActive ? (
               <div className="space-y-3">
@@ -205,12 +209,12 @@ export function ExceptionsPage() {
                   rows={3}
                   value={note}
                   onChange={(event) => setNote(event.target.value)}
-                  placeholder="What was decided, and why? (required)"
+                  placeholder={t('exceptions.decision_note')}
                 />
 
                 <div className="flex gap-3">
                   <button type="button" className="btn-ghost flex-1" onClick={reset}>
-                    Cancel
+                    {t('common.cancel')}
                   </button>
                   <button
                     type="button"
@@ -218,7 +222,7 @@ export function ExceptionsPage() {
                     disabled={!chosen || note.trim().length < 3 || resolve.isPending}
                     onClick={() => resolve.mutate(exception.id)}
                   >
-                    Confirm
+                    {t('common.confirm')}
                   </button>
                 </div>
 
@@ -228,7 +232,7 @@ export function ExceptionsPage() {
                   disabled={escalate.isPending}
                   onClick={() => escalate.mutate(exception.id)}
                 >
-                  Email superadmin instead
+                  {t('exceptions.email_superadmin')}
                 </button>
               </div>
             ) : (
@@ -241,7 +245,7 @@ export function ExceptionsPage() {
                   setNote('')
                 }}
               >
-                Decide
+                {t('exceptions.decide')}
               </button>
             )}
           </Card>

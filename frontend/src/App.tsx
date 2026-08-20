@@ -22,6 +22,7 @@ import { StockPage } from '@/pages/Stock'
 import { PickupPage } from '@/pages/Pickup'
 import { ReportsPage } from '@/pages/Reports'
 import { AdminPage } from '@/pages/Admin'
+import { LoadingPage } from '@/pages/Loading'
 
 /**
  * Route guard.
@@ -217,6 +218,15 @@ function Shell() {
         element={
           <Protected page="admin">
             <AdminPage />
+          </Protected>
+        }
+      />
+
+      <Route
+        path="/loading"
+        element={
+          <Protected page="loading">
+            <LoadingPage />
           </Protected>
         }
       />

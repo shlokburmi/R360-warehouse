@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, get, postControlPoint } from '@/lib/api'
+import { useErrorText } from '@/hooks/useErrorText'
 import { Banner, Card, Spinner } from '@/components/ui'
 import type { Reconciliation } from '@/types'
 
@@ -14,6 +16,8 @@ import type { Reconciliation } from '@/types'
  * disagreement blocks putaway rather than being averaged away.
  */
 export function ReconciliationPage() {
+  const { t } = useTranslation()
+  const errorText = useErrorText()
   const { entryId = '' } = useParams()
   const queryClient = useQueryClient()
   const [counts, setCounts] = useState<Record<string, string>>({})
@@ -43,7 +47,7 @@ export function ReconciliationPage() {
   })
 
   if (reconciliation.isLoading) return <Spinner />
-  if (!reconciliation.data) return <Banner tone="bad" title="Nothing to reconcile" />
+  if (!reconciliation.data) return <Banner tone="bad" title={t('recon.none')} />
 
   const lines = reconciliation.data.lines
   const allEntered = lines.every(
@@ -52,10 +56,10 @@ export function ReconciliationPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-black">Inbound Verification</h1>
+      <h1 className="text-2xl font-black">{t('recon.title')}</h1>
 
       {error && (
-        <Banner tone={error.isControlPoint ? 'bad' : 'warn'} title={error.message}>
+        <Banner tone={error.isControlPoint ? 'bad' : 'warn'} title={errorText(error).title}>
           {error.hint}
         </Banner>
       )}
@@ -82,16 +86,16 @@ export function ReconciliationPage() {
           <Card key={line.purchase_order_line_id} title={line.sku} subtitle={line.description}>
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <p className="label">PO expected</p>
+                <p className="label">{t('recon.po_expected')}</p>
                 <p className="text-2xl font-black tabular-nums">{line.expected_units}</p>
               </div>
               <div>
-                <p className="label">Warehouse</p>
+                <p className="label">{t('recon.warehouse')}</p>
                 <p className="text-2xl font-black tabular-nums">{line.warehouse_count}</p>
-                <p className="text-xs text-slate-500">from scans</p>
+                <p className="text-xs text-slate-500">{t('recon.from_scans')}</p>
               </div>
               <div>
-                <p className="label">Your count</p>
+                <p className="label">{t('recon.your_count')}</p>
                 <input
                   className={`input text-center text-2xl font-black ${
                     mismatch ? 'input-error' : ''
@@ -116,7 +120,7 @@ export function ReconciliationPage() {
                   tone="bad"
                   title={`Mismatch: warehouse ${line.warehouse_count} vs inbound ${entered}`}
                 >
-                  Submitting will hold the goods and raise an exception for Ops.
+                  {t('recon.will_hold')}
                 </Banner>
               </div>
             )}

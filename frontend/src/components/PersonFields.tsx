@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { get, post } from '@/lib/api'
 import { Banner, Card, Field } from '@/components/ui'
 import type { VisitorLookup } from '@/types'
@@ -39,6 +40,8 @@ export function PersonFields({
   setPersons: React.Dispatch<React.SetStateAction<PersonDraft[]>>
   allowAdd?: boolean
 }) {
+  const { t } = useTranslation()
+
   function update(key: string, patch: Partial<PersonDraft>) {
     setPersons((current) => current.map((p) => (p.key === key ? { ...p, ...patch } : p)))
   }
@@ -63,7 +66,11 @@ export function PersonFields({
       {persons.map((person, index) => (
         <Card
           key={person.key}
-          title={person.visitor_role === 'driver' ? 'Driver' : `Person ${index + 1}`}
+          title={
+            person.visitor_role === 'driver'
+              ? t('person.driver')
+              : t('person.person_n', { n: index + 1 })
+          }
           action={
             persons.length > 1 && (
               <button
@@ -76,7 +83,7 @@ export function PersonFields({
             )
           }
         >
-          <Field label="Mobile number" required>
+          <Field label={t('person.mobile')} required>
             <input
               className="input font-mono"
               type="tel"
@@ -88,7 +95,7 @@ export function PersonFields({
                 update(person.key, { mobile: digits, lookup: undefined })
                 if (digits.length === 10) void checkVisitor(person.key, digits)
               }}
-              placeholder="10 digits"
+              placeholder={t('person.mobile_placeholder')}
             />
           </Field>
 
@@ -109,30 +116,34 @@ export function PersonFields({
             </div>
           )}
 
-          <Field label="Full name" required>
+          <Field label={t('person.full_name')} required>
             <input
               className="input"
               value={person.full_name}
               onChange={(event) => update(person.key, { full_name: event.target.value })}
-              placeholder="As on the ID card"
+              placeholder={t('person.name_placeholder')}
               autoCapitalize="words"
             />
           </Field>
 
-          <Field label="Role" required>
-            <div className="flex gap-2">
+          <Field label={t('person.role')} required>
+            {/* A grid, not `flex-1`. A flex item will not shrink below its
+                content, so at 320px the three buttons together measured 19px
+                wider than the viewport and slid the whole page sideways. Grid
+                columns are equal fractions of the available width and cannot. */}
+            <div className="grid grid-cols-3 gap-2">
               {(['driver', 'laborer', 'supervisor'] as const).map((role) => (
                 <button
                   key={role}
                   type="button"
                   onClick={() => update(person.key, { visitor_role: role })}
-                  className={`flex-1 rounded-xl border-2 px-3 py-3 text-base font-bold capitalize ${
+                  className={`min-w-0 break-words rounded-xl border-2 px-2 py-3 text-sm font-bold sm:px-3 sm:text-base ${
                     person.visitor_role === role
                       ? 'border-blue-600 bg-blue-600 text-white'
                       : 'border-slate-300 dark:border-slate-700'
                   }`}
                 >
-                  {role}
+                  {t(`person.${role}`)}
                 </button>
               ))}
             </div>
@@ -140,9 +151,9 @@ export function PersonFields({
 
           {person.lookup?.photo_required && (
             <Field
-              label="Identity photo"
+              label={t('person.id_photo')}
               required
-              hint="Required for first-time visitors, and whenever the photo on file is over 180 days old."
+              hint={t('person.id_photo_hint')}
             >
               <PhotoCapture
                 mobile={person.mobile}
@@ -183,6 +194,7 @@ function PhotoCapture({
   path?: string
   onUploaded: (path: string) => void
 }) {
+  const { t } = useTranslation()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -214,7 +226,7 @@ function PhotoCapture({
     return (
       <div className="flex items-center gap-3 rounded-xl bg-ok-bg p-4 text-ok dark:bg-ok-darkbg dark:text-ok-dark">
         <span className="text-2xl">✓</span>
-        <span className="font-bold">Photo captured</span>
+        <span className="font-bold">{t('person.photo_captured')}</span>
       </div>
     )
   }

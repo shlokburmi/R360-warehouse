@@ -21,7 +21,7 @@ export type QueuedScan = {
   was_offline: boolean
   device_label?: string
   disposition?: 'stock' | 'quarantine'
-  scan_type: 'box_verify' | 'unit_verify' | 'out_scan' | 'gate_exit'
+  scan_type: 'box_verify' | 'unit_verify' | 'pack_unit' | 'out_scan' | 'gate_exit'
   /** Gate entry for box/unit scans; batch for out-scans; pickup for gate exit. */
   entry_id: string
   attempts: number
@@ -103,7 +103,16 @@ export async function flushQueue(): Promise<{ sent: number; failed: number }> {
     const ordered = [...group].sort((a, b) => a.scanned_at.localeCompare(b.scanned_at))
 
     try {
-      await post(`/scan/sync?scan_type=${scanType}`, {
+      // pack_unit carries the carton as well as the type: a product sticker
+      // knows which box it arrived in, not which order it is leaving on, so the
+      // invoice cannot be re-derived server-side the way the others can.
+      const [entryId] = key.split('::')
+      const query =
+        scanType === 'pack_unit'
+          ? `scan_type=${scanType}&invoice_id=${entryId}`
+          : `scan_type=${scanType}`
+
+      await post(`/scan/sync?${query}`, {
         scans: ordered.map((s) => ({
           client_event_id: s.client_event_id,
           raw_code: s.raw_code,

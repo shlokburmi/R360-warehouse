@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useTheme } from '@/hooks/useTheme'
 import { cn } from '@/lib/utils'
 
@@ -12,12 +13,13 @@ import { cn } from '@/lib/utils'
  * same glance.
  */
 export function ThemeToggle({ className }: { className?: string }) {
+  const { t } = useTranslation()
   const { dark, setDark } = useTheme()
 
   return (
     <div
       role="group"
-      aria-label="Colour theme"
+      aria-label={t('common.colour_theme')}
       className={cn(
         'inline-flex shrink-0 items-center gap-0.5 rounded-xl border border-slate-300/70 bg-white/60 p-0.5 backdrop-blur',
         'dark:border-white/15 dark:bg-white/5',

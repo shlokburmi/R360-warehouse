@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, get, post } from '@/lib/api'
+import { useErrorText } from '@/hooks/useErrorText'
 import { Banner, Card, EmptyState, Field, Spinner, StatusChip } from '@/components/ui'
 import { BadgeCardPrint } from '@/components/BadgeCardPrint'
 import { useAuth } from '@/hooks/useAuth'
@@ -28,6 +30,8 @@ import type {
  * hiding it — a panel you have to dismiss, not a value in a table cell.
  */
 export function AdminPage() {
+  const { t } = useTranslation()
+  const errorText = useErrorText()
   const { me } = useAuth()
   const queryClient = useQueryClient()
 
@@ -93,21 +97,19 @@ export function AdminPage() {
     onError: (err) => setError(err as ApiError),
   })
 
-  if (staff.isLoading || meta.isLoading) return <Spinner label="Loading staff…" />
+  if (staff.isLoading || meta.isLoading) return <Spinner label={t('admin.loading_staff')} />
 
   // A freshly minted badge is the only thing that can be lost by navigating
   // away, so it takes over the screen until it is dealt with.
   if (issued) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-black">Print this badge now</h1>
-        <Banner tone="warn" title="This code is shown once">
-          There is no way to look it up again. If this card is not printed, the
-          badge has to be reissued — which is safe, just wasted time.
+        <h1 className="text-2xl font-black">{t('admin.print_badge_now')}</h1>
+        <Banner tone="warn" title={t('admin.shown_once')}>
+          {t('admin.shown_once_body')}
           {issued.staff.has_badge && (
             <p className="mt-2 font-semibold">
-              Any badge {issued.staff.full_name} was already carrying stopped
-              working the moment this one was created.
+              {t('admin.badge_replaced_body', { name: issued.staff.full_name })}
             </p>
           )}
         </Banner>
@@ -121,22 +123,21 @@ export function AdminPage() {
   if (created) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-black">Account created</h1>
-        <Banner tone="ok" title={`${created.staff.full_name} can now sign in`}>
-          Hand this password over in person. It is not stored anywhere and
-          cannot be shown again — if it is lost, reset it from Supabase Auth.
+        <h1 className="text-2xl font-black">{t('admin.account_created')}</h1>
+        <Banner tone="ok" title={t('admin.can_sign_in_now', { name: created.staff.full_name })}>
+          {t('admin.password_body')}
         </Banner>
-        <Card title="Temporary password">
+        <Card title={t('admin.temp_password')}>
           <p className="select-all break-all rounded-xl bg-slate-100 p-4 text-center font-mono text-3xl font-black dark:bg-slate-800">
             {created.temporary_password}
           </p>
-          <dl className="mt-4 grid grid-cols-2 gap-3 text-base">
+          <dl className="mt-4 grid grid-cols-1 gap-3 text-base sm:grid-cols-2">
             <div>
-              <dt className="text-slate-500 dark:text-slate-400">Role</dt>
+              <dt className="text-slate-500 dark:text-slate-400">{t('admin.role')}</dt>
               <dd className="font-bold">{created.staff.role_label}</dd>
             </div>
             <div>
-              <dt className="text-slate-500 dark:text-slate-400">Employee code</dt>
+              <dt className="text-slate-500 dark:text-slate-400">{t('admin.employee_code')}</dt>
               <dd className="font-mono font-bold">{created.staff.employee_code}</dd>
             </div>
           </dl>
@@ -152,7 +153,7 @@ export function AdminPage() {
                   issueBadge.mutate(id)
                 }}
               >
-                Issue their badge
+                {t('admin.issue_badge')}
               </button>
             )}
             <button type="button" className="btn-ghost flex-1" onClick={() => setCreated(null)}>
@@ -168,8 +169,8 @@ export function AdminPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-black">Staff &amp; Badges</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-black">{t('admin.title')}</h1>
         <button
           type="button"
           className="btn-primary"
@@ -178,12 +179,12 @@ export function AdminPage() {
             setError(null)
           }}
         >
-          Add person
+          {t('admin.add_person')}
         </button>
       </div>
 
       {error && (
-        <Banner tone="bad" title={error.message}>
+        <Banner tone="bad" title={errorText(error).title}>
           {error.hint}
         </Banner>
       )}
@@ -204,12 +205,12 @@ export function AdminPage() {
           checked={showInactive}
           onChange={(event) => setShowInactive(event.target.checked)}
         />
-        Show deactivated accounts
+        {t('admin.show_deactivated')}
       </label>
 
       <RetentionPanel />
 
-      {rows.length === 0 && <EmptyState title="No staff accounts" />}
+      {rows.length === 0 && <EmptyState title={t('admin.no_staff')} />}
 
       {rows.map((person) => {
         const isSelf = person.id === me?.id
@@ -281,7 +282,7 @@ export function AdminPage() {
                     disabled={busy}
                     onClick={() => revokeBadge.mutate(person.id)}
                   >
-                    Confirm revoke
+                    {t('admin.confirm_revoke')}
                   </button>
                 ) : (
                   <button
@@ -290,7 +291,7 @@ export function AdminPage() {
                     disabled={busy}
                     onClick={() => setConfirmRevoke(person.id)}
                   >
-                    Revoke badge
+                    {t('admin.revoke_badge')}
                   </button>
                 ))}
 
@@ -306,7 +307,7 @@ export function AdminPage() {
             {open && (
               <div className="mt-4 space-y-4 border-t border-slate-200 pt-4 dark:border-slate-800">
                 <Field
-                  label="Role"
+                  label={t('admin.role')}
                   hint={
                     person.badge_usable
                       ? 'Moving off a badge role deactivates their badge.'
@@ -330,9 +331,8 @@ export function AdminPage() {
                 </Field>
 
                 {isSelf && (
-                  <Banner tone="info" title="This is your own account">
-                    You cannot change your own role or deactivate yourself.
-                    Another Admin can, once one is in place.
+                  <Banner tone="info" title={t('admin.own_account')}>
+                    {t('admin.self_body')}
                   </Banner>
                 )}
 
@@ -350,7 +350,7 @@ export function AdminPage() {
                         })
                       }
                     />
-                    Receives gate approvals escalated at 15 minutes
+                    {t('admin.escalation_note')}
                   </label>
                 )}
 
@@ -362,7 +362,7 @@ export function AdminPage() {
                       disabled={busy || isSelf}
                       onClick={() => update.mutate({ id: person.id, is_active: false })}
                     >
-                      Deactivate account
+                      {t('admin.deactivate')}
                     </button>
                   ) : (
                     <button
@@ -371,7 +371,7 @@ export function AdminPage() {
                       disabled={busy}
                       onClick={() => update.mutate({ id: person.id, is_active: true })}
                     >
-                      Reactivate account
+                      {t('admin.reactivate')}
                     </button>
                   )}
                 </div>
@@ -400,6 +400,7 @@ export function AdminPage() {
  * panel is the only place that failure becomes visible.
  */
 function RetentionPanel() {
+  const { t } = useTranslation()
   const retention = useQuery({
     queryKey: ['admin-retention'],
     queryFn: () => get<PhotoRetention>('/admin/retention'),
@@ -410,39 +411,36 @@ function RetentionPanel() {
 
   return (
     <Card
-      title="Identity photos"
+      title={t('admin.identity_photos')}
       subtitle={`Destroyed automatically after ${data.retention_days} days`}
     >
       {!data.enabled && (
         <div className="mb-4">
-          <Banner tone="bad" title="Retention is not running">
-            Storage is not configured on the server, so nothing is being
-            destroyed. Photos are accumulating past the {data.retention_days}-day
-            limit.
+          <Banner tone="bad" title={t('admin.retention_off')}>
+            {t('admin.retention_off_body', { days: data.retention_days })}
           </Banner>
         </div>
       )}
 
       {data.enabled && data.overdue > 0 && (
         <div className="mb-4">
-          <Banner tone="warn" title={`${data.overdue} photos are overdue`}>
-            The worker clears these within a few hours. If this number is not
-            falling, the worker has stopped — nothing else will report that.
+          <Banner tone="warn" title={t('admin.photos_overdue', { count: data.overdue })}>
+            {t('admin.overdue_body')}
           </Banner>
         </div>
       )}
 
       <dl className="grid grid-cols-2 gap-3 text-base sm:grid-cols-4">
         <div>
-          <dt className="text-slate-500 dark:text-slate-400">Held now</dt>
+          <dt className="text-slate-500 dark:text-slate-400">{t('admin.held_now')}</dt>
           <dd className="text-2xl font-black tabular-nums">{data.photos_held}</dd>
         </div>
         <div>
-          <dt className="text-slate-500 dark:text-slate-400">Destroyed</dt>
+          <dt className="text-slate-500 dark:text-slate-400">{t('admin.destroyed')}</dt>
           <dd className="text-2xl font-black tabular-nums">{data.photos_purged}</dd>
         </div>
         <div>
-          <dt className="text-slate-500 dark:text-slate-400">Oldest held</dt>
+          <dt className="text-slate-500 dark:text-slate-400">{t('admin.oldest_held')}</dt>
           <dd className="text-lg font-bold">
             {data.oldest_held_at
               ? new Date(data.oldest_held_at).toLocaleDateString()
@@ -450,7 +448,7 @@ function RetentionPanel() {
           </dd>
         </div>
         <div>
-          <dt className="text-slate-500 dark:text-slate-400">Last destroyed</dt>
+          <dt className="text-slate-500 dark:text-slate-400">{t('admin.last_destroyed')}</dt>
           <dd className="text-lg font-bold">
             {data.last_purge_at ? new Date(data.last_purge_at).toLocaleDateString() : '—'}
           </dd>
@@ -477,12 +475,13 @@ function RetentionPanel() {
  * before they are ever written (see 0013 §1); this is who and when, never what.
  */
 function AccountHistory({ profileId }: { profileId: string }) {
+  const { t } = useTranslation()
   const history = useQuery({
     queryKey: ['admin-history', profileId],
     queryFn: () => get<AccountHistoryEntry[]>(`/admin/staff/${profileId}/history`),
   })
 
-  if (history.isLoading) return <Spinner label="Loading history…" />
+  if (history.isLoading) return <Spinner label={t('admin.loading_history')} />
   if (!history.data?.length) return null
 
   const describe = (entry: AccountHistoryEntry) => {
@@ -498,7 +497,7 @@ function AccountHistory({ profileId }: { profileId: string }) {
 
   return (
     <div>
-      <p className="label">History</p>
+      <p className="label">{t('admin.history')}</p>
       <ul className="space-y-2 text-base">
         {history.data.map((entry, index) => (
           <li key={index} className="flex flex-wrap justify-between gap-2">
@@ -525,6 +524,7 @@ function NewStaffForm({
   onCancel: () => void
   onSubmit: (body: Record<string, unknown>) => void
 }) {
+  const { t } = useTranslation()
   const [email, setEmail] = useState('')
   const [fullName, setFullName] = useState('')
   const [role, setRole] = useState('security_guard')
@@ -544,18 +544,18 @@ function NewStaffForm({
     mobileValid
 
   return (
-    <Card title="Add a person" subtitle="They can sign in as soon as this is saved.">
-      <Field label="Full name" required>
+    <Card title={t('admin.add_a_person')} subtitle={t('admin.can_sign_in')}>
+      <Field label={t('admin.full_name')} required>
         <input
           className="input"
           value={fullName}
           onChange={(event) => setFullName(event.target.value)}
-          placeholder="As it should appear on their badge"
+          placeholder={t('admin.name_hint')}
           autoComplete="off"
         />
       </Field>
 
-      <Field label="Email" required hint="This is the username they sign in with.">
+      <Field label={t('admin.email')} required hint={t('admin.email_hint')}>
         <input
           className="input"
           type="email"
@@ -566,7 +566,7 @@ function NewStaffForm({
         />
       </Field>
 
-      <Field label="Employee code" required>
+      <Field label={t('admin.employee_code')} required>
         <input
           className="input font-mono"
           value={employeeCode}
@@ -576,7 +576,7 @@ function NewStaffForm({
         />
       </Field>
 
-      <Field label="Role" required>
+      <Field label={t('admin.role')} required>
         <select className="input" value={role} onChange={(event) => setRole(event.target.value)}>
           {roles.map((option) => (
             <option key={option.value} value={option.value}>
@@ -588,8 +588,8 @@ function NewStaffForm({
       </Field>
 
       <Field
-        label="Mobile"
-        hint="Optional."
+        label={t('admin.mobile')}
+        hint={t('admin.optional_dot')}
         error={mobileValid ? undefined : 'Must be 10 digits starting 6-9.'}
       >
         <input
@@ -597,13 +597,13 @@ function NewStaffForm({
           inputMode="numeric"
           value={mobile}
           onChange={(event) => setMobile(event.target.value)}
-          placeholder="10 digits"
+          placeholder={t('person.mobile_placeholder')}
         />
       </Field>
 
       <div className="flex flex-col gap-3 sm:flex-row">
         <button type="button" className="btn-ghost flex-1" onClick={onCancel}>
-          Cancel
+          {t('common.cancel')}
         </button>
         <button
           type="button"

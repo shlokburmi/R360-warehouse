@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { cn } from '@/lib/utils'
 
@@ -159,7 +160,7 @@ export function ProgressCounter({
       </p>
       <p
         className={cn(
-          'my-2 text-6xl font-black tabular-nums transition-colors',
+          'my-2 text-5xl font-black tabular-nums transition-colors sm:text-6xl',
           complete ? 'text-ok dark:text-ok-dark' : 'text-slate-900 dark:text-slate-100',
         )}
       >
@@ -207,8 +208,13 @@ const STATUS_TONES: Record<string, Tone> = {
 }
 
 export function StatusChip({ status }: { status: string }) {
+  const { t } = useTranslation()
   const tone = STATUS_TONES[status] ?? 'info'
-  return <span className={cn('chip', TONE_CLASSES[tone])}>{status.replace(/_/g, ' ')}</span>
+  // The status arrives as a raw Postgres enum value. An unknown one falls back to
+  // the de-underscored English rather than rendering the key, because a new enum
+  // added server-side must not blank out the chip.
+  const label = t(`status.${status}`, { defaultValue: status.replace(/_/g, ' ') })
+  return <span className={cn('chip', TONE_CLASSES[tone])}>{label}</span>
 }
 
 export function Spinner({ label = 'Loading…' }: { label?: string }) {
@@ -267,7 +273,7 @@ export function Stat({
       </p>
       <p
         className={cn(
-          'mt-1 text-4xl font-black tabular-nums',
+          'mt-1 text-3xl font-black tabular-nums sm:text-4xl',
           alarming &&
             (tone === 'bad' ? 'text-bad dark:text-bad-dark' : 'text-warn dark:text-warn-dark'),
         )}
@@ -279,6 +285,7 @@ export function Stat({
 }
 
 export { AnimatedGroup, heroTransitionVariants } from './animated-group'
+export { LanguageToggle } from './language-toggle'
 export { GradientBackdrop } from './gradient-backdrop'
 export { Button, buttonVariants } from './button'
 export { ThemeToggle } from './theme-toggle'

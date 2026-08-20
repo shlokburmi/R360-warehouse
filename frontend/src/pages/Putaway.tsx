@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, get, post } from '@/lib/api'
+import { useErrorText } from '@/hooks/useErrorText'
 import { Scanner } from '@/components/Scanner'
 import { Banner, Card, EmptyState, Field, Spinner, StatusChip } from '@/components/ui'
 import type { BoxPutawayStatus, Location, PutawayResult, PutawayTask } from '@/types'
@@ -17,6 +19,8 @@ import type { BoxPutawayStatus, Location, PutawayResult, PutawayTask } from '@/t
  * put them anywhere but a quarantine rack.
  */
 export function PutawayPage() {
+  const { t } = useTranslation()
+  const errorText = useErrorText()
   const queryClient = useQueryClient()
 
   const [activeBoxId, setActiveBoxId] = useState<string | null>(null)
@@ -90,7 +94,7 @@ export function PutawayPage() {
     onError: (err) => setError(err as ApiError),
   })
 
-  if (queue.isLoading) return <Spinner label="Loading putaway list…" />
+  if (queue.isLoading) return <Spinner label={t('putaway.loading')} />
 
   const active = boxStatus.data
   const remaining = resolved?.is_quarantine
@@ -99,10 +103,10 @@ export function PutawayPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-black">Putaway</h1>
+      <h1 className="text-2xl font-black">{t('putaway.title')}</h1>
 
       {error && (
-        <Banner tone={error.isControlPoint ? 'bad' : 'warn'} title={error.message}>
+        <Banner tone={error.isControlPoint ? 'bad' : 'warn'} title={errorText(error).title}>
           {error.hint}
         </Banner>
       )}
@@ -117,8 +121,8 @@ export function PutawayPage() {
         <>
           {queue.data?.length === 0 ? (
             <EmptyState
-              title="Nothing to put away"
-              hint="Boxes appear here once the inbound team has verified their counts."
+              title={t('putaway.none')}
+              hint={t('putaway.none_hint')}
             />
           ) : (
             queue.data?.map((task) => (
@@ -150,7 +154,7 @@ export function PutawayPage() {
                     reset()
                   }}
                 >
-                  Put this box away
+                  {t('putaway.put_away')}
                 </button>
               </Card>
             ))
@@ -170,31 +174,31 @@ export function PutawayPage() {
                   reset()
                 }}
               >
-                Back
+                {t('common.back')}
               </button>
             }
           >
             <dl className="grid grid-cols-2 gap-3 text-base sm:grid-cols-4">
               <div>
-                <dt className="text-slate-500 dark:text-slate-400">Good units</dt>
+                <dt className="text-slate-500 dark:text-slate-400">{t('putaway.good_units')}</dt>
                 <dd className="text-2xl font-black tabular-nums">
                   {active?.stock_remaining ?? 0}
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-500 dark:text-slate-400">Damaged</dt>
+                <dt className="text-slate-500 dark:text-slate-400">{t('putaway.damaged')}</dt>
                 <dd className="text-2xl font-black tabular-nums text-bad dark:text-bad-dark">
                   {active?.quarantine_remaining ?? 0}
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-500 dark:text-slate-400">Already placed</dt>
+                <dt className="text-slate-500 dark:text-slate-400">{t('putaway.already_placed')}</dt>
                 <dd className="text-2xl font-black tabular-nums">
                   {(active?.stock_placed ?? 0) + (active?.quarantine_placed ?? 0)}
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-500 dark:text-slate-400">Arrived</dt>
+                <dt className="text-slate-500 dark:text-slate-400">{t('putaway.arrived')}</dt>
                 <dd className="text-2xl font-black tabular-nums">
                   {active?.scanned_units ?? 0}
                 </dd>
@@ -202,7 +206,7 @@ export function PutawayPage() {
             </dl>
           </Card>
 
-          <Card title="Scan the rack label" subtitle="Or type the location code">
+          <Card title={t('putaway.scan_rack')} subtitle={t('putaway.or_type')}>
             <Scanner onScan={(code) => void lookupLocation(code)} />
 
             <form
@@ -220,7 +224,7 @@ export function PutawayPage() {
                 autoCapitalize="characters"
                 autoCorrect="off"
                 spellCheck={false}
-                aria-label="Location code"
+                aria-label={t('putaway.location_code')}
               />
               <button
                 type="submit"
@@ -239,14 +243,14 @@ export function PutawayPage() {
             >
               {resolved.is_quarantine ? (
                 <div className="mb-4">
-                  <Banner tone="warn" title="Quarantine location">
-                    Only damaged units belong here.
+                  <Banner tone="warn" title={t('putaway.quarantine_location')}>
+                    {t('putaway.damaged_only')}
                   </Banner>
                 </div>
               ) : (
                 <div className="mb-4">
-                  <Banner tone="ok" title="Stock location">
-                    Good units only — damaged units are refused here.
+                  <Banner tone="ok" title={t('putaway.stock_location')}>
+                    {t('putaway.good_only')}
                   </Banner>
                 </div>
               )}
@@ -265,7 +269,7 @@ export function PutawayPage() {
                   <Field
                     label={`Units to place here (up to ${remaining})`}
                     required
-                    hint="A box can be split across several racks if one bin is full."
+                    hint={t('putaway.split_ok')}
                   >
                     <input
                       className="input text-center text-3xl font-black"
@@ -306,6 +310,7 @@ export function PutawayPage() {
 }
 
 function PutawayHistory({ boxId }: { boxId: string }) {
+  const { t } = useTranslation()
   const history = useQuery({
     queryKey: ['putaway-history', boxId],
     queryFn: () =>
@@ -325,11 +330,11 @@ function PutawayHistory({ boxId }: { boxId: string }) {
   if (!history.data || history.data.length === 0) return null
 
   return (
-    <Card title="Already placed from this box">
+    <Card title={t('putaway.already_from_box')}>
       <ul className="divide-y divide-slate-200 dark:divide-slate-800">
         {history.data.map((row) => (
           <li key={row.id} className="flex items-center justify-between gap-3 py-3">
-            <div>
+            <div className="min-w-0">
               <p className="font-mono font-bold">{row.location_code}</p>
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {row.moved_by_name} · {new Date(row.moved_at).toLocaleString()}

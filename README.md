@@ -7,16 +7,18 @@ attributable to a named person at a recorded time.
 **Stack:** FastAPI · React + TypeScript · Supabase (Postgres, Auth, Storage) ·
 Render · Vercel
 
-**All four phases are implemented and verified running.** Gate entry, Ops
+**All five phases are implemented and verified running.** Gate entry, Ops
 approval, box counting, unit scanning, inbound reconciliation, putaway, rack
 locations, stock lookup, invoice matching, packing attribution, out-scan, batch
 release, pickup verification, gate exit, exceptions, dashboard and reports —
 plus staff provisioning and badge issue, which were SQL jobs until Phase 5.
 
-**All seven control points in PRD §4 are enforced by the database.** 112 automated
-tests and three end-to-end walkthroughs (134, 41 and 14 checks) pass against the
-local stack, covering the whole path from a truck arriving at the gate to a
-different truck leaving with packed cartons.
+**Eleven hard stops are enforced by the database** — the seven control points in
+PRD §4, plus the four outbound gates added in Phase 5 (packing assignment,
+product-box reconciliation, the guard's carton count, and Ops approval of the
+truck leaving). 166 automated tests and four end-to-end walkthroughs (134, 45, 41
+and 14 checks) pass against the local stack, covering the whole path from a truck
+arriving at the gate to a different truck leaving with packed cartons.
 
 ---
 
@@ -138,16 +140,32 @@ whole point of CONTROL POINT 1 is that one person cannot do both halves.
 12. **Matcher** (`match1@r360.local`) → *Matching*. Scan `INV-2026-0001`; the page
     tells you which rack the stock is on. Confirm the match, then scan your
     badge. Try a packer's badge to see it refused.
-13. **Packer** (`pack1@r360.local`) → *Packing*. The invoice now appears. Scan
-    your badge to record the pack. An Ops manager can verify *and* try to pack
-    the same invoice — CP5 refuses, because it must be two different people.
-14. **Ops** → *Out-Scan*. Select packed cartons, create a batch, then scan each
+13. **Matcher or packer** → *Packing*. The verified invoice appears. Scan the
+    packer's badge card to **assign** the carton to her — try the matcher's own
+    badge to see it refused, because the person who checked the goods cannot also
+    pack them (CP5). Reassigning to a second packer keeps both records, so "who
+    had it at 14:20" stays answerable.
+14. **Packer** (`pack1@r360.local`) → the carton is in *My cartons*. Scan each
+    product box into it. Scan one twice to see it rejected, scan the big box's
+    sticker to see the wrong-sticker refusal, and try to close the carton one box
+    short — refused, because packed must equal promised. Then scan the last box
+    and confirm with your badge.
+15. **Ops** → *Out-Scan*. Select packed cartons, create a batch, then scan each
     carton's invoice label. Try completing with one unscanned to see CP6 stop it,
-    then finish and release.
-15. **Guard** → *Pickup*. The released batch appears. Register the collecting
+    then complete. Now try to release — refused: nobody has counted the cartons.
+16. **Guard** → *Carton Count*. Type how many cartons are physically on the bay.
+    The system's number appears only after you commit to yours. Enter a wrong
+    number to see the mismatch flagged, then send it to Ops.
+17. **Ops** → *Approvals*. The count is at the top. Approve it (try as the guard
+    who counted — refused), then release the batch.
+18. **Guard** → *Pickup*. The released batch appears. Register the collecting
     vehicle — note that the driver from step 1 is recognised and not
-    re-photographed. Scan cartons onto the vehicle; try releasing with one still
-    missing to see CP7 refuse, then load the last one and open the gate.
+    re-photographed. Scan cartons onto the vehicle; try verifying with one still
+    missing to see CP7 refuse, then load the last one and verify.
+19. **Guard** → *Request permission to leave*. The gate does not open yet.
+20. **Ops** → *Approvals*. Hold the vehicle with a reason and watch it come back
+    to the guard's screen with that reason on it. Then approve.
+21. **Guard** → *Open gate*. Time out is stamped, and the vehicle leaves.
 
 Separately, as **Admin** → *Staff*: add a packer, note the temporary password,
 sign in as them. Issue their badge and print the card. Reissue it and watch the
@@ -160,8 +178,9 @@ with your name against it, and the code is not.
 
 ```bash
 cd backend && source .venv/bin/activate
-pytest                          # 112 tests; skips cleanly with no database
-python scripts/e2e_admin.py     # 41 checks over real HTTP; needs uvicorn running
+pytest                          # 166 tests; skips cleanly with no database
+python scripts/e2e_workflow.py  # 45 checks over real HTTP; needs uvicorn running
+python scripts/e2e_admin.py     # 41 checks over real HTTP
 python scripts/e2e_retention.py # 14 checks against real Supabase Storage
 ```
 
@@ -180,7 +199,10 @@ every cycle, logged "retrying next cycle", and stayed silent. A job that catches
 its own exceptions to stay alive looks identical to a job with nothing to do, so
 it needs a test that calls it.
 
-The two scripts cover what only becomes true outside the database.
+The three scripts cover what only becomes true outside the database.
+`e2e_workflow.py`: that the four Phase 5 gates are wired onto routes with the
+right role guards, and that each refusal arrives as a sentence an operator can
+act on.
 `e2e_admin.py`: that `require_admin` is genuinely wired onto the routes, and that
 an account created on that screen can actually sign in. `e2e_retention.py`: that
 an identity photo really leaves Supabase Storage — the one thing a retention job
@@ -211,6 +233,9 @@ supabase/migrations/   0001-0006 schema, audit, control points, RLS, storage
                        0011-0012 pickup, gate exit
                        0013      admin provisioning, badge issue, audit redaction
                        0014      identity photo retention
+                       0015      order-no OCR
+                       0016-0019 packing assignment, carton count and exit
+                                 approvals, product-sticker reconciliation
 backend/app/
   db/session.py        RLS-aware transaction — the important file
   core/errors.py       Postgres refusals → messages a guard can act on
@@ -219,6 +244,8 @@ backend/app/
   api/v1/              routes
   worker.py            SLA escalation, email, photo retention — separate process
   services/retention.py identity photos are destroyed at 180 days, not just hidden
+  services/loading.py  the guard's carton count and Ops's decision on it
+  scripts/e2e_workflow.py the Phase 5 outbound flow over real HTTP
   scripts/e2e_admin.py the Admin flow over real HTTP
 frontend/src/
   lib/offlineQueue.ts  IndexedDB scan queue, idempotent replay
@@ -228,6 +255,7 @@ frontend/src/
   components/BadgeCardPrint the printable badge — QR only, deliberately no text
   components/PersonFields visitor registration, shared by inbound and outbound
   pages/               one page per PRD §5 screen
+docs/WORKFLOW.md       the process end to end: who does what, and what it refuses
 docs/DECISIONS.md      answers to PRD §13, and why
 ```
 

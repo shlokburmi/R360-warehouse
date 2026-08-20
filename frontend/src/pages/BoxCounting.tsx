@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, get, post, postControlPoint } from '@/lib/api'
+import { useErrorText } from '@/hooks/useErrorText'
 import { useAuth } from '@/hooks/useAuth'
 import { useScanning } from '@/hooks/useScanning'
 import { Scanner } from '@/components/Scanner'
@@ -32,6 +34,8 @@ type StickerIssueResult = {
  * the stickers exist before anything can be scanned.
  */
 export function BoxCountingPage() {
+  const { t } = useTranslation()
+  const errorText = useErrorText()
   const { entryId = '' } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -114,7 +118,7 @@ export function BoxCountingPage() {
   })
 
   if (entry.isLoading) return <Spinner />
-  if (!entry.data) return <Banner tone="bad" title="Truck not found" />
+  if (!entry.data) return <Banner tone="bad" title={t('boxcount.truck_not_found')} />
 
   const isOps = me?.role === 'ops_manager' || me?.role === 'admin'
   const isGuard = me?.role === 'security_guard'
@@ -127,7 +131,7 @@ export function BoxCountingPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <h1 className="text-2xl font-black">{entry.data.vehicle_number}</h1>
           <p className="text-base text-slate-500 dark:text-slate-400">
             {entry.data.entry_code} · {entry.data.vendor_name} · {entry.data.po_number ?? 'No PO'}
@@ -137,20 +141,20 @@ export function BoxCountingPage() {
       </div>
 
       {error && (
-        <Banner tone={error.isControlPoint ? 'bad' : 'warn'} title={error.message}>
+        <Banner tone={error.isControlPoint ? 'bad' : 'warn'} title={errorText(error).title}>
           {error.hint}
         </Banner>
       )}
 
       {/* Step 1 — the guard's physical count */}
-      <Card title="1 · Count the boxes" subtitle="How many boxes are physically on the truck?">
+      <Card title={t('boxcount.step1')} subtitle={t('boxcount.how_many')}>
         {hasCount ? (
           <Banner tone="ok" title={`${entry.data.declared_box_count} boxes declared`}>
-            Recorded before any stickers were issued.
+            {t('boxcount.before_stickers')}
           </Banner>
         ) : isGuard || isOps ? (
           <>
-            <Field label="Number of boxes" required>
+            <Field label={t('boxcount.number_of_boxes')} required>
               <input
                 className="input text-center text-3xl font-black"
                 type="number"
@@ -166,18 +170,18 @@ export function BoxCountingPage() {
               disabled={!declared || Number(declared) < 1 || declareCount.isPending}
               onClick={() => declareCount.mutate()}
             >
-              Confirm count
+              {t('boxcount.confirm_count')}
             </button>
           </>
         ) : (
-          <p className="text-base text-slate-500">Waiting for the guard to count the boxes.</p>
+          <p className="text-base text-slate-500">{t('boxcount.waiting_guard_count')}</p>
         )}
       </Card>
 
       {/* Step 2 — Ops issues exactly that many stickers */}
       {hasCount && (
         <Card
-          title="2 · Sticker sheet"
+          title={t('boxcount.step2')}
           subtitle={`Ops issues exactly ${entry.data.declared_box_count} stickers`}
         >
           {hasStickers && sheet.data ? (
@@ -204,8 +208,8 @@ export function BoxCountingPage() {
               </button>
             </>
           ) : (
-            <Banner tone="warn" title="Waiting for Ops to issue the sticker sheet">
-              Boxes cannot be scanned until the stickers are printed.
+            <Banner tone="warn" title={t('boxcount.waiting_ops_sheet')}>
+              {t('boxcount.no_stickers_yet')}
             </Banner>
           )}
         </Card>
@@ -215,12 +219,12 @@ export function BoxCountingPage() {
       {hasStickers && !verified && (
         <>
           <ProgressCounter
-            label="Boxes scanned"
+            label={t('boxcount.boxes_scanned')}
             scanned={progress.data?.scanned ?? 0}
             total={progress.data?.total ?? 0}
           />
 
-          <Card title="3 · Scan each box sticker">
+          <Card title={t('boxcount.step3')}>
             <Scanner onScan={(code) => void submit(code)} />
 
             {feedback.length > 0 && (
@@ -228,7 +232,7 @@ export function BoxCountingPage() {
                 {feedback.map((item) => (
                   <li
                     key={item.id}
-                    className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-base ${
+                    className={`flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2 text-base ${
                       item.tone === 'ok'
                         ? 'bg-ok-bg text-ok dark:bg-ok-darkbg dark:text-ok-dark'
                         : item.tone === 'warn'
@@ -253,19 +257,19 @@ export function BoxCountingPage() {
 
           {progress.data?.complete ? (
             <>
-              <Banner tone="ok" title="All boxes verified — move to next step" />
+              <Banner tone="ok" title={t('boxcount.all_verified')} />
               <button
                 type="button"
                 className="btn-success w-full"
                 disabled={verify.isPending}
                 onClick={() => verify.mutate()}
               >
-                Confirm and allow boxes inside
+                {t('boxcount.confirm_inside')}
               </button>
             </>
           ) : (
             <Banner tone="warn" title={progress.data?.message ?? 'Scanning in progress'}>
-              Boxes cannot move inside until every sticker is scanned.
+              {t('boxcount.must_scan_all')}
             </Banner>
           )}
         </>
@@ -273,7 +277,7 @@ export function BoxCountingPage() {
 
       {verified && (
         <>
-          <Banner tone="ok" title="Box count verified">
+          <Banner tone="ok" title={t('boxcount.count_verified')}>
             {entry.data.declared_box_count} boxes counted, issued and scanned.
           </Banner>
           <button
@@ -281,13 +285,13 @@ export function BoxCountingPage() {
             className="btn-primary w-full"
             onClick={() => navigate(`/entries/${entryId}/units`)}
           >
-            Go to unit scanning
+            {t('boxcount.go_unit_scanning')}
           </button>
         </>
       )}
 
       {boxes.data && boxes.data.length > 0 && (
-        <Card title="Boxes">
+        <Card title={t('boxcount.boxes')}>
           <ul className="divide-y divide-slate-200 dark:divide-slate-800">
             {boxes.data.map((box) => (
               <li key={box.id} className="flex items-center justify-between gap-3 py-3">

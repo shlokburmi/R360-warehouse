@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, get, post, postControlPoint } from '@/lib/api'
+import { useErrorText } from '@/hooks/useErrorText'
 import { Scanner } from '@/components/Scanner'
 import { useScanning } from '@/hooks/useScanning'
 import {
@@ -22,6 +24,8 @@ import type { Batch, BatchCompleteResult, Invoice } from '@/types'
  * whatever happened to be scanned could never fail its own check.
  */
 export function BatchesPage() {
+  const { t } = useTranslation()
+  const errorText = useErrorText()
   const queryClient = useQueryClient()
   const [openBatchId, setOpenBatchId] = useState<string | null>(null)
   const [picked, setPicked] = useState<Set<string>>(new Set())
@@ -71,20 +75,20 @@ export function BatchesPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-black">Out-Scan & Batch Release</h1>
+      <h1 className="text-2xl font-black">{t('batches.title')}</h1>
 
       {error && (
-        <Banner tone={error.isControlPoint ? 'bad' : 'warn'} title={error.message}>
+        <Banner tone={error.isControlPoint ? 'bad' : 'warn'} title={errorText(error).title}>
           {error.hint}
         </Banner>
       )}
 
       {active && active.length > 0 && (
-        <Card title="Batches in progress">
+        <Card title={t('batches.in_progress')}>
           <ul className="divide-y divide-slate-200 dark:divide-slate-800">
             {active.map((batch) => (
               <li key={batch.batch_id} className="flex items-center justify-between gap-3 py-3">
-                <div>
+                <div className="min-w-0">
                   <p className="font-bold">{batch.batch_code}</p>
                   <p className="text-sm text-slate-500 dark:text-slate-400">
                     {batch.scanned_cartons} of {batch.assigned_cartons} cartons scanned
@@ -107,13 +111,13 @@ export function BatchesPage() {
       )}
 
       <Card
-        title="Packed cartons waiting for a batch"
-        subtitle="Select the cartons going out together, then create the batch"
+        title={t('batches.waiting')}
+        subtitle={t('batches.select_hint')}
       >
         {ready.data?.length === 0 ? (
           <EmptyState
-            title="No packed cartons waiting"
-            hint="Cartons appear here once a packer has scanned their badge."
+            title={t('batches.none_waiting')}
+            hint={t('batches.none_hint')}
           />
         ) : (
           <>
@@ -152,7 +156,7 @@ export function BatchesPage() {
                   setPicked(new Set(ready.data?.map((i) => i.invoice_id) ?? []))
                 }
               >
-                Select all
+                {t('batches.select_all')}
               </button>
               <button
                 type="button"
@@ -170,11 +174,11 @@ export function BatchesPage() {
       </Card>
 
       {done && done.length > 0 && (
-        <Card title="Released">
+        <Card title={t('batches.released')}>
           <ul className="divide-y divide-slate-200 dark:divide-slate-800">
             {done.slice(0, 10).map((batch) => (
               <li key={batch.batch_id} className="flex items-center justify-between gap-3 py-3">
-                <div>
+                <div className="min-w-0">
                   <p className="font-bold">{batch.batch_code}</p>
                   <p className="text-sm text-slate-500 dark:text-slate-400">
                     {batch.assigned_cartons} cartons · released by {batch.released_by_name}
@@ -191,6 +195,8 @@ export function BatchesPage() {
 }
 
 function BatchDetail({ batchId, onBack }: { batchId: string; onBack: () => void }) {
+  const { t } = useTranslation()
+  const errorText = useErrorText()
   const queryClient = useQueryClient()
   const [error, setError] = useState<ApiError | null>(null)
   const [completeResult, setCompleteResult] = useState<BatchCompleteResult | null>(null)
@@ -227,7 +233,7 @@ function BatchDetail({ batchId, onBack }: { batchId: string; onBack: () => void 
   })
 
   if (batch.isLoading) return <Spinner />
-  if (!batch.data) return <Banner tone="bad" title="Batch not found" />
+  if (!batch.data) return <Banner tone="bad" title={t('batches.not_found')} />
 
   const b = batch.data
   const scanning = b.status === 'open' || b.status === 'scanning'
@@ -235,7 +241,7 @@ function BatchDetail({ batchId, onBack }: { batchId: string; onBack: () => void 
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <h1 className="text-2xl font-black">{b.batch_code}</h1>
           <p className="text-base text-slate-500 dark:text-slate-400">
             Created by {b.created_by_name}
@@ -244,31 +250,31 @@ function BatchDetail({ batchId, onBack }: { batchId: string; onBack: () => void 
         <div className="flex items-center gap-3">
           <StatusChip status={b.status} />
           <button type="button" className="text-base font-semibold text-slate-500" onClick={onBack}>
-            Back
+            {t('common.back')}
           </button>
         </div>
       </div>
 
       {error && (
-        <Banner tone={error.isControlPoint ? 'bad' : 'warn'} title={error.message}>
+        <Banner tone={error.isControlPoint ? 'bad' : 'warn'} title={errorText(error).title}>
           {error.hint}
         </Banner>
       )}
 
       {completeResult && !completeResult.completed && (
         <Banner tone="bad" title={completeResult.message}>
-          The batch cannot be released until every carton is scanned.
+          {t('batches.cannot_release')}
         </Banner>
       )}
 
       <ProgressCounter
-        label="Cartons out-scanned"
+        label={t('batches.cartons_out_scanned')}
         scanned={b.scanned_cartons}
         total={b.assigned_cartons}
       />
 
       {scanning && (
-        <Card title="Scan each carton's invoice label">
+        <Card title={t('batches.scan_each')}>
           <Scanner onScan={(code) => void submit(code)} />
 
           {feedback.length > 0 && (
@@ -276,7 +282,7 @@ function BatchDetail({ batchId, onBack }: { batchId: string; onBack: () => void 
               {feedback.map((item) => (
                 <li
                   key={item.id}
-                  className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-base ${
+                  className={`flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2 text-base ${
                     item.tone === 'ok'
                       ? 'bg-ok-bg text-ok dark:bg-ok-darkbg dark:text-ok-dark'
                       : item.tone === 'warn'
@@ -300,13 +306,13 @@ function BatchDetail({ batchId, onBack }: { batchId: string; onBack: () => void 
           disabled={complete.isPending}
           onClick={() => complete.mutate()}
         >
-          All cartons scanned — complete the batch
+          {t('batches.all_scanned')}
         </button>
       )}
 
       {b.status === 'complete' && (
         <>
-          <Banner tone="ok" title="Batch complete — ready for pickup">
+          <Banner tone="ok" title={t('batches.complete')}>
             {b.assigned_cartons} cartons verified present.
           </Banner>
           <button
@@ -315,18 +321,18 @@ function BatchDetail({ batchId, onBack }: { batchId: string; onBack: () => void 
             disabled={release.isPending}
             onClick={() => release.mutate()}
           >
-            Release to pickup area
+            {t('batches.release')}
           </button>
         </>
       )}
 
       {b.status === 'released' && (
         <Banner tone="ok" title={`Released by ${b.released_by_name}`}>
-          The invoices in this batch are now closed.
+          {t('batches.invoices_closed')}
         </Banner>
       )}
 
-      <Card title="Cartons in this batch">
+      <Card title={t('batches.cartons_in_batch')}>
         <ul className="divide-y divide-slate-200 dark:divide-slate-800">
           {b.cartons.map((carton) => (
             <li

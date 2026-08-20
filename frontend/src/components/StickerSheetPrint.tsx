@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import QRCode from 'qrcode'
 import type { StickerSheet } from '@/types'
 
@@ -13,6 +14,7 @@ import type { StickerSheet } from '@/types'
  * can sanity-check a box without opening the app at all.
  */
 export function StickerSheetPrint({ sheet }: { sheet: StickerSheet }) {
+  const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -43,7 +45,7 @@ export function StickerSheetPrint({ sheet }: { sheet: StickerSheet }) {
       `}</style>
 
       <div className="no-print mb-4 flex items-center justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <p className="text-lg font-bold">
             {sheet.quantity} {sheet.sticker_type} sticker{sheet.quantity === 1 ? '' : 's'}
           </p>
@@ -53,7 +55,7 @@ export function StickerSheetPrint({ sheet }: { sheet: StickerSheet }) {
           </p>
         </div>
         <button type="button" className="btn-primary" onClick={() => window.print()}>
-          Print sheet
+          {t('stickers.print_sheet')}
         </button>
       </div>
 

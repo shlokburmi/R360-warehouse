@@ -25,7 +25,8 @@ async def people(db):
             """
             select employee_code, id, badge_code, role::text as role
               from profiles
-             where employee_code in ('EMP-M01', 'EMP-M02', 'EMP-P01', 'EMP-P02', 'EMP-O01')
+             where employee_code in ('EMP-M01', 'EMP-M02', 'EMP-P01', 'EMP-P02', 'EMP-O01',
+                                   'EMP-G01', 'EMP-F01')
             """
         )
     )
@@ -40,6 +41,10 @@ async def people(db):
         "packer_a": by_code["EMP-P01"],
         "packer_b": by_code["EMP-P02"],
         "ops": by_code["EMP-O01"],
+        # Needed since 0019: producing a packable carton means receiving the
+        # goods first, which is a guard and an offloader's work.
+        "guard": by_code["EMP-G01"],
+        "offloader_id": by_code["EMP-F01"]["id"],
     }
 
 
@@ -119,6 +124,7 @@ class TestControlPoint5:
 
     async def test_verified_then_packed_by_someone_else_succeeds(self, db, invoice, people):
         await _verify(db, invoice["id"], people["matcher_a"]["id"])
+        await _stock_and_pack_scan(db, invoice, people)
         await _pack(db, invoice["id"], people["packer_a"]["id"])
 
         row = (
@@ -140,6 +146,7 @@ class TestControlPoint5:
 
     async def test_an_invoice_cannot_be_packed_twice(self, db, invoice, people):
         await _verify(db, invoice["id"], people["matcher_a"]["id"])
+        await _stock_and_pack_scan(db, invoice, people)
         await _pack(db, invoice["id"], people["packer_a"]["id"])
 
         async with rejected(db):
@@ -177,12 +184,198 @@ class TestControlPoint5:
             await _pack(db, invoice["id"], people["packer_a"]["id"])
 
 
+async def _stock_and_pack_scan(db, invoice, people):
+    """Give an invoice real product boxes, received and scanned into the carton.
+
+    Migration 0019 makes packing a scanning step: a carton cannot close until the
+    number of product boxes scanned into it equals the number the invoice
+    promises. So a test that wants a packed carton has to produce the goods,
+    exactly as the floor does — receive them at offloading first, then scan them
+    into the carton.
+
+    Written out in full rather than shortcut because the shortcut is the thing
+    under test: if product boxes could be packed without having arrived, packing
+    would be a second, unaudited route to creating inventory.
+    """
+    line_id = (
+        await db.execute(
+            text("select purchase_order_line_id from invoices where id = :i"),
+            {"i": invoice["id"]},
+        )
+    ).scalar_one()
+
+    po = (
+        await db.execute(
+            text(
+                """
+                select po.id, po.vendor_id from purchase_orders po
+                  join purchase_order_lines pol on pol.purchase_order_id = po.id
+                 where pol.id = :l
+                """
+            ),
+            {"l": line_id},
+        )
+    ).mappings().one()
+
+    units = invoice.get("units", 2)
+
+    entry_id = (
+        await db.execute(
+            text(
+                """
+                insert into gate_entries
+                  (status, vehicle_number, vendor_id, purchase_order_id,
+                   requested_by, requested_at)
+                values ('pending_approval', :veh, :vendor, :po, :guard, now())
+                returning id
+                """
+            ),
+            {
+                "veh": f"KA01PK{uuid.uuid4().hex[:4].upper()}",
+                "vendor": po["vendor_id"],
+                "po": po["id"],
+                "guard": people["guard"]["id"],
+            },
+        )
+    ).scalar_one()
+
+    for sql_stmt, params in [
+        ("update gate_entries set status = 'approved', decided_by = :o, decided_at = now() "
+         "where id = :e", {"o": people["ops"]["id"], "e": entry_id}),
+        ("update gate_entries set status = 'inside' where id = :e", {"e": entry_id}),
+        ("update gate_entries set declared_box_count = 1, declared_by = :g, "
+         "declared_at = now(), status = 'counting' where id = :e",
+         {"g": people["guard"]["id"], "e": entry_id}),
+    ]:
+        await db.execute(text(sql_stmt), params)
+
+    box_sheet = (
+        await db.execute(
+            text(
+                "insert into sticker_sheets (gate_entry_id, sticker_type, quantity, generated_by) "
+                "values (:e, 'box', 1, :o) returning id"
+            ),
+            {"e": entry_id, "o": people["ops"]["id"]},
+        )
+    ).scalar_one()
+
+    box_code = f"BOX-{uuid.uuid4().hex[:8].upper()}"
+    sticker_id = (
+        await db.execute(
+            text(
+                """
+                insert into stickers
+                  (code, sticker_type, sheet_id, gate_entry_id, purchase_order_line_id,
+                   expected_units, sequence_no, status)
+                values (:c, 'box', :sh, :e, :l, :u, 1, 'applied') returning id
+                """
+            ),
+            {"c": box_code, "sh": box_sheet, "e": entry_id, "l": line_id, "u": units},
+        )
+    ).scalar_one()
+
+    box_id = (
+        await db.execute(
+            text(
+                """
+                insert into boxes
+                  (gate_entry_id, sticker_id, box_number, purchase_order_line_id, expected_units)
+                values (:e, :s, 1, :l, :u) returning id
+                """
+            ),
+            {"e": entry_id, "s": sticker_id, "l": line_id, "u": units},
+        )
+    ).scalar_one()
+
+    await db.execute(
+        text("update stickers set box_id = :b where id = :s"), {"b": box_id, "s": sticker_id}
+    )
+    await db.execute(
+        text("update gate_entries set issued_box_sticker_count = 1 where id = :e"),
+        {"e": entry_id},
+    )
+    await _raw_scan(db, box_code, "box_verify", people["guard"]["id"])
+
+    await db.execute(
+        text("update gate_entries set status = 'box_verified' where id = :e"), {"e": entry_id}
+    )
+    await db.execute(
+        text("update gate_entries set status = 'offloading' where id = :e"), {"e": entry_id}
+    )
+
+    unit_sheet = (
+        await db.execute(
+            text(
+                "insert into sticker_sheets (gate_entry_id, sticker_type, quantity, generated_by) "
+                "values (:e, 'unit', :n, :o) returning id"
+            ),
+            {"e": entry_id, "n": units, "o": people["ops"]["id"]},
+        )
+    ).scalar_one()
+
+    codes = []
+    for seq in range(1, units + 1):
+        code = f"UNT-{uuid.uuid4().hex[:8].upper()}"
+        await db.execute(
+            text(
+                """
+                insert into stickers
+                  (code, sticker_type, sheet_id, gate_entry_id, box_id,
+                   purchase_order_line_id, sequence_no, status)
+                values (:c, 'unit', :sh, :e, :b, :l, :seq, 'applied')
+                """
+            ),
+            {"c": code, "sh": unit_sheet, "e": entry_id, "b": box_id, "l": line_id, "seq": seq},
+        )
+        await _raw_scan(db, code, "unit_verify", people["offloader_id"])
+        codes.append(code)
+
+    for code in codes:
+        await db.execute(
+            text(
+                """
+                insert into scan_events
+                  (client_event_id, scan_type, raw_code, invoice_id,
+                   accepted, scanned_by, scanned_at)
+                values (:cid, 'pack_unit', :code, :inv, false, :who, now())
+                """
+            ),
+            {
+                "cid": str(uuid.uuid4()),
+                "code": code,
+                "inv": invoice["id"],
+                "who": people["packer_a"]["id"],
+            },
+        )
+
+    return codes
+
+
+async def _raw_scan(db, code, scan_type, actor):
+    await db.execute(
+        text(
+            """
+            insert into scan_events
+              (client_event_id, scan_type, raw_code, accepted, scanned_by, scanned_at)
+            values (:cid, cast(:st as scan_type), :code, false, :actor, now())
+            """
+        ),
+        {"cid": str(uuid.uuid4()), "st": scan_type, "code": code, "actor": actor},
+    )
+
+
 async def _packed_invoices(db, people, count=3):
-    """Fresh invoices, verified and packed, ready to be batched."""
+    """Fresh invoices, verified and packed, ready to be batched.
+
+    Since 0019 this has to produce the goods too — a carton will not close until
+    every product box it promises has been scanned into it.
+    """
     invoices = []
     for _ in range(count):
         inv = await _new_invoice(db)
+        inv["units"] = 2
         await _verify(db, inv["id"], people["matcher_a"]["id"])
+        await _stock_and_pack_scan(db, inv, people)
         await _pack(db, inv["id"], people["packer_a"]["id"])
         invoices.append(inv)
     return invoices
@@ -208,6 +401,53 @@ async def _batch_of(db, invoices, people):
         {"b": batch_id, "ids": [str(i["id"]) for i in invoices]},
     )
     return batch_id
+
+
+async def _approve_load(db, batch_id, people):
+    """The guard counts the cartons and Ops approves the count.
+
+    Added by migration 0018: a batch cannot reach 'released' without this, for
+    the same reason a truck cannot enter the gate without CONTROL POINT 1. The
+    two people have to differ, so the guard is looked up rather than reusing an
+    Ops actor.
+    """
+    guard = (
+        await db.execute(
+            text("select id from profiles where employee_code = 'EMP-G01'")
+        )
+    ).scalar_one()
+
+    actual = (
+        await db.execute(
+            text("select count(*)::int from packing_records where batch_id = :b"),
+            {"b": batch_id},
+        )
+    ).scalar_one()
+
+    approval_id = (
+        await db.execute(
+            text(
+                """
+                insert into batch_load_approvals
+                  (batch_id, counted_cartons, counted_by, expected_cartons)
+                values (:b, :n, :g, :n) returning id
+                """
+            ),
+            {"b": batch_id, "n": actual, "g": guard},
+        )
+    ).scalar_one()
+
+    await db.execute(
+        text(
+            """
+            update batch_load_approvals
+               set status = 'approved', decided_by = :ops
+             where id = :id
+            """
+        ),
+        {"ops": people["ops"]["id"], "id": approval_id},
+    )
+    return approval_id
 
 
 async def _out_scan(db, code, who):
@@ -327,6 +567,7 @@ class TestControlPoint6:
         await db.execute(
             text("update batches set status = 'complete' where id = :id"), {"id": batch_id}
         )
+        await _approve_load(db, batch_id, people)
 
         async with rejected(db, containing="named releasing user"):
             await db.execute(

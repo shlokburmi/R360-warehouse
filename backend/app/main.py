@@ -7,7 +7,17 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from app.api.v1 import admin, gate, meta, packing, pickup, putaway, reports, warehouse
+from app.api.v1 import (
+    admin,
+    gate,
+    loading,
+    meta,
+    packing,
+    pickup,
+    putaway,
+    reports,
+    warehouse,
+)
 from app.core.config import get_settings
 from app.core.errors import install_error_handlers
 from app.db.session import dispose_engines, get_engine
@@ -90,6 +100,7 @@ api.include_router(packing.router)
 api.include_router(pickup.router)
 api.include_router(reports.router)
 api.include_router(admin.router)
+api.include_router(loading.router)
 app.include_router(api)
 
 

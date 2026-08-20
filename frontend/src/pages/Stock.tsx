@@ -1,15 +1,16 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { get } from '@/lib/api'
 import { Card, EmptyState, Spinner } from '@/components/ui'
 import type { StockRow } from '@/types'
 
 const ZONES = [
-  { code: '', label: 'All zones' },
-  { code: 'A', label: 'A — Fast moving' },
-  { code: 'B', label: 'B — Bulk' },
-  { code: 'C', label: 'C — High value' },
-  { code: 'Q', label: 'Q — Quarantine' },
+  { code: '', labelKey: 'stock.zone_all' },
+  { code: 'A', labelKey: 'stock.zone_a' },
+  { code: 'B', labelKey: 'stock.zone_b' },
+  { code: 'C', labelKey: 'stock.zone_c' },
+  { code: 'Q', labelKey: 'stock.zone_q' },
 ]
 
 /**
@@ -20,6 +21,7 @@ const ZONES = [
  * marked so nobody picks from them by accident.
  */
 export function StockPage() {
+  const { t } = useTranslation()
   const [sku, setSku] = useState('')
   const [zone, setZone] = useState('')
 
@@ -43,29 +45,29 @@ export function StockPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-black">Stock by Location</h1>
+      <h1 className="text-2xl font-black">{t('stock.title')}</h1>
 
       <Card>
         <div className="flex flex-wrap gap-3">
           <input
             className="input flex-1 font-mono uppercase"
-            placeholder="Filter by SKU"
+            placeholder={t('stock.filter_by_sku')}
             value={sku}
             onChange={(event) => setSku(event.target.value.toUpperCase())}
             autoCapitalize="characters"
             autoCorrect="off"
             spellCheck={false}
-            aria-label="SKU"
+            aria-label={t('stock.sku')}
           />
           <select
             className="input sm:w-56"
             value={zone}
             onChange={(event) => setZone(event.target.value)}
-            aria-label="Zone"
+            aria-label={t('stock.zone')}
           >
             {ZONES.map((z) => (
               <option key={z.code} value={z.code}>
-                {z.label}
+                {t(z.labelKey)}
               </option>
             ))}
           </select>
@@ -76,8 +78,8 @@ export function StockPage() {
         <Spinner />
       ) : bySku.size === 0 ? (
         <EmptyState
-          title="Nothing in storage yet"
-          hint="Stock appears here once boxes have been put away."
+          title={t('stock.nothing_yet')}
+          hint={t('stock.nothing_yet_hint')}
         />
       ) : (
         [...bySku.entries()].map(([skuCode, rows]) => {
@@ -97,7 +99,7 @@ export function StockPage() {
                     key={row.location_code}
                     className="flex items-center justify-between gap-3 py-2"
                   >
-                    <div>
+                    <div className="min-w-0">
                       <p className="font-mono font-bold">{row.location_code}</p>
                       {row.last_movement && (
                         <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -112,7 +114,7 @@ export function StockPage() {
                           : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
                       }`}
                     >
-                      {row.units} {row.is_quarantine ? 'quarantined' : 'units'}
+                      {row.units} {row.is_quarantine ? t('stock.quarantined') : t('stock.units')}
                     </span>
                   </li>
                 ))}

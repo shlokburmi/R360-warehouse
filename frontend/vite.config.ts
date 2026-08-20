@@ -35,7 +35,11 @@ export default defineConfig({
         // The one exception to that: worker.min.js matches the glob above and
         // would otherwise be precached on its own — 128KB of a runtime whose
         // other 6MB isn't there.
-        globIgnores: ['**/tesseract/**'],
+        // Also excludes the pdf.js chunk. It is 445KB and only a matcher opening
+        // a PDF challan ever needs it; precaching put it on every guard's phone at
+        // install and undid the point of the dynamic import. Runtime-cached below
+        // instead, on the same reasoning as the OCR engine.
+        globIgnores: ['**/tesseract/**', '**/assets/pdf-*.js'],
         // API responses are never served from cache. A stale box count shown as
         // current is worse than no box count at all.
         navigateFallbackDenylist: [/^\/api/],
@@ -51,7 +55,7 @@ export default defineConfig({
             // "stale" is not a state they can be in. The matcher's station pays
             // the ~6MB download once and then reads challans offline forever;
             // the dashboard-only users never fetch it at all.
-            urlPattern: /\/tesseract\/.*\.(wasm|js|gz)$/,
+            urlPattern: /\/tesseract\/.*\.(wasm|mjs|js|gz)$|\/assets\/pdf-[^/]*\.js$/,
             handler: 'CacheFirst',
             options: {
               cacheName: 'ocr-runtime',

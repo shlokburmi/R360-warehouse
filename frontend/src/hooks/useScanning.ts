@@ -25,11 +25,18 @@ export type ScanFeedback = {
  *   and tells the operator it is saved, because on the warehouse floor the wifi
  *   dropping is a normal event, not an exception.
  */
-export type ScanContext = 'box_verify' | 'unit_verify' | 'out_scan' | 'gate_exit'
+export type ScanContext =
+  | 'box_verify'
+  | 'unit_verify'
+  /** Product boxes going into a carton at the packing bench. */
+  | 'pack_unit'
+  | 'out_scan'
+  | 'gate_exit'
 
 /**
  * `contextId` is whichever aggregate the scan counts against: the gate entry for
- * box/unit scans, the batch for out-scans, the pickup for gate exit.
+ * box/unit scans, the invoice for packing scans, the batch for out-scans, the
+ * pickup for gate exit.
  */
 export function useScanning(contextId: string, scanType: ScanContext) {
   const entryId = contextId
@@ -58,9 +65,11 @@ export function useScanning(contextId: string, scanType: ScanContext) {
             ? `/entries/${entryId}/scan/box`
             : scanType === 'unit_verify'
               ? `/entries/${entryId}/scan/unit`
-              : scanType === 'out_scan'
-                ? `/batches/${entryId}/scan`
-                : `/pickups/${entryId}/scan`
+              : scanType === 'pack_unit'
+                ? `/invoices/${entryId}/pack-scan`
+                : scanType === 'out_scan'
+                  ? `/batches/${entryId}/scan`
+                  : `/pickups/${entryId}/scan`
 
         const result = await post<ScanResult>(endpoint, {
           client_event_id: clientEventId,
@@ -82,6 +91,7 @@ export function useScanning(contextId: string, scanType: ScanContext) {
         void queryClient.invalidateQueries({ queryKey: ['boxes', entryId] })
         void queryClient.invalidateQueries({ queryKey: ['batch', entryId] })
         void queryClient.invalidateQueries({ queryKey: ['pickup', entryId] })
+        void queryClient.invalidateQueries({ queryKey: ['packing-state', entryId] })
 
         return result
       } catch (error) {

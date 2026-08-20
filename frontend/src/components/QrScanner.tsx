@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { BrowserMultiFormatReader } from '@zxing/browser'
 import { DecodeHintType, BarcodeFormat } from '@zxing/library'
 
@@ -24,6 +25,7 @@ type Props = {
  *    and the server judges it by exactly the same rules.
  */
 export function QrScanner({ onScan, debounceMs = 2000, paused = false }: Props) {
+  const { t } = useTranslation()
   const videoRef = useRef<HTMLVideoElement>(null)
   const controlsRef = useRef<{ stop: () => void } | null>(null)
   const lastScan = useRef<{ code: string; at: number }>({ code: '', at: 0 })
@@ -180,7 +182,7 @@ export function QrScanner({ onScan, debounceMs = 2000, paused = false }: Props) 
           <video ref={videoRef} autoPlay muted playsInline />
           {status === 'starting' && (
             <p className="absolute inset-0 flex items-center justify-center text-white">
-              Starting camera…
+              {t('scanner.starting')}
             </p>
           )}
         </div>
@@ -188,17 +190,17 @@ export function QrScanner({ onScan, debounceMs = 2000, paused = false }: Props) 
 
       {status === 'denied' && (
         <div className="rounded-xl bg-warn-bg p-4 text-warn dark:bg-warn-darkbg dark:text-warn-dark">
-          <p className="font-bold">Camera permission is blocked.</p>
+          <p className="font-bold">{t('scanner.permission_blocked')}</p>
           <p className="mt-1 text-base">
-            Allow camera access in your browser settings, or type the sticker code below.
+            {t('scanner.permission_hint')}
           </p>
         </div>
       )}
 
       {status === 'unavailable' && (
         <div className="rounded-xl bg-warn-bg p-4 text-warn dark:bg-warn-darkbg dark:text-warn-dark">
-          <p className="font-bold">No camera available on this device.</p>
-          <p className="mt-1 text-base">Type the sticker code below instead.</p>
+          <p className="font-bold">{t('scanner.unavailable')}</p>
+          <p className="mt-1 text-base">{t('scanner.unavailable_hint')}</p>
         </div>
       )}
 
@@ -219,15 +221,15 @@ export function QrScanner({ onScan, debounceMs = 2000, paused = false }: Props) 
             autoCapitalize="characters"
             autoCorrect="off"
             spellCheck={false}
-            aria-label="Sticker code"
+            aria-label={t('scanner.sticker_code')}
           />
           <button type="submit" className="btn-primary" disabled={manual.trim().length < 3}>
-            Add
+            {t('common.add')}
           </button>
         </form>
       ) : (
         <button type="button" className="btn-ghost w-full" onClick={() => setShowManual(true)}>
-          Type code instead
+          {t('common.type_code_instead')}
         </button>
       )}
     </div>
