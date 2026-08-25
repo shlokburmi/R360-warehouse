@@ -142,7 +142,9 @@ export function LoginPage() {
             <p className="font-bold">{t('login.demo_accounts')}</p>
             <p className="mt-1 text-slate-600 dark:text-slate-400">
               guard@r360.local · boopathi@r360.local · offload@r360.local ·
-              inbound@r360.local · admin@r360.local
+              inbound@r360.local · store@r360.local · match1@r360.local ·
+              match2@r360.local · pack1@r360.local · pack2@r360.local ·
+              admin@r360.local
               <br />
               {t('login.demo_password')}: <code>Warehouse@123</code>
             </p>
