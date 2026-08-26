@@ -78,13 +78,11 @@ def main():
 
     with httpx.Client(timeout=30.0) as client:
         admin = {"Authorization": f"Bearer {login(client, 'admin@r360.local')}"}
-        ops = {"Authorization": f"Bearer {login(client, 'boopathi@r360.local')}"}
         guard = {"Authorization": f"Bearer {login(client, 'guard@r360.local')}"}
 
         print("\n1. Access control")
-        for name, headers in (("Ops", ops), ("Guard", guard)):
-            r = client.get(f"{API}/admin/staff", headers=headers)
-            ok(f"{name} is refused the staff list", r.status_code == 403, r.text[:200])
+        r = client.get(f"{API}/admin/staff", headers=guard)
+        ok("Guard is refused the staff list", r.status_code == 403, r.text[:200])
 
         r = client.get(f"{API}/admin/staff", headers=admin)
         ok("Admin can read the staff list", r.status_code == 200, r.text[:300])
@@ -96,8 +94,8 @@ def main():
         )
 
         packer = next(s for s in staff if s["role"] == "packer")
-        r = client.post(f"{API}/admin/staff/{packer['id']}/badge", headers=ops)
-        ok("Ops cannot issue a badge", r.status_code == 403, r.text[:200])
+        r = client.post(f"{API}/admin/staff/{packer['id']}/badge", headers=guard)
+        ok("Guard cannot issue a badge", r.status_code == 403, r.text[:200])
 
         print("\n2. Provisioning")
         r = client.post(
@@ -189,14 +187,14 @@ def main():
 
         print("\n4. Role and access changes")
         r = client.patch(
-            f"{API}/admin/staff/{new_id}", headers=admin, json={"role": "ops_manager"}
+            f"{API}/admin/staff/{new_id}", headers=admin, json={"role": "admin"}
         )
-        ok("role change works", r.status_code == 200 and r.json()["role"] == "ops_manager", r.text[:200])
+        ok("role change works", r.status_code == 200 and r.json()["role"] == "admin", r.text[:200])
 
         r = client.patch(
             f"{API}/admin/staff/{new_id}", headers=admin, json={"is_backup_approver": True}
         )
-        ok("an Ops Manager can be a backup approver", r.status_code == 200, r.text[:200])
+        ok("an Admin can be a backup approver", r.status_code == 200, r.text[:200])
 
         r = client.patch(
             f"{API}/admin/staff/{new_id}",
@@ -239,8 +237,8 @@ def main():
         )
 
         print("\n7. Photo retention posture")
-        r = client.get(f"{API}/admin/retention", headers=ops)
-        ok("Ops is refused the retention report", r.status_code == 403, r.text[:200])
+        r = client.get(f"{API}/admin/retention", headers=guard)
+        ok("Guard is refused the retention report", r.status_code == 403, r.text[:200])
 
         r = client.get(f"{API}/admin/retention", headers=admin)
         ok("Admin can read it", r.status_code == 200, r.text[:300])

@@ -8,11 +8,11 @@ import { Banner, Card, Spinner } from '@/components/ui'
 import type { Reconciliation } from '@/types'
 
 /**
- * PRD Step 5 — Inbound team verification. CONTROL POINT 4.
+ * PRD Step 5 — Inbound reconciliation, done by the offloading team. CONTROL POINT 4.
  *
  * The warehouse figure is shown but not editable: it is derived from the scan
  * ledger, and letting anyone type over it would make the comparison
- * meaningless. The inbound team enters their own independent count, and a
+ * meaningless. The offloading team enters their own independent count, and a
  * disagreement blocks putaway rather than being averaged away.
  */
 export function ReconciliationPage() {

@@ -312,15 +312,15 @@ async def update_staff(
                     hint="Promote someone else to Admin first.",
                 )
 
-    # DECISIONS.md §4: the T+15m escalation goes to an Ops Manager flagged as
-    # backup. Flagging anyone else produces an escalation path that silently
-    # notifies nobody, which is worse than not having one.
-    if backup_after and role_after != "ops_manager":
+    # DECISIONS.md §4: the T+15m escalation goes to an Admin flagged as backup.
+    # Flagging anyone else produces an escalation path that silently notifies
+    # nobody, which is worse than not having one.
+    if backup_after and role_after != "admin":
         raise AppError(
-            "Only an Ops Manager can be a backup approver.",
+            "Only an Admin can be a backup approver.",
             code="invalid_flag",
             http_status=422,
-            hint="Gate approvals escalate to backup Ops Managers at T+15m (DECISIONS §4).",
+            hint="Gate approvals escalate to a backup Admin at T+15m (DECISIONS §4).",
         )
 
     # Someone who no longer holds a role that scans a badge should not keep a

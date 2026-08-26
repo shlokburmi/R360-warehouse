@@ -17,6 +17,7 @@ import { ExceptionsPage } from '@/pages/Exceptions'
 import { ReconciliationPage } from '@/pages/Reconciliation'
 import { PutawayPage } from '@/pages/Putaway'
 import { InvoiceMatchingPage } from '@/pages/InvoiceMatching'
+import { InvoicesPage } from '@/pages/Invoices'
 import { PackingPage } from '@/pages/Packing'
 import { BatchesPage } from '@/pages/Batches'
 import { StockPage } from '@/pages/Stock'
@@ -94,12 +95,8 @@ function Home() {
 
   const landing: Record<string, string> = {
     security_guard: '/gate-entry',
-    ops_manager: '/dashboard',
     admin: '/dashboard',
     offloading: '/entries',
-    inbound: '/entries',
-    warehouse_staff: '/putaway',
-    invoice_matcher: '/invoice-matching',
     packer: '/packing',
   }
 
@@ -183,6 +180,14 @@ function Shell() {
         element={
           <Protected page="stock">
             <StockPage />
+          </Protected>
+        }
+      />
+      <Route
+        path="/invoices"
+        element={
+          <Protected page="invoices">
+            <InvoicesPage />
           </Protected>
         }
       />

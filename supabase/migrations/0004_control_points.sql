@@ -67,9 +67,9 @@ begin
       using errcode = 'check_violation';
   end if;
 
-  -- CP1: approval must be a decision by a named Ops Manager or Admin who is
-  -- not the requester. The self-approval bar is also a table constraint; this
-  -- adds the role requirement.
+  -- CP1: approval must be a decision by a named Admin who is not the
+  -- requester. The self-approval bar is also a table constraint; this adds
+  -- the role requirement.
   if new.status in ('approved', 'rejected') and old.status = 'pending_approval' then
     if new.decided_by is null then
       raise exception 'Gate entry decision requires an approver (CONTROL POINT 1).'
@@ -78,9 +78,9 @@ begin
 
     select role into v_approver_role from profiles where id = new.decided_by;
 
-    if v_approver_role is null or v_approver_role not in ('ops_manager', 'admin') then
+    if v_approver_role is null or v_approver_role <> 'admin' then
       raise exception
-        'Only an Ops Manager or Admin may decide gate entries (CONTROL POINT 1). Got role: %',
+        'Only an Admin may decide gate entries (CONTROL POINT 1). Got role: %',
         coalesce(v_approver_role::text, 'unknown')
         using errcode = 'insufficient_privilege';
     end if;

@@ -38,12 +38,12 @@ def _message(row: Dict[str, Any]) -> str:
         )
     if row["status"] == "exit_pending":
         return (
-            f"All {row['released_cartons']} cartons verified — waiting for Ops to "
+            f"All {row['released_cartons']} cartons verified — waiting for Admin to "
             "approve the gate"
         )
     if row["status"] == "verified":
         if row.get("exit_rejected_note"):
-            return f"Ops sent this back: {row['exit_rejected_note']}"
+            return f"Admin sent this back: {row['exit_rejected_note']}"
         return (
             f"All {row['released_cartons']} cartons verified — request the gate to be "
             "opened"
@@ -323,7 +323,7 @@ async def release_vehicle(conn: AsyncConnection, pickup_id: UUID) -> Dict[str, A
     if pickup["status"] == "verified":
         raise ControlPointError(
             f"Vehicle {pickup['vehicle_number']} has not been approved to leave yet.",
-            hint="Request exit approval, then Ops opens the gate.",
+            hint="Request exit approval, then Admin opens the gate.",
         )
 
     if pickup["status"] != "exit_pending":
@@ -335,7 +335,7 @@ async def release_vehicle(conn: AsyncConnection, pickup_id: UUID) -> Dict[str, A
 
     if pickup["exit_approved_at"] is None:
         raise ControlPointError(
-            f"Ops has not approved {pickup['vehicle_number']} leaving yet.",
+            f"Admin has not approved {pickup['vehicle_number']} leaving yet.",
             hint="The gate stays shut until the approval is recorded.",
         )
 
@@ -355,7 +355,7 @@ async def release_vehicle(conn: AsyncConnection, pickup_id: UUID) -> Dict[str, A
         # opened when it did not.
         raise ControlPointError(
             "You are not permitted to release this vehicle.",
-            hint="Ask the Ops team to release it.",
+            hint="Ask Admin to release it.",
         )
 
     return await get_pickup(conn, pickup_id)
@@ -368,7 +368,7 @@ async def cancel_pickup(
 
     Cancelling does not un-release the batch — the goods are still in the pickup
     area — so a new pickup cannot simply be registered against the same batch
-    without Ops involvement. That is deliberate: two pickups for one batch would
+    without Admin involvement. That is deliberate: two pickups for one batch would
     make "all cartons present" ambiguous.
     """
     pickup = await get_pickup(conn, pickup_id)
@@ -425,7 +425,7 @@ async def request_exit(conn: AsyncConnection, pickup_id: UUID) -> Dict[str, Any]
         return {
             "pickup": pickup,
             "requested": True,
-            "message": f"Already waiting for Ops — asked at {pickup['exit_requested_at']:%H:%M}.",
+            "message": f"Already waiting for Admin — asked at {pickup['exit_requested_at']:%H:%M}.",
         }
 
     if pickup["status"] != "verified":
@@ -473,14 +473,14 @@ async def request_exit(conn: AsyncConnection, pickup_id: UUID) -> Dict[str, Any]
     return {
         "pickup": after,
         "requested": True,
-        "message": f"Sent to Ops. {after['vehicle_number']} waits until they approve.",
+        "message": f"Sent to Admin. {after['vehicle_number']} waits until they approve.",
     }
 
 
 async def decide_exit(
     conn: AsyncConnection, pickup_id: UUID, approve: bool, note: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Ops decides whether the vehicle may leave.
+    """Admin decides whether the vehicle may leave.
 
     Approving records the approval but does *not* open the gate. The guard still
     performs the release, so the gate opening stays attached to the person
@@ -524,11 +524,11 @@ async def decide_exit(
             {"id": str(pickup_id)},
         )
     else:
-        # Back to 'verified' so the guard can re-request once whatever Ops asked
+        # Back to 'verified' so the guard can re-request once whatever Admin asked
         # about is dealt with, rather than the pickup being stuck.
         #
         # The approval columns are cleared too, and that is the important part.
-        # A pickup stays `exit_pending` after an approval, so Ops changing their
+        # A pickup stays `exit_pending` after an approval, so Admin changing their
         # mind while the vehicle is still on the pad is a legitimate second
         # decision — and if the reject only withdrew the *request*, the guard
         # could ask again and release against consent that had been taken back.
@@ -565,7 +565,7 @@ async def decide_exit(
 
 
 async def awaiting_exit_approval(conn: AsyncConnection) -> List[Dict[str, Any]]:
-    """Vehicles loaded, verified, and waiting on Ops. Oldest first — a truck at a
+    """Vehicles loaded, verified, and waiting on Admin. Oldest first — a truck at a
     gate with the engine running is the most expensive thing to keep waiting."""
     rows = await conn.execute(
         text(_SELECT + " where status = 'exit_pending' order by exit_requested_at")

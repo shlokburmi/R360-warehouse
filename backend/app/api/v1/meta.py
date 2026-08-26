@@ -40,23 +40,23 @@ class MeOut(BaseModel):
 # else; the point of listing it here is that the navigation is derived from one
 # table rather than scattered across components.
 PAGE_ACCESS: Dict[str, List[str]] = {
+    # Guard still declares the box count on this page (Step 1); the scanning
+    # steps on it now belong to packers.
     "security_guard": ["gate-entry", "box-counting", "pickup", "my-entries", "loading"],
-    "ops_manager": [
-        "dashboard", "approvals", "stickers", "box-counting", "unit-scanning",
-        "exceptions", "reports", "gate-entry", "reconciliation", "pickup",
-        "putaway", "stock", "invoice-matching", "packing", "batches", "loading",
-    ],
-    # The offloading team shelves goods too on a busy shift, so they get putaway.
-    "offloading": ["unit-scanning", "exceptions", "putaway"],
-    "inbound": ["reconciliation"],
-    "warehouse_staff": ["putaway", "stock"],
-    "invoice_matcher": ["invoice-matching", "stock"],
-    "packer": ["packing"],
+    # Offloading no longer scans goods in — packers do (see scans_insert in
+    # 0019) — but still reconciles inbound counts and shelves goods (the old
+    # inbound and warehouse_staff roles folded into this one).
+    "offloading": ["exceptions", "putaway", "stock", "reconciliation"],
+    # Packers apply and scan both box and unit stickers at intake, in addition
+    # to their outbound packing job.
+    "packer": ["box-counting", "unit-scanning", "exceptions", "packing"],
+    # Admin absorbs everything the old ops_manager and invoice_matcher roles
+    # did, plus its own screen.
     "admin": [
         "dashboard", "approvals", "stickers", "box-counting", "unit-scanning",
         "exceptions", "reports", "gate-entry", "reconciliation", "pickup",
-        "putaway", "stock", "invoice-matching", "packing", "batches", "admin",
-        "loading",
+        "putaway", "stock", "invoices", "invoice-matching", "packing", "batches",
+        "admin", "loading",
     ],
 }
 
@@ -237,7 +237,7 @@ async def _signed_upload(settings: Settings, bucket: str, path: str) -> UploadTi
 async def identity_photo_ticket(
     mobile: str = Body(embed=True, min_length=10, max_length=13),
     settings: Settings = Depends(get_settings),
-    user: CurrentUser = Depends(require_roles("security_guard", "ops_manager")),
+    user: CurrentUser = Depends(require_roles("security_guard")),
 ):
     """A one-shot upload slot for a visitor's ID photo.
 
@@ -255,7 +255,7 @@ async def identity_photo_ticket(
 async def damage_photo_ticket(
     box_id: UUID = Body(embed=True),
     settings: Settings = Depends(get_settings),
-    user: CurrentUser = Depends(require_roles("offloading", "ops_manager", "security_guard")),
+    user: CurrentUser = Depends(require_roles("packer")),
 ):
     path = f"{box_id}/{secrets.token_hex(6)}.jpg"
     return await _signed_upload(settings, "damage-photos", path)
@@ -267,7 +267,7 @@ async def view_identity_photo(
     settings: Settings = Depends(get_settings),
     user: CurrentUser = Depends(require_ops),
 ):
-    """Short-lived signed link to a stored ID photo. Ops and Admin only —
+    """Short-lived signed link to a stored ID photo. Admin and Admin only —
     PRD §8 Data Privacy / DPDP Act 2023."""
     if not settings.supabase_service_role_key:
         raise AppError("Storage is not configured.", code="storage_unconfigured", http_status=503)

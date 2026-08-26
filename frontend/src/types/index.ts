@@ -140,6 +140,29 @@ export type PurchaseOrder = {
   line_count: number
 }
 
+export type PurchaseOrderLine = {
+  id: string
+  line_no: number
+  sku: string
+  description: string | null
+  expected_units: number
+  units_per_box: number
+  received_units: number
+  rejected_units: number
+  expected_boxes: number
+}
+
+export type CartonSticker = {
+  id: string
+  code: string
+  status: string
+  invoice_id: string
+  invoice_number: string
+  sku: string
+  units: number
+  customer_name: string | null
+}
+
 export type ReconcileLine = {
   purchase_order_line_id: string
   sku: string
@@ -328,7 +351,7 @@ export type Pickup = {
     | 'registered'
     | 'verifying'
     | 'verified'
-    /** CP7 passed, waiting on an Ops decision before the gate opens. */
+    /** CP7 passed, waiting on an Admin decision before the gate opens. */
     | 'exit_pending'
     | 'departed'
     | 'cancelled'

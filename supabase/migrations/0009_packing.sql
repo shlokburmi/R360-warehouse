@@ -162,9 +162,9 @@ begin
 
   if v_verifier is null then
     raise exception
-      'Invoice % has not been verified by an invoice matcher (CONTROL POINT 5).', v_number
+      'Invoice % has not been matched by Admin (CONTROL POINT 5).', v_number
       using errcode = 'check_violation',
-            hint = 'The matcher must scan the invoice and their badge first.';
+            hint = 'Admin must scan the invoice and their badge first.';
   end if;
 
   -- Two pairs of eyes. One person doing both halves makes the match a
@@ -172,8 +172,8 @@ begin
   -- of packing.
   if v_verifier = new.packed_by then
     raise exception
-      'The invoice matcher and the packer must be different people (CONTROL POINT 5). '
-      '% verified this invoice.', coalesce(v_verifier_name, 'That person')
+      'The person who matched the invoice and the packer must be different people '
+      '(CONTROL POINT 5). % matched this invoice.', coalesce(v_verifier_name, 'That person')
       using errcode = 'check_violation';
   end if;
 
@@ -197,11 +197,11 @@ declare
 begin
   if tg_table_name = 'invoice_verifications' then
     v_who := new.verified_by;
-    v_allowed := array['invoice_matcher', 'ops_manager', 'admin']::user_role[];
+    v_allowed := array['admin']::user_role[];
     v_what := 'verify an invoice';
   else
     v_who := new.packed_by;
-    v_allowed := array['packer', 'ops_manager', 'admin']::user_role[];
+    v_allowed := array['packer', 'admin']::user_role[];
     v_what := 'pack a carton';
   end if;
 
@@ -215,7 +215,7 @@ begin
   if not v_usable then
     raise exception 'That badge has been deactivated.'
       using errcode = 'insufficient_privilege',
-            hint = 'Ask Ops to issue a replacement badge.';
+            hint = 'Ask an Admin to issue a replacement badge.';
   end if;
 
   if not (v_role = any(v_allowed)) then
@@ -595,11 +595,11 @@ drop policy if exists inv_verif_insert on invoice_verifications;
 
 create policy inv_verif_insert on invoice_verifications
   for insert to authenticated
-  with check (has_role('invoice_matcher', 'ops_manager', 'admin'));
+  with check (has_role('admin'));
 
 create policy packing_insert on packing_records
   for insert to authenticated
-  with check (has_role('packer', 'ops_manager', 'admin'));
+  with check (has_role('packer', 'admin'));
 
 -- Ops assigns cartons to batches, and the out-scan trigger stamps them. That
 -- trigger runs with the caller's privileges, and out_scan scans are already

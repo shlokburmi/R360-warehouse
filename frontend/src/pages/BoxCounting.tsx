@@ -29,7 +29,7 @@ type StickerIssueResult = {
  * PRD §5.2 — Box counting. CONTROL POINT 2.
  *
  * Three numbers have to agree before boxes move inside: what the guard counted,
- * what Ops issued, and what was physically scanned. The page walks that in
+ * what Admin issued, and what was physically scanned. The page walks that in
  * order and refuses to skip: the count is declared before stickers exist, and
  * the stickers exist before anything can be scanned.
  */
@@ -120,7 +120,7 @@ export function BoxCountingPage() {
   if (entry.isLoading) return <Spinner />
   if (!entry.data) return <Banner tone="bad" title={t('boxcount.truck_not_found')} />
 
-  const isOps = me?.role === 'ops_manager' || me?.role === 'admin'
+  const isOps = me?.role === 'admin'
   const isGuard = me?.role === 'security_guard'
   const hasCount = entry.data.declared_box_count !== null
   const hasStickers = entry.data.issued_box_sticker_count > 0
@@ -178,11 +178,11 @@ export function BoxCountingPage() {
         )}
       </Card>
 
-      {/* Step 2 — Ops issues exactly that many stickers */}
+      {/* Step 2 — Admin issues exactly that many stickers */}
       {hasCount && (
         <Card
           title={t('boxcount.step2')}
-          subtitle={`Ops issues exactly ${entry.data.declared_box_count} stickers`}
+          subtitle={`Admin issues exactly ${entry.data.declared_box_count} stickers`}
         >
           {hasStickers && sheet.data ? (
             <StickerSheetPrint sheet={sheet.data} />
@@ -251,7 +251,7 @@ export function BoxCountingPage() {
           {verifyResult && !verifyResult.verified && (
             <Banner tone="bad" title={verifyResult.message}>
               Boxes cannot move inside. Exception {verifyResult.exception_code} has been raised
-              for the Ops team.
+              for Admin.
             </Banner>
           )}
 

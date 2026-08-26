@@ -24,9 +24,12 @@ as $$
   select role from profiles where id = auth.uid() and is_active;
 $$;
 
+-- Historically "ops or admin"; ops_manager was folded into admin when the
+-- role model was consolidated to four roles, so this is now just admin. Kept
+-- as its own function because every policy below still calls it by name.
 create or replace function is_ops()
 returns boolean language sql stable as $$
-  select auth_role() in ('ops_manager', 'admin');
+  select auth_role() = 'admin';
 $$;
 
 create or replace function is_admin()
@@ -81,7 +84,7 @@ create policy profiles_select_self on profiles
 
 -- A user may edit their own name and mobile. Role, badge and active flags are
 -- deliberately not self-serviceable — a guard promoting themselves to
--- ops_manager would defeat CP1 entirely.
+-- admin would defeat CP1 entirely.
 create policy profiles_update_self on profiles
   for update to authenticated
   using (id = auth.uid())
@@ -129,16 +132,16 @@ create policy po_lines_write on purchase_order_lines
 
 create policy visitors_read on visitors
   for select to authenticated
-  using (has_role('security_guard', 'ops_manager', 'admin'));
+  using (has_role('security_guard', 'admin'));
 
 create policy visitors_insert on visitors
   for insert to authenticated
-  with check (has_role('security_guard', 'ops_manager', 'admin'));
+  with check (has_role('security_guard', 'admin'));
 
 create policy visitors_update on visitors
   for update to authenticated
-  using (has_role('security_guard', 'ops_manager', 'admin'))
-  with check (has_role('security_guard', 'ops_manager', 'admin'));
+  using (has_role('security_guard', 'admin'))
+  with check (has_role('security_guard', 'admin'));
 
 -- ===========================================================================
 -- GATE ENTRIES
@@ -152,27 +155,33 @@ create policy gate_entries_read on gate_entries
 create policy gate_entries_insert on gate_entries
   for insert to authenticated
   with check (
-    has_role('security_guard', 'ops_manager', 'admin')
+    has_role('security_guard', 'admin')
     and requested_by = auth.uid()   -- you cannot file a request as someone else
   );
 
--- Guards drive the physical steps (submit, declare boxes, scan); Ops drives the
--- decisions. The status-transition trigger in 0004 constrains what each of those
--- updates is actually allowed to change the row into.
+-- Guards drive the truck through the gate (submit, declare boxes); packers
+-- drive the sticker-scanning steps; Admin drives the decisions. The
+-- status-transition trigger in 0004 constrains what each of those updates is
+-- actually allowed to change the row into.
 create policy gate_entries_update_gate on gate_entries
   for update to authenticated
-  using (has_role('security_guard') and status in ('draft', 'approved', 'inside', 'counting'))
+  using (has_role('security_guard') and status in ('draft', 'approved', 'inside'))
   with check (has_role('security_guard') and decided_by is distinct from auth.uid());
 
-create policy gate_entries_update_offload on gate_entries
+-- Packers apply and scan both box and unit stickers, and close out offloading
+-- for the truck — so they need to advance the entry through 'counting' (CP2
+-- complete), 'box_verified' and 'offloading' (CP3 complete).
+create policy gate_entries_update_packer on gate_entries
   for update to authenticated
-  using (has_role('offloading') and status in ('box_verified', 'offloading'))
-  with check (has_role('offloading'));
+  using (has_role('packer') and status in ('counting', 'box_verified', 'offloading'))
+  with check (has_role('packer'));
 
-create policy gate_entries_update_inbound on gate_entries
+-- Offloading reconciles the inbound count (CONTROL POINT 4) — the one step in
+-- this lifecycle still theirs, now that packers own the scanning.
+create policy gate_entries_update_reconcile on gate_entries
   for update to authenticated
-  using (has_role('inbound') and status in ('offloaded', 'reconciled'))
-  with check (has_role('inbound'));
+  using (has_role('offloading') and status in ('offloaded', 'reconciled'))
+  with check (has_role('offloading'));
 
 create policy gate_entries_update_ops on gate_entries
   for update to authenticated
@@ -180,11 +189,11 @@ create policy gate_entries_update_ops on gate_entries
 
 create policy gate_persons_read on gate_entry_persons
   for select to authenticated
-  using (has_role('security_guard', 'ops_manager', 'admin'));
+  using (has_role('security_guard', 'admin'));
 
 create policy gate_persons_insert on gate_entry_persons
   for insert to authenticated
-  with check (has_role('security_guard', 'ops_manager', 'admin'));
+  with check (has_role('security_guard', 'admin'));
 
 -- ===========================================================================
 -- STICKERS — issued by Ops only. This is what makes CP2 meaningful: if the
@@ -200,11 +209,12 @@ create policy stickers_read on stickers
   for select to authenticated using (true);
 create policy stickers_insert on stickers
   for insert to authenticated with check (is_ops());
--- Status advances to 'scanned' via the scan trigger; voiding is an Ops act.
+-- Status advances to 'scanned' via the scan trigger, run as whoever scans
+-- (packers apply and scan both box and unit stickers); voiding is an Admin act.
 create policy stickers_update on stickers
   for update to authenticated
-  using (is_ops() or has_role('security_guard', 'offloading'))
-  with check (is_ops() or has_role('security_guard', 'offloading'));
+  using (is_ops() or has_role('packer'))
+  with check (is_ops() or has_role('packer'));
 
 -- ===========================================================================
 -- BOXES
@@ -214,16 +224,20 @@ create policy boxes_read on boxes
   for select to authenticated using (true);
 create policy boxes_insert on boxes
   for insert to authenticated with check (is_ops());
+-- Packers scan units/close boxes; offloading still needs this for
+-- fn_putaway_close_box, which marks a box 'emptied' as the putaway-inserting
+-- user (DECISIONS.md Part D — adding a role to a step means revisiting every
+-- table that step's triggers touch).
 create policy boxes_update on boxes
   for update to authenticated
-  using (has_role('security_guard', 'offloading', 'ops_manager', 'admin'))
-  with check (has_role('security_guard', 'offloading', 'ops_manager', 'admin'));
+  using (has_role('packer', 'offloading', 'admin'))
+  with check (has_role('packer', 'offloading', 'admin'));
 
 create policy damage_photos_read on damage_photos
   for select to authenticated using (true);
 create policy damage_photos_insert on damage_photos
   for insert to authenticated
-  with check (has_role('offloading', 'ops_manager', 'admin') and uploaded_by = auth.uid());
+  with check (has_role('packer', 'admin') and uploaded_by = auth.uid());
 
 -- ===========================================================================
 -- SCAN EVENTS
@@ -239,10 +253,10 @@ create policy scans_insert on scan_events
   with check (
     scanned_by = auth.uid()
     and (
-      (scan_type = 'box_verify'  and has_role('security_guard', 'ops_manager', 'admin'))
-      or (scan_type = 'unit_verify' and has_role('offloading', 'ops_manager', 'admin'))
-      or (scan_type = 'out_scan'    and has_role('ops_manager', 'admin'))
-      or (scan_type = 'gate_exit'   and has_role('security_guard', 'ops_manager', 'admin'))
+      (scan_type = 'box_verify'  and has_role('security_guard', 'admin'))
+      or (scan_type = 'unit_verify' and has_role('offloading', 'admin'))
+      or (scan_type = 'out_scan'    and has_role('admin'))
+      or (scan_type = 'gate_exit'   and has_role('security_guard', 'admin'))
     )
   );
 
@@ -254,9 +268,9 @@ create policy inbound_read on inbound_reconciliations
   for select to authenticated using (true);
 create policy inbound_write on inbound_reconciliations
   for insert to authenticated
-  with check (has_role('inbound', 'ops_manager', 'admin') and verified_by = auth.uid());
+  with check (has_role('offloading', 'admin') and verified_by = auth.uid());
 
--- The inbound team must be able to update, not just insert. The recount loop
+-- The offloading team must be able to update, not just insert. The recount loop
 -- depends on it: submit a count, hit a mismatch, physically recount, submit
 -- again. Restricting UPDATE to Ops would mean the second submission is refused
 -- and the only way past CONTROL POINT 4 would be an Ops override — which is
@@ -265,8 +279,8 @@ create policy inbound_write on inbound_reconciliations
 -- lost when it is corrected.
 create policy inbound_update on inbound_reconciliations
   for update to authenticated
-  using (has_role('inbound', 'ops_manager', 'admin'))
-  with check (has_role('inbound', 'ops_manager', 'admin') and verified_by = auth.uid());
+  using (has_role('offloading', 'admin'))
+  with check (has_role('offloading', 'admin') and verified_by = auth.uid());
 
 -- ===========================================================================
 -- EXCEPTIONS
@@ -312,7 +326,7 @@ create policy audit_read on audit_log
 
 create policy putaways_read on putaways for select to authenticated using (true);
 create policy putaways_insert on putaways for insert to authenticated
-  with check (has_role('warehouse_staff', 'ops_manager', 'admin') and moved_by = auth.uid());
+  with check (has_role('offloading', 'admin') and moved_by = auth.uid());
 
 create policy invoices_read on invoices for select to authenticated using (true);
 create policy invoices_write on invoices for all to authenticated
@@ -320,11 +334,11 @@ create policy invoices_write on invoices for all to authenticated
 
 create policy inv_verif_read on invoice_verifications for select to authenticated using (true);
 create policy inv_verif_insert on invoice_verifications for insert to authenticated
-  with check (has_role('invoice_matcher', 'ops_manager', 'admin'));
+  with check (has_role('admin'));
 
 create policy packing_read on packing_records for select to authenticated using (true);
 create policy packing_insert on packing_records for insert to authenticated
-  with check (has_role('packer', 'ops_manager', 'admin'));
+  with check (has_role('packer', 'admin'));
 
 create policy batches_read on batches for select to authenticated using (true);
 create policy batches_write on batches for all to authenticated

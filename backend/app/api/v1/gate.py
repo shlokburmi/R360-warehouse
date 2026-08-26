@@ -22,7 +22,10 @@ from app.services import scans as scan_service
 
 router = APIRouter(prefix="/gate", tags=["gate"])
 
-guard_or_ops = require_roles("security_guard", "ops_manager")
+guard_or_ops = require_roles("security_guard")
+# Packers apply and scan both box and unit stickers at intake now, so they
+# close out CP2 too (see the note on scans_insert in 0019).
+packer_or_ops = require_roles("packer")
 
 
 @router.get("/visitors/lookup", response_model=VisitorLookup)
@@ -44,9 +47,9 @@ async def create_entry(
     conn: AsyncConnection = Depends(get_db),
     user: CurrentUser = Depends(guard_or_ops),
 ):
-    """Register everyone on the truck and send the request to Ops (CP1).
+    """Register everyone on the truck and send the request to Admin (CP1).
 
-    The gate stays locked from here until an Ops Manager decides. There is no
+    The gate stays locked from here until an Admin decides. There is no
     parameter on this endpoint, or any other, that skips that.
     """
     entry_id = await gate_service.create_entry(conn, user, payload)
@@ -71,7 +74,7 @@ async def pending_approvals(
     conn: AsyncConnection = Depends(get_db),
     user: CurrentUser = Depends(require_ops),
 ):
-    """The Ops approval queue (PRD §5.8), oldest first — the truck that has been
+    """The Admin approval queue (PRD §5.8), oldest first — the truck that has been
     waiting longest is the one to decide next."""
     entries = await gate_service.list_entries(conn, status_filter=["pending_approval"], limit=100)
     return sorted(entries, key=lambda e: e["requested_at"] or e["created_at"])
@@ -93,7 +96,7 @@ async def decide_entry(
     conn: AsyncConnection = Depends(get_db),
     user: CurrentUser = Depends(require_ops),
 ):
-    """CONTROL POINT 1. Only Ops Manager or Admin, never the requester."""
+    """CONTROL POINT 1. Only Admin, never the requester."""
     try:
         payload.require_note_on_reject()
     except ValueError as exc:
@@ -108,7 +111,7 @@ async def admit_vehicle(
     conn: AsyncConnection = Depends(get_db),
     user: CurrentUser = Depends(guard_or_ops),
 ):
-    """Guard opens the gate. Stamps time_in. Refused unless Ops approved."""
+    """Guard opens the gate. Stamps time_in. Refused unless Admin approved."""
     return await gate_service.admit_vehicle(conn, entry_id)
 
 
@@ -137,12 +140,12 @@ async def verify_boxes(
     entry_id: UUID,
     response: Response,
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(guard_or_ops),
+    user: CurrentUser = Depends(packer_or_ops),
 ):
     """CONTROL POINT 2.
 
     A mismatch answers 409 with `verified: false` and the code of the exception
-    that was logged for Ops. The status code is set on the response rather than
+    that was logged for Admin. The status code is set on the response rather than
     raised, so the exception record commits with the rest of the transaction.
     """
     result = await gate_service.verify_box_count(conn, entry_id)

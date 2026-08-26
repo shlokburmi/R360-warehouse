@@ -138,7 +138,7 @@ create policy order_no_scans_read on order_no_scans
 create policy order_no_scans_insert on order_no_scans
   for insert to authenticated
   with check (
-    has_role('invoice_matcher', 'ops_manager', 'admin')
+    has_role('admin')
     and scanned_by = auth.uid()
   );
 

@@ -230,7 +230,7 @@ class TestControlPoint1:
             )
 
     async def test_non_ops_role_cannot_approve(self, db, actors):
-        """Even a different person is not enough — it must be Ops or Admin."""
+        """Even a different person is not enough — it must be Admin."""
         await act_as(db, actors["guard"])
         po = (
             await db.execute(
@@ -265,7 +265,7 @@ class TestControlPoint1:
                 {"o": actors["offloader"], "id": entry_id},
             )
 
-        assert "Ops Manager or Admin" in str(err.value)
+        assert "Only an Admin" in str(err.value)
 
     async def test_approved_entry_admits_and_stamps_time_in(self, db, gate_entry):
         row = (
@@ -761,4 +761,4 @@ class TestImmutability:
 
         approval = [r for r in rows if r["changed_keys"] and "decided_by" in r["changed_keys"]]
         assert approval, "the approval itself is in the trail"
-        assert approval[0]["actor_role"] == "ops_manager"
+        assert approval[0]["actor_role"] == "admin"

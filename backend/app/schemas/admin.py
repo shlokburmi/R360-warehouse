@@ -11,19 +11,15 @@ from pydantic import BaseModel, Field, field_validator
 # warehouse with exactly one person who can fix anything, on leave.
 ASSIGNABLE_ROLES = (
     "security_guard",
-    "ops_manager",
     "offloading",
-    "warehouse_staff",
-    "invoice_matcher",
     "packer",
-    "inbound",
     "admin",
 )
 
 # Kept in step with admin_issue_badge() in 0013. The database is the authority;
 # this copy exists only so the form can grey the button out instead of letting
 # the Admin discover the rule by hitting it.
-BADGE_ROLES = ("invoice_matcher", "packer", "ops_manager")
+BADGE_ROLES = ("packer", "admin")
 
 
 class StaffOut(BaseModel):

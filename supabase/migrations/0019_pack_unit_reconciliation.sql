@@ -417,9 +417,21 @@ create trigger trg_packing_zz_units_complete
 -- means revisiting the policy for what that step writes. Adding a *step* means
 -- revisiting who may write it.
 --
--- Packers and Ops covering the bench. Deliberately not the offloading team: they
--- scan goods *in* (unit_verify), and letting the same role do both halves would
--- put receiving and dispatch in one pair of hands.
+-- Packers and Admin covering the bench.
+--
+-- Originally this deliberately excluded the offloading team from pack_unit,
+-- on the reasoning that the same role scanning goods in (unit_verify) and out
+-- (pack_unit) would put receiving and dispatch in one pair of hands. The floor
+-- process was later described the other way round: packers physically apply
+-- and scan *both* the box and unit stickers at intake (not just pack_unit at
+-- the bench), and offloading only reconciles and shelves. That reunites
+-- receiving and dispatch in one role by design — accepted here the same way
+-- DECISIONS.md §CE1 accepts Admin holding both approvals and provisioning:
+-- CP2/CP3/CP5's counts still hold regardless of who operates the scanner: a
+-- packer cannot self-deal CP5 (matching stays Admin-only) or CP3 (the count
+-- still has to equal the PO quantity), so the two-person and count guarantees
+-- are unweakened. What is lost is the *separation of custody* between intake
+-- and dispatch that a distinct offloading-scans-in role provided.
 -- ===========================================================================
 
 drop policy if exists scans_insert on scan_events;
@@ -430,15 +442,15 @@ create policy scans_insert on scan_events
     scanned_by = auth.uid()
     and (
       (scan_type = 'box_verify'
-        and has_role('security_guard', 'ops_manager', 'admin'))
+        and has_role('packer', 'admin'))
    or (scan_type = 'unit_verify'
-        and has_role('offloading', 'ops_manager', 'admin'))
+        and has_role('packer', 'admin'))
    or (scan_type = 'pack_unit'
-        and has_role('packer', 'ops_manager', 'admin'))
+        and has_role('packer', 'admin'))
    or (scan_type = 'out_scan'
-        and has_role('ops_manager', 'admin'))
+        and has_role('admin'))
    or (scan_type = 'gate_exit'
-        and has_role('security_guard', 'ops_manager', 'admin'))
+        and has_role('security_guard', 'admin'))
     )
   );
 

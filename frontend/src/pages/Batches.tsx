@@ -16,7 +16,7 @@ import {
 import type { Batch, BatchCompleteResult, Invoice } from '@/types'
 
 /**
- * PRD §5.6 — Out-scan and batch release (Ops Team). CONTROL POINT 6.
+ * PRD §5.6 — Out-scan and batch release (Admin). CONTROL POINT 6.
  *
  * A batch is planned first, from the pool of packed cartons, and only then
  * out-scanned. That ordering is what makes the control point real: it compares

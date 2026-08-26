@@ -11,14 +11,15 @@ create extension if not exists "pg_trgm";       -- fuzzy vendor/driver name sear
 -- People and access
 -- ---------------------------------------------------------------------------
 
+-- Consolidated to four roles: the floor runs security_guard, offloading and
+-- packer, and admin absorbs everything the old ops_manager and
+-- invoice_matcher roles did (gate/exit approvals, sticker issuance, invoice
+-- matching) plus what warehouse_staff and inbound did (offloading now also
+-- reconciles and shelves goods).
 create type user_role as enum (
   'security_guard',
-  'ops_manager',
   'offloading',
-  'warehouse_staff',
-  'invoice_matcher',
   'packer',
-  'inbound',
   'admin'
 );
 

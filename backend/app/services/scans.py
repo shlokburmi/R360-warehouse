@@ -27,7 +27,7 @@ REJECT_MESSAGES = {
     "wrong_gate_entry": "That sticker belongs to a different truck.",
     "already_scanned": "Already scanned.",
     "box_not_open": "This box is not open for scanning right now.",
-    "over_expected_quantity": "This box is already full. Extra unit — set it aside and call Ops.",
+    "over_expected_quantity": "This box is already full. Extra unit — set it aside and call Admin.",
     "sticker_void": "This sticker was voided. Use the reissued sheet.",
     # Out-scan (Phase 3)
     "not_packed": "This carton has not been packed yet. It cannot be released.",
@@ -39,7 +39,7 @@ REJECT_MESSAGES = {
     "wrong_pickup": "That pickup is already closed.",
     # Packing a product box into a carton (Phase 5)
     "wrong_invoice": "This product does not belong to that invoice. Check the paperwork.",
-    "unit_not_in_stock": "This product box was never counted in at offloading. Call Ops.",
+    "unit_not_in_stock": "This product box was never counted in at offloading. Call Admin.",
     "invoice_already_full": "This carton is already full. Start the next one.",
 }
 
@@ -275,7 +275,7 @@ async def box_scan_progress(conn: AsyncConnection, entry_id: UUID) -> Dict[str, 
     complete = total > 0 and remaining == 0
 
     if total == 0:
-        message = "Waiting for Ops to issue the sticker sheet."
+        message = "Waiting for Admin to issue the sticker sheet."
     elif complete:
         message = "All boxes verified — move to next step"
     else:
@@ -313,7 +313,7 @@ async def unit_scan_progress(conn: AsyncConnection, entry_id: UUID) -> Dict[str,
     complete = row["boxes"] > 0 and row["closed"] == row["boxes"]
 
     if row["held"]:
-        message = f"{row['held']} box(es) held — Ops decision needed"
+        message = f"{row['held']} box(es) held — Admin decision needed"
     elif complete:
         message = "All units scanned and boxes closed"
     else:
@@ -366,7 +366,7 @@ async def record_damage_check(
     Answering is compulsory; the answer is allowed to be 'none'. Anything else
     needs a note and at least one photo — without evidence the record is worth
     nothing when the vendor disputes it weeks later, and collecting it costs the
-    offloader about fifteen seconds.
+    packer about fifteen seconds.
     """
     if damage_level != "none":
         if not note:
@@ -422,12 +422,12 @@ async def close_box(conn: AsyncConnection, box_id: UUID) -> Dict[str, Any]:
     """Attempt CONTROL POINT 3 for one box.
 
     Success closes the box. Failure holds it — the goods do not enter the
-    warehouse, an exception is raised against the vendor and PO, and Ops is
+    warehouse, an exception is raised against the vendor and PO, and Admin is
     alerted. There is no third outcome and no override.
 
     A failure returns `closed: False` rather than raising. That is not leniency:
     the route still answers 409 and the goods are still held. It is because
-    holding the box *writes* — the status change, the exception, the Ops alert —
+    holding the box *writes* — the status change, the exception, the Admin alert —
     and raising out of the request would roll the whole transaction back,
     discarding the very record that makes the hold enforceable.
     """

@@ -336,7 +336,7 @@ export function AdminPage() {
                   </Banner>
                 )}
 
-                {person.role === 'ops_manager' && (
+                {person.role === 'admin' && (
                   <label className="flex items-center gap-3 text-base font-semibold">
                     <input
                       type="checkbox"

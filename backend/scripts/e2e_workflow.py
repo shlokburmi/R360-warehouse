@@ -154,10 +154,9 @@ def main():
         )
         ok("matcher verifies the invoice", r.status_code == 200, r.text[:250])
 
-        # Refused, but note *which* refusal: a matcher is not a packer at all, so
-        # the role check fires before CONTROL POINT 5 gets a chance to. The
-        # verifier-cannot-pack case proper is exercised in test_workflow_v2.py
-        # with an Ops badge, since Ops is the only role that can do both.
+        # Refused by CONTROL POINT 5's self-assignment check: Admin does both
+        # matching and packing, so the role check alone would not catch this —
+        # the same person cannot be both the verifier and the assignee.
         r = client.post(
             f"{API}/invoices/assign",
             headers=matcher,

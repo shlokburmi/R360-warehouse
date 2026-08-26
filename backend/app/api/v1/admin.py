@@ -1,8 +1,12 @@
 """Admin: staff accounts and attribution badges (PRD §2, §8).
 
-Every route here is Admin-only, and deliberately not Ops. An Ops Manager who
-could issue a badge could issue themselves a second one under a packer's name,
-which is precisely the second person CONTROL POINT 5 exists to require.
+Every route here is Admin-only. The role model was later consolidated to four
+roles (security_guard, offloading, packer, admin), folding the old ops_manager
+and invoice_matcher roles into admin — so this is no longer a narrower
+capability held back from a separate, weaker "Ops" tier. Provisioning and
+badge issue are still gated to Admin alone, but Admin itself can now also
+match invoices and approve gates, which is the tradeoff that consolidation
+accepted. See DECISIONS.md §CE1.
 """
 
 from typing import List

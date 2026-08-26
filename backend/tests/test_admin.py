@@ -165,13 +165,13 @@ class TestBadgeCodesAreUnreadable:
 
 class TestIssuingABadge:
     async def test_only_an_admin_can_issue(self, db, badge_holders):
-        """An Ops Manager who could issue a badge could issue themselves a
-        packer's — one person on both halves of CONTROL POINT 5."""
-        await as_authenticated(db, badge_holders["ops"]["id"])
+        """A packer who could issue a badge could issue themselves a second
+        one — one person on both halves of CONTROL POINT 5."""
+        await as_authenticated(db, badge_holders["packer"]["id"])
         async with rejected(db, containing="Only an Admin"):
             await db.execute(
                 text("select admin_issue_badge(cast(:id as uuid))"),
-                {"id": badge_holders["packer"]["id"]},
+                {"id": badge_holders["matcher"]["id"]},
             )
         await as_postgres(db)
 
@@ -254,11 +254,11 @@ class TestIssuingABadge:
         assert holder["badge_active"] is False
 
     async def test_only_an_admin_can_revoke(self, db, badge_holders):
-        await as_authenticated(db, badge_holders["ops"]["id"])
+        await as_authenticated(db, badge_holders["packer"]["id"])
         async with rejected(db, containing="Only an Admin"):
             await db.execute(
                 text("select admin_revoke_badge(cast(:id as uuid))"),
-                {"id": badge_holders["packer"]["id"]},
+                {"id": badge_holders["matcher"]["id"]},
             )
         await as_postgres(db)
 
@@ -284,6 +284,14 @@ class TestAccountChanges:
         the thing this screen exists to make unnecessary."""
         admin_id = badge_holders["admin"]["id"]
         await act_as(db, badge_holders["ops"]["id"])
+
+        # The seeded stack has several admins (boopathi, the backup and
+        # matching accounts, admin@r360.local). Demote every one of them
+        # except admin_id, so it genuinely is the last one left.
+        await db.execute(
+            text("update profiles set role = 'packer' where role = 'admin' and id <> :id"),
+            {"id": admin_id},
+        )
 
         with pytest.raises(AppError) as err:
             await admin_service.update_staff(
@@ -331,10 +339,10 @@ class TestAccountChanges:
             db,
             badge_holders["admin"]["id"],
             badge_holders["packer"]["id"],
-            StaffUpdate(role="warehouse_staff"),
+            StaffUpdate(role="security_guard"),
         )
 
-        assert updated.role == "warehouse_staff"
+        assert updated.role == "security_guard"
         assert updated.badge_active is False
         assert updated.has_badge is True, "the record is superseded, not erased"
 

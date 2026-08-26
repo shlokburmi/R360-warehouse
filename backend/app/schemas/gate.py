@@ -69,7 +69,7 @@ class GateEntryCreate(BaseModel):
 
 
 class GateDecision(BaseModel):
-    """Ops approving or rejecting an entry (CONTROL POINT 1)."""
+    """Admin approving or rejecting an entry (CONTROL POINT 1)."""
 
     approve: bool
     note: Optional[str] = Field(default=None, max_length=500)

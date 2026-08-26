@@ -36,9 +36,8 @@ export function EntriesPage() {
   if (entries.isLoading) return <Spinner label={t('entries.loading')} />
 
   const isGuard = me?.role === 'security_guard'
-  const isOps = me?.role === 'ops_manager' || me?.role === 'admin'
+  const isOps = me?.role === 'admin'
   const isOffloader = me?.role === 'offloading'
-  const isInbound = me?.role === 'inbound'
 
   return (
     <div className="space-y-4">
@@ -100,7 +99,7 @@ export function EntriesPage() {
                 </Link>
               )}
 
-            {entry.status === 'offloaded' && (isInbound || isOps) && (
+            {entry.status === 'offloaded' && (isOffloader || isOps) && (
               <Link to={`/entries/${entry.id}/reconciliation`} className="btn-primary flex-1">
                 {t('entries.verify_counts')}
               </Link>

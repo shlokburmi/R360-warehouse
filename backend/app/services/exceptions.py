@@ -114,7 +114,7 @@ async def create_exception(conn: AsyncConnection, payload: ExceptionCreate) -> D
 async def resolve_exception(
     conn: AsyncConnection, exception_id: UUID, resolution: str, note: str
 ) -> Dict[str, Any]:
-    """Ops decides. The consequences for the box are applied by
+    """Admin decides. The consequences for the box are applied by
     fn_apply_exception_resolution, inside this same transaction."""
     current = await get_exception(conn, exception_id)
 
@@ -163,7 +163,7 @@ async def resolve_exception(
             conn,
             title=f"{resolved['exception_code']} resolved: {resolution.replace('_', ' ')}",
             body=note,
-            recipient_role="offloading",
+            recipient_role="packer",
             gate_entry_id=resolved["gate_entry_id"],
             exception_id=exception_id,
         )

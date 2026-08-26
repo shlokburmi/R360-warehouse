@@ -13,11 +13,13 @@ from app.core.errors import AppError
 from app.schemas.warehouse import ScanIn, ScanResult
 from app.services import packing as packing_service
 from app.services import scans as scan_service
+from app.services import stickers as sticker_service
 
 router = APIRouter(tags=["packing"])
 
-matcher_or_ops = require_roles("invoice_matcher", "ops_manager")
-packer_or_ops = require_roles("packer", "ops_manager")
+# Matching is an Admin-only action now that invoice_matcher has folded into it.
+matcher_or_ops = require_ops
+packer_or_ops = require_roles("packer")
 
 
 # ---------------------------------------------------------------------------
@@ -64,6 +66,31 @@ class InvoiceOut(BaseModel):
     out_scanned_at: Optional[datetime] = None
 
     suggested_locations: List[StockHint] = Field(default_factory=list)
+
+
+class InvoiceCreate(BaseModel):
+    invoice_number: str = Field(min_length=3, max_length=60)
+    purchase_order_line_id: UUID
+    units: int = Field(gt=0)
+    customer_name: Optional[str] = Field(default=None, max_length=120)
+
+    @field_validator("invoice_number")
+    @classmethod
+    def _upper(cls, v: str) -> str:
+        return v.strip().upper()
+
+
+class CartonStickerOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    code: str
+    status: str
+    invoice_id: UUID
+    invoice_number: str
+    sku: str
+    units: int
+    customer_name: Optional[str] = None
 
 
 class BadgeIn(BaseModel):
@@ -200,23 +227,55 @@ class PackerProductivity(BaseModel):
 @router.post("/badges/resolve", response_model=BadgeHolder)
 async def resolve_badge(
     payload: BadgeIn,
-    expect: str = Query(default="any", pattern="^(any|invoice_matcher|packer)$"),
+    expect: str = Query(default="any", pattern="^(any|matcher|packer)$"),
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_roles("invoice_matcher", "packer", "ops_manager")),
+    user: CurrentUser = Depends(require_roles("packer")),
 ):
     """Identify the holder of a scanned badge.
 
     Returns a name and role only. A badge is attribution, not a credential — it
     cannot be exchanged for a session, and this endpoint is the only thing that
     reads one.
+
+    "matcher" is a station, not a role — matching is done by Admin.
     """
-    expected = ["invoice_matcher", "packer"] if expect == "any" else [expect]
+    expected = ["admin", "packer"] if expect == "any" else (["admin"] if expect == "matcher" else [expect])
     return await packing_service.resolve_badge(conn, payload.badge_code, expected)
 
 
 # ---------------------------------------------------------------------------
 # Invoices
 # ---------------------------------------------------------------------------
+
+
+@router.post("/invoices", response_model=InvoiceOut, status_code=status.HTTP_201_CREATED)
+async def create_invoice(
+    payload: InvoiceCreate,
+    conn: AsyncConnection = Depends(get_db),
+    user: CurrentUser = Depends(require_ops),
+):
+    """Admin books an invoice against a received PO line, from the dashboard."""
+    return await packing_service.create_invoice(
+        conn,
+        invoice_number=payload.invoice_number,
+        purchase_order_line_id=payload.purchase_order_line_id,
+        units=payload.units,
+        customer_name=payload.customer_name,
+    )
+
+
+@router.post(
+    "/invoices/{invoice_id}/sticker",
+    response_model=CartonStickerOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def issue_carton_sticker(
+    invoice_id: UUID,
+    conn: AsyncConnection = Depends(get_db),
+    user: CurrentUser = Depends(require_ops),
+):
+    """Print the carton sticker for this invoice. Reissuing voids the old one."""
+    return await sticker_service.issue_carton_sticker(conn, invoice_id)
 
 
 @router.get("/invoices", response_model=List[InvoiceOut])
@@ -500,12 +559,12 @@ class PackScanResult(ScanResult):
 async def assign_invoice(
     payload: AssignIn,
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_roles("packer", "invoice_matcher", "ops_manager")),
+    user: CurrentUser = Depends(require_roles("packer")),
 ):
     """Hand a carton to a named packer.
 
-    Matchers can do this as well as packers, because the matcher is usually the
-    person physically handing the box over.
+    Admin can do this as well as packers, since the person who matched the
+    invoice is usually the one physically handing the box over.
     """
     return await packing_service.assign_invoice(
         conn, payload.invoice_number, payload.badge_code, payload.note

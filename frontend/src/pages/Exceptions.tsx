@@ -51,7 +51,7 @@ export function ExceptionsPage() {
   const [note, setNote] = useState('')
   const [error, setError] = useState<ApiError | null>(null)
 
-  const isOps = me?.role === 'ops_manager' || me?.role === 'admin'
+  const isOps = me?.role === 'admin'
 
   const exceptions = useQuery({
     queryKey: ['exceptions', showResolved],

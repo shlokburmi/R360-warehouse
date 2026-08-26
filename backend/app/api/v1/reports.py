@@ -1,4 +1,4 @@
-"""Ops dashboard (PRD §5.8) and reports (PRD §5.10).
+"""Admin dashboard (PRD §5.8) and reports (PRD §5.10).
 
 The five reports in the PRD are all derived — nothing here maintains a counter
 that could drift away from the ledger it is supposed to summarise.
@@ -21,7 +21,7 @@ async def dashboard(
     conn: AsyncConnection = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Everything the Ops Manager landing page needs, in one round trip.
+    """Everything the Admin landing page needs, in one round trip.
 
     One query per tile would be four requests from a tablet on warehouse wifi;
     the whole point of this page is that it loads before someone gives up on it.

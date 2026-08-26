@@ -13,6 +13,7 @@ const NAV: { page: string; to: string; key: string }[] = [
   { page: 'gate-entry', to: '/gate-entry', key: 'nav.gate_entry' },
   { page: 'box-counting', to: '/entries', key: 'nav.trucks' },
   { page: 'putaway', to: '/putaway', key: 'nav.putaway' },
+  { page: 'invoices', to: '/invoices', key: 'nav.invoices' },
   { page: 'invoice-matching', to: '/invoice-matching', key: 'nav.matching' },
   { page: 'packing', to: '/packing', key: 'nav.packing' },
   { page: 'batches', to: '/batches', key: 'nav.out_scan' },

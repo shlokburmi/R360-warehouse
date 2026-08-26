@@ -181,10 +181,10 @@ begin
 
   -- Badges only mean something at the stations that scan one. A badge on a
   -- guard would be attribution for work the guard never does.
-  if v_role not in ('invoice_matcher', 'packer', 'ops_manager') then
+  if v_role not in ('packer', 'admin') then
     raise exception 'A % does not carry an attribution badge.', v_role
-      using hint = 'Badges are for invoice matching, packing, and the Ops '
-                   'managers who cover those stations.';
+      using hint = 'Badges are for packers, and the Admins who match '
+                   'invoices or cover the packing bench.';
   end if;
 
   -- generate_badge_code() is 64 bits of randomness, so this loop effectively

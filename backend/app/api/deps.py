@@ -19,16 +19,14 @@ from app.db.session import rls_transaction
 
 ROLE_LABELS = {
     "security_guard": "Security Guard",
-    "ops_manager": "Ops Manager",
     "offloading": "Offloading Team",
-    "warehouse_staff": "Warehouse Staff",
-    "invoice_matcher": "Invoice Matching",
     "packer": "Packing",
-    "inbound": "Inbound Team",
     "admin": "Admin",
 }
 
-OPS_ROLES = ("ops_manager", "admin")
+# Historically "ops_manager or admin"; ops_manager folded into admin when the
+# role model was consolidated to four roles, so this is now just admin.
+OPS_ROLES = ("admin",)
 
 
 @dataclass(frozen=True)
@@ -144,13 +142,13 @@ def require_roles(*roles: str):
     return _guard
 
 
-# Ops is the only single-role guard used on its own; every other page is shared
-# between the role that performs the step and Ops covering for them, so those
-# are declared at the route with require_roles(...).
-require_ops = require_roles("ops_manager")
+# Admin used to be its own role (ops_manager); it is now just admin, and every
+# other page is shared between the role that performs the step and admin
+# covering for them, so those are declared at the route with require_roles(...).
+require_ops = require_roles("admin")
 
-# Admin is not "Ops with more buttons". Provisioning accounts and issuing
-# attribution badges are the two operations an Ops Manager must not have, since
+# Admin is not "Admin with more buttons". Provisioning accounts and issuing
+# attribution badges are the two operations an Admin must not have, since
 # either one would let them manufacture the second person CONTROL POINT 5
 # requires. `require_roles("admin")` reads oddly given admin is added to every
 # guard, so it is named here to make the intent explicit at the call site.

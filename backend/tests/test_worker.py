@@ -136,7 +136,7 @@ class TestApprovalEscalation:
                 text(
                     """
                     select count(*)::int from notifications
-                     where gate_entry_id = :id and recipient_role = 'ops_manager'
+                     where gate_entry_id = :id and recipient_role = 'admin'
                     """
                 ),
                 {"id": entry_id},

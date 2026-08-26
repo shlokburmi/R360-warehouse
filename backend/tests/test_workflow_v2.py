@@ -148,7 +148,7 @@ class TestPackingAssignment:
         inv = await _invoice(db)
         await act_as(db, people["matcher"]["id"])
 
-        async with rejected(db, containing="not been verified"):
+        async with rejected(db, containing="not been matched"):
             await _assign(db, inv["id"], people["packer"]["id"], people["matcher"]["id"])
 
     async def test_the_verifier_cannot_be_assigned_the_pack(self, db, people):
@@ -656,7 +656,7 @@ class TestLoadApproval:
         batch_id, _ = await _complete_batch(db, people)
         approval = await _count_cartons(db, batch_id, 2, people["guard"]["id"])
 
-        async with rejected(db, containing="Only an Ops Manager or Admin"):
+        async with rejected(db, containing="Only an Admin"):
             await db.execute(
                 text(
                     "update batch_load_approvals set status = 'approved', decided_by = :p "
@@ -844,7 +844,7 @@ class TestExitApproval:
             {"w": actors["guard"], "id": pickup_id},
         )
 
-        async with rejected(db, containing="Only an Ops Manager or Admin"):
+        async with rejected(db, containing="Only an Admin"):
             await db.execute(
                 text(
                     """

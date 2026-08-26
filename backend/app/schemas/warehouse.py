@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class StickerSheetRequest(BaseModel):
-    """Ops generating stickers. Quantity is never chosen by Ops for box sheets —
+    """Admin generating stickers. Quantity is never chosen by Admin for box sheets —
     it is taken from the guard's declared count, which is what makes
     CONTROL POINT 2 a comparison of two independent numbers rather than one."""
 
@@ -203,7 +203,7 @@ class ExceptionOut(BaseModel):
 
 
 class ExceptionResolve(BaseModel):
-    """Ops deciding a held box (DECISIONS.md §3).
+    """Admin deciding a held box (DECISIONS.md §3).
 
     There is no 'ignore' and no 'force through'. Every path leaves a named
     person attached to a stated outcome.

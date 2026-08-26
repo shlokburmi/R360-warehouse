@@ -10,13 +10,13 @@ import type { BatchAwaitingCount, LoadApproval } from '@/types'
  * The guard's carton count on a finished batch.
  *
  * The outbound mirror of the gate: someone physically counts what is on the bay,
- * and Ops decides. Nothing is released for loading until that decision exists.
+ * and Admin decides. Nothing is released for loading until that decision exists.
  *
  * Two deliberate choices in the layout. The system's expected number is shown
  * *after* the guard has typed theirs, not before — a count that starts by
  * telling you the answer is not a count, it is a confirmation. And a mismatch is
  * not treated as an error here: the guard's job is to report what is there, and
- * deciding what a discrepancy means is Ops's.
+ * deciding what a discrepancy means is Admin's.
  */
 export function LoadingPage() {
   const { t } = useTranslation()

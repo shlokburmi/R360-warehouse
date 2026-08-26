@@ -157,11 +157,11 @@ async def upsert_visitor(conn: AsyncConnection, person: PersonIn) -> Dict[str, A
 async def create_entry(
     conn: AsyncConnection, user: CurrentUser, payload: GateEntryCreate
 ) -> UUID:
-    """Register everyone on the truck and send the request to Ops.
+    """Register everyone on the truck and send the request to Admin.
 
     Everything here happens in one transaction: if any person fails validation,
     no gate entry exists at all. A half-registered truck is worse than none —
-    it looks approved-able in the Ops queue while missing a laborer.
+    it looks approved-able in the Admin queue while missing a laborer.
     """
     if payload.purchase_order_id is not None:
         po = (
@@ -261,7 +261,7 @@ async def decide_entry(
     approve: bool,
     note: Optional[str],
 ) -> Dict[str, Any]:
-    """Ops approves or rejects. CONTROL POINT 1.
+    """Admin approves or rejects. CONTROL POINT 1.
 
     The self-approval bar, the role requirement and the legal-transition check
     all live in the database (0002/0004). What is added here is the human-facing
@@ -287,7 +287,7 @@ async def decide_entry(
     if str(current["requested_by"]) == user.id:
         raise ControlPointError(
             "You cannot approve an entry you requested yourself.",
-            hint="Ask another Ops Manager to review it.",
+            hint="Ask another Admin to review it.",
         )
 
     await conn.execute(
@@ -345,8 +345,8 @@ async def admit_vehicle(conn: AsyncConnection, entry_id: UUID) -> Dict[str, Any]
     if current["status"] != "approved":
         if current["status"] == "pending_approval":
             raise ControlPointError(
-                "Vehicle cannot enter without Ops approval (CONTROL POINT 1).",
-                hint="The approval request is still waiting with the Ops Manager.",
+                "Vehicle cannot enter without Admin approval (CONTROL POINT 1).",
+                hint="The approval request is still waiting with Admin.",
             )
         raise ControlPointError(
             f"This entry is {current['status'].replace('_', ' ')} and cannot be admitted.",
@@ -363,7 +363,7 @@ async def admit_vehicle(conn: AsyncConnection, entry_id: UUID) -> Dict[str, Any]
         # right. Never report success for an update that did not happen.
         raise ControlPointError(
             "You are not permitted to admit this vehicle.",
-            hint="Ask the Ops team to open the gate.",
+            hint="Ask Admin to open the gate.",
         )
 
     return await get_entry(conn, entry_id)
@@ -377,7 +377,7 @@ async def admit_vehicle(conn: AsyncConnection, entry_id: UUID) -> Dict[str, Any]
 async def declare_box_count(
     conn: AsyncConnection, entry_id: UUID, box_count: int
 ) -> Dict[str, Any]:
-    """The guard's physical count. Recorded before Ops issues any stickers, so
+    """The guard's physical count. Recorded before Admin issues any stickers, so
     that the sticker count is derived from it rather than negotiated with it."""
     entry = (
         await conn.execute(
@@ -403,12 +403,12 @@ async def declare_box_count(
         )
 
     # Re-declaring after stickers are printed would let someone quietly move the
-    # target to match whatever was scanned. Ops must reissue instead.
+    # target to match whatever was scanned. Admin must reissue instead.
     if entry["issued_box_sticker_count"] > 0 and entry["declared_box_count"] != box_count:
         raise ControlPointError(
             f"{entry['issued_box_sticker_count']} stickers have already been issued "
             f"for a count of {entry['declared_box_count']}.",
-            hint="Ask Ops to void the sheet and reissue before changing the count.",
+            hint="Ask Admin to void the sheet and reissue before changing the count.",
         )
 
     await conn.execute(
@@ -458,7 +458,7 @@ async def verify_box_count(conn: AsyncConnection, entry_id: UUID) -> Dict[str, A
             "entry": entry,
             "exception_code": code,
             "message": (
-                f"Count mismatch: {scanned} of {declared} boxes scanned. Contact Ops team."
+                f"Count mismatch: {scanned} of {declared} boxes scanned. Contact Admin."
             ),
         }
 
@@ -643,7 +643,7 @@ async def escalate_overdue_approvals(conn: AsyncConnection) -> Dict[str, int]:
                 f"Vehicle {row['vehicle_number']} has been waiting at the gate for "
                 f"{settings.gate_approval_sla_minutes} minutes. Please decide."
             ),
-            recipient_role="ops_manager",
+            recipient_role="admin",
             channel="email",
             gate_entry_id=row["id"],
         )
@@ -669,7 +669,7 @@ async def escalate_overdue_approvals(conn: AsyncConnection) -> Dict[str, int]:
             title=f"SLA breached: {row['entry_code']}",
             body=(
                 f"Vehicle {row['vehicle_number']} has waited over "
-                f"{settings.gate_escalation_minutes} minutes with no Ops decision. "
+                f"{settings.gate_escalation_minutes} minutes with no Admin decision. "
                 "The gate remains locked — no entry has been auto-approved."
             ),
             gate_entry_id=row["id"],

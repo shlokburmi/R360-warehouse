@@ -157,11 +157,13 @@ class TestControlPoint5:
         async with rejected(db, containing="not permitted"):
             await _verify(db, invoice["id"], people["packer_a"]["id"])
 
-    async def test_a_matcher_badge_cannot_pack(self, db, invoice, people):
+    async def test_a_guard_badge_cannot_pack(self, db, invoice, people):
+        """Badges are role-scoped: only packers (and Admin, who also matches
+        invoices and may cover the bench) may pack."""
         await _verify(db, invoice["id"], people["matcher_a"]["id"])
 
         async with rejected(db, containing="not permitted"):
-            await _pack(db, invoice["id"], people["matcher_b"]["id"])
+            await _pack(db, invoice["id"], people["guard"]["id"])
 
     async def test_a_deactivated_badge_stops_working(self, db, invoice, people):
         """A lost badge is killed without disabling the person's account."""

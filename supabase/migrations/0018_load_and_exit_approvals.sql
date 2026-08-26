@@ -139,9 +139,9 @@ begin
 
   select role into v_approver_role from profiles where id = new.decided_by;
 
-  if v_approver_role is null or v_approver_role not in ('ops_manager', 'admin') then
+  if v_approver_role is null or v_approver_role <> 'admin' then
     raise exception
-      'Only an Ops Manager or Admin may decide a carton count. Got role: %',
+      'Only an Admin may decide a carton count. Got role: %',
       coalesce(v_approver_role::text, 'unknown')
       using errcode = 'check_violation';
   end if;
@@ -430,9 +430,9 @@ begin
     -- twice. Mirrors fn_gate_guard in 0004.
     select role into v_approver_role from profiles where id = new.exit_approved_by;
 
-    if v_approver_role is null or v_approver_role not in ('ops_manager', 'admin') then
+    if v_approver_role is null or v_approver_role <> 'admin' then
       raise exception
-        'Only an Ops Manager or Admin may approve a vehicle leaving. Got role: %',
+        'Only an Admin may approve a vehicle leaving. Got role: %',
         coalesce(v_approver_role::text, 'unknown')
         using errcode = 'check_violation';
     end if;
@@ -520,7 +520,7 @@ create policy load_approvals_read on batch_load_approvals
 create policy load_approvals_insert on batch_load_approvals
   for insert to authenticated
   with check (
-    has_role('security_guard', 'ops_manager', 'admin')
+    has_role('security_guard', 'admin')
     and counted_by = auth.uid()
   );
 
@@ -528,8 +528,8 @@ create policy load_approvals_insert on batch_load_approvals
 -- it does not own — hence the two-branch policy rather than one.
 create policy load_approvals_update on batch_load_approvals
   for update to authenticated
-  using (has_role('security_guard', 'ops_manager', 'admin'))
-  with check (has_role('security_guard', 'ops_manager', 'admin'));
+  using (has_role('security_guard', 'admin'))
+  with check (has_role('security_guard', 'admin'));
 
 create trigger trg_load_approvals_audit
   after insert or update on batch_load_approvals

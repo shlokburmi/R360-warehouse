@@ -530,22 +530,22 @@ create policy pickups_read on pickups
 create policy pickups_insert on pickups
   for insert to authenticated
   with check (
-    has_role('security_guard', 'ops_manager', 'admin')
+    has_role('security_guard', 'admin')
     and registered_by = auth.uid()
   );
 
 create policy pickups_update on pickups
   for update to authenticated
-  using (has_role('security_guard', 'ops_manager', 'admin'))
-  with check (has_role('security_guard', 'ops_manager', 'admin'));
+  using (has_role('security_guard', 'admin'))
+  with check (has_role('security_guard', 'admin'));
 
 create policy pickup_persons_read on pickup_persons
   for select to authenticated
-  using (has_role('security_guard', 'ops_manager', 'admin'));
+  using (has_role('security_guard', 'admin'));
 
 create policy pickup_persons_insert on pickup_persons
   for insert to authenticated
-  with check (has_role('security_guard', 'ops_manager', 'admin'));
+  with check (has_role('security_guard', 'admin'));
 
 -- The gate-exit scan stamps packing_records, and gate_exit scans are already
 -- restricted to guards and Ops by the scan_events insert policy — so the
@@ -554,8 +554,8 @@ drop policy if exists packing_update on packing_records;
 
 create policy packing_update on packing_records
   for update to authenticated
-  using (has_role('security_guard', 'ops_manager', 'admin'))
-  with check (has_role('security_guard', 'ops_manager', 'admin'));
+  using (has_role('security_guard', 'admin'))
+  with check (has_role('security_guard', 'admin'));
 
 -- Audit and no-delete for the new tables.
 do $$

@@ -71,7 +71,7 @@ async def actors(db) -> dict:
             select p.id, p.role::text as role, p.employee_code
               from profiles p
              where p.employee_code in
-                   ('EMP-G01','EMP-O01','EMP-O02','EMP-F01','EMP-I01','EMP-W01','EMP-A01')
+                   ('EMP-G01','EMP-O01','EMP-O02','EMP-F01','EMP-I01','EMP-W01','EMP-A01','EMP-P01')
             """
         )
     )
@@ -88,6 +88,7 @@ async def actors(db) -> dict:
         "inbound": by_code["EMP-I01"],
         "storeman": by_code["EMP-W01"],
         "admin": by_code["EMP-A01"],
+        "packer": by_code["EMP-P01"],
     }
 
 

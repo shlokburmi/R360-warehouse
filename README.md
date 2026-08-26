@@ -7,7 +7,7 @@ attributable to a named person at a recorded time.
 **Stack:** FastAPI · React + TypeScript · Supabase (Postgres, Auth, Storage) ·
 Render · Vercel
 
-**All five phases are implemented and verified running.** Gate entry, Ops
+**All five phases are implemented and verified running.** Gate entry, Admin
 approval, box counting, unit scanning, inbound reconciliation, putaway, rack
 locations, stock lookup, invoice matching, packing attribution, out-scan, batch
 release, pickup verification, gate exit, exceptions, dashboard and reports —
@@ -15,8 +15,8 @@ plus staff provisioning and badge issue, which were SQL jobs until Phase 5.
 
 **Eleven hard stops are enforced by the database** — the seven control points in
 PRD §4, plus the four outbound gates added in Phase 5 (packing assignment,
-product-box reconciliation, the guard's carton count, and Ops approval of the
-truck leaving). 166 automated tests and four end-to-end walkthroughs (134, 45, 41
+product-box reconciliation, the guard's carton count, and Admin approval of the
+truck leaving). 166 automated tests and four end-to-end walkthroughs (134, 45, 40
 and 14 checks) pass against the local stack, covering the whole path from a truck
 arriving at the gate to a different truck leaving with packed cartons.
 
@@ -73,20 +73,24 @@ superuser.
 
 Password for all: `Warehouse@123`
 
+Four roles now: `security_guard`, `offloading`, `packer`, `admin`. Admin
+absorbs what used to be the separate Ops Manager and Invoice Matching roles
+(approvals, sticker issuance, invoice matching); offloading absorbs what used
+to be the separate Inbound Team and Warehouse Staff roles (reconciliation,
+putaway).
+
 | Email | Role |
 |---|---|
 | `guard@r360.local` | Security Guard |
-| `boopathi@r360.local` | Ops Manager |
-| `offload@r360.local` | Offloading Team |
-| `inbound@r360.local` | Inbound Team |
-| `store@r360.local` | Warehouse Staff (putaway) |
-| `match1@r360.local`, `match2@r360.local` | Invoice Matching |
+| `boopathi@r360.local`, `opsbackup@r360.local` | Admin (approvals) |
+| `offload@r360.local`, `inbound@r360.local`, `store@r360.local` | Offloading Team |
+| `match1@r360.local`, `match2@r360.local` | Admin (invoice matching) |
 | `pack1@r360.local`, `pack2@r360.local` | Packing |
 | `admin@r360.local` | Admin |
 
-Matchers, packers and Ops managers also have **attribution badges**. The API
-never returns the code of an existing badge — that would be equivalent to
-handing over the badge — so there are two ways to get one to try the flow with.
+Packers and Admins also have **attribution badges**. The API never returns
+the code of an existing badge — that would be equivalent to handing over the
+badge — so there are two ways to get one to try the flow with.
 
 The realistic one: sign in as `admin@r360.local` → *Staff* → **Issue badge**.
 The code is shown once, as a printable QR card, and cannot be looked up again.
@@ -117,31 +121,34 @@ whole point of CONTROL POINT 1 is that one person cannot do both halves.
 
 1. **Guard** → *Gate Entry*. Register a driver against vendor "Acme Electronics"
    and PO-2026-0001. Send for approval. The gate is now locked.
-2. **Ops** → *Approvals*. Approve it. (Try approving as the same guard who filed
-   it — the database refuses.)
+2. **Admin** → *Approvals*. Approve it. (Try approving as the same guard who
+   filed it — the database refuses.)
 3. **Guard** → *Trucks* → open gate → *Count boxes*. PO-2026-0001 is 60 units
    across three SKUs at 10 per box, so the correct count is **6**.
-4. **Ops** → same page → generate the sticker sheet, print it. Enter a different
-   number at step 3 to see the count mismatch stop the line instead.
-5. **Guard** → scan all six box stickers, then verify. Scan one twice to watch it
-   be rejected rather than double-counted.
-6. **Ops** → *Scan units* → generate unit stickers.
-7. **Offloader** → pick a box, scan its units, answer the damage check, close it.
+4. **Admin** → same page → generate the sticker sheet, print it. Enter a
+   different number at step 3 to see the count mismatch stop the line instead.
+5. **Packer** (`pack1@r360.local`) → scan all six box stickers, then verify.
+   Scan one twice to watch it be rejected rather than double-counted.
+6. **Admin** → *Scan units* → generate unit stickers.
+7. **Packer** → pick a box, scan its units, answer the damage check, close it.
    Deliberately scan only 8 of 10 to see the box held and an exception raised.
-8. **Ops** → *Exceptions* → accept short / recount / reject.
-9. **Inbound** → *Verify inbound counts*. Enter a wrong number to see putaway
-   blocked.
-10. **Warehouse staff** (`store@r360.local`) → *Putaway*. The boxes appear only
-    now, because step 9 had to pass first. Scan or type a rack code
-    (`A-01-01-01-01`), place part of a box, then the rest — splitting across
-    racks is allowed. Try `Q-01-01-01-01` to watch good stock be refused from a
-    quarantine rack.
-11. **Warehouse staff** → *Stock*. Where everything ended up, grouped by SKU.
-12. **Matcher** (`match1@r360.local`) → *Matching*. Scan `INV-2026-0001`; the page
+8. **Admin** → *Exceptions* → accept short / recount / reject.
+9. **Offloader** (`offload@r360.local`) → *Verify inbound counts*. Enter a
+   wrong number to see putaway blocked.
+10. **Offloader** → *Putaway*. The boxes appear only now, because step 9 had
+    to pass first. Scan or type a rack code (`A-01-01-01-01`), place part of a
+    box, then the rest — splitting across racks is allowed. Try
+    `Q-01-01-01-01` to watch good stock be refused from a quarantine rack.
+11. **Offloader** → *Stock*. Where everything ended up, grouped by SKU.
+    Separately, as **Admin** → *Invoices*: book a new invoice against
+    PO-2026-0001's `PWB-10K` line and print its carton sticker — this is a
+    printed QR now (family `CTN-`), not just the typed invoice number.
+12. **Admin** (`match1@r360.local`) → *Matching*. Scan the carton sticker you
+    just printed, or type `INV-2026-0001` if you skip printing one; the page
     tells you which rack the stock is on. Confirm the match, then scan your
     badge. Try a packer's badge to see it refused.
-13. **Matcher or packer** → *Packing*. The verified invoice appears. Scan the
-    packer's badge card to **assign** the carton to her — try the matcher's own
+13. **Admin or packer** → *Packing*. The verified invoice appears. Scan the
+    packer's badge card to **assign** the carton to her — try the Admin's own
     badge to see it refused, because the person who checked the goods cannot also
     pack them (CP5). Reassigning to a second packer keeps both records, so "who
     had it at 14:20" stays answerable.
@@ -150,20 +157,20 @@ whole point of CONTROL POINT 1 is that one person cannot do both halves.
     sticker to see the wrong-sticker refusal, and try to close the carton one box
     short — refused, because packed must equal promised. Then scan the last box
     and confirm with your badge.
-15. **Ops** → *Out-Scan*. Select packed cartons, create a batch, then scan each
+15. **Admin** → *Out-Scan*. Select packed cartons, create a batch, then scan each
     carton's invoice label. Try completing with one unscanned to see CP6 stop it,
     then complete. Now try to release — refused: nobody has counted the cartons.
 16. **Guard** → *Carton Count*. Type how many cartons are physically on the bay.
     The system's number appears only after you commit to yours. Enter a wrong
-    number to see the mismatch flagged, then send it to Ops.
-17. **Ops** → *Approvals*. The count is at the top. Approve it (try as the guard
-    who counted — refused), then release the batch.
+    number to see the mismatch flagged, then send it to Admin.
+17. **Admin** → *Approvals*. The count is at the top. Approve it (try as the
+    guard who counted — refused), then release the batch.
 18. **Guard** → *Pickup*. The released batch appears. Register the collecting
     vehicle — note that the driver from step 1 is recognised and not
     re-photographed. Scan cartons onto the vehicle; try verifying with one still
     missing to see CP7 refuse, then load the last one and verify.
 19. **Guard** → *Request permission to leave*. The gate does not open yet.
-20. **Ops** → *Approvals*. Hold the vehicle with a reason and watch it come back
+20. **Admin** → *Approvals*. Hold the vehicle with a reason and watch it come back
     to the guard's screen with that reason on it. Then approve.
 21. **Guard** → *Open gate*. Time out is stamped, and the vehicle leaves.
 
@@ -244,7 +251,7 @@ backend/app/
   api/v1/              routes
   worker.py            SLA escalation, email, photo retention — separate process
   services/retention.py identity photos are destroyed at 180 days, not just hidden
-  services/loading.py  the guard's carton count and Ops's decision on it
+  services/loading.py  the guard's carton count and Admin's decision on it
   scripts/e2e_workflow.py the Phase 5 outbound flow over real HTTP
   scripts/e2e_admin.py the Admin flow over real HTTP
 frontend/src/
@@ -293,7 +300,7 @@ to holding their badge, which would let one person satisfy both halves of
 CONTROL POINT 5 alone.
 
 A consequence worth knowing when reading the code: a failed control point
-*writes* — it holds the box, logs an exception against the vendor, alerts Ops.
+*writes* — it holds the box, logs an exception against the vendor, alerts Admin.
 So those endpoints return `409` with a full body rather than raising, because
 raising would roll back the transaction containing the very record that makes
 the hold enforceable. `postControlPoint()` on the frontend is the matching half.

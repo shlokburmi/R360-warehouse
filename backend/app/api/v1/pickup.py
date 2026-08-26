@@ -22,7 +22,7 @@ from app.services import scans as scan_service
 
 router = APIRouter(prefix="/pickups", tags=["pickup"])
 
-guard_or_ops = require_roles("security_guard", "ops_manager")
+guard_or_ops = require_roles("security_guard")
 
 
 # ---------------------------------------------------------------------------
@@ -192,9 +192,9 @@ async def awaiting_exit(
     conn: AsyncConnection = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Vehicles loaded, verified, and waiting on an Ops decision.
+    """Vehicles loaded, verified, and waiting on an Admin decision.
 
-    Readable by the guard as well as Ops: the guard standing at the gate is the
+    Readable by the guard as well as Admin: the guard standing at the gate is the
     person being asked "how long?", and telling them to go and find out is not an
     answer.
     """
@@ -271,7 +271,7 @@ async def request_exit(
     conn: AsyncConnection = Depends(get_db),
     user: CurrentUser = Depends(guard_or_ops),
 ):
-    """The guard asks Ops to open the gate.
+    """The guard asks Admin to open the gate.
 
     Deliberately separate from verification: CONTROL POINT 7 answers "is every
     carton on the truck", this answers "may it go" (DECISIONS.md §CD4).
@@ -286,7 +286,7 @@ async def decide_exit(
     conn: AsyncConnection = Depends(get_db),
     user: CurrentUser = Depends(require_ops),
 ):
-    """Ops approves or holds the vehicle.
+    """Admin approves or holds the vehicle.
 
     Approving records the approval; it does not open the gate. The guard still
     performs the release, so the gate opening stays attached to the person

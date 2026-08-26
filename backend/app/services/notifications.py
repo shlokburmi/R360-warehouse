@@ -2,7 +2,7 @@
 
 Notifications are written inside the same transaction as the event that caused
 them. That is deliberate: if the gate entry insert rolls back, the "new truck
-arrived" alert must roll back with it, or Ops chases a truck that isn't there.
+arrived" alert must roll back with it, or Admin chases a truck that isn't there.
 
 Email is not sent inline. Rows with channel='email' are picked up by the
 dispatcher worker, so a slow SMTP server can never make a guard wait at the gate.
@@ -15,9 +15,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 # Deliberately no RETURNING clause. Postgres applies the SELECT policy to
-# INSERT ... RETURNING, and a guard raising an alert addressed to Ops cannot
-# read Ops' inbox — so asking for the id back would fail on a notification the
-# guard is perfectly entitled to send. Nothing needs the id anyway.
+# INSERT ... RETURNING, and a guard raising an alert addressed to Admin cannot
+# read Admin's inbox — so asking for the id back would fail on a notification
+# the guard is perfectly entitled to send. Nothing needs the id anyway.
 _INSERT = text(
     """
     insert into notifications
@@ -63,14 +63,14 @@ async def notify(
 
 
 async def notify_ops(conn: AsyncConnection, *, title: str, body: str, **kw) -> None:
-    """In-app alert to every Ops Manager, plus a queued email.
+    """In-app alert to every Admin, plus a queued email.
 
     Both, not either: the in-app alert is what gets seen during a shift, the
     email is what gets seen when nobody is looking at the dashboard.
     """
-    await notify(conn, title=title, body=body, recipient_role="ops_manager", **kw)
+    await notify(conn, title=title, body=body, recipient_role="admin", **kw)
     await notify(
-        conn, title=title, body=body, recipient_role="ops_manager", channel="email", **kw
+        conn, title=title, body=body, recipient_role="admin", channel="email", **kw
     )
 
 

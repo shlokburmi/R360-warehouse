@@ -107,7 +107,7 @@ def install_error_handlers(app: FastAPI) -> None:
                 content=_payload(
                     "not_permitted",
                     "Your role is not allowed to perform this action.",
-                    "If you believe this is wrong, ask Ops to check your role assignment.",
+                    "If you believe this is wrong, ask an Admin to check your role assignment.",
                 ),
             )
 

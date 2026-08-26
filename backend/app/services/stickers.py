@@ -1,7 +1,7 @@
 """Sticker issue — PRD Steps 2 and 3.
 
-Only Ops can issue stickers (enforced by RLS). That separation is what gives
-CONTROL POINT 2 its meaning: the guard counts the boxes, Ops issues exactly that
+Only Admin can issue stickers (enforced by RLS). That separation is what gives
+CONTROL POINT 2 its meaning: the guard counts the boxes, Admin issues exactly that
 many stickers, and the guard scans them back. Three numbers from two independent
 parties. If the floor could print its own stickers, "scanned == issued" would be
 a tautology.
@@ -103,7 +103,7 @@ async def generate_box_stickers(
 
     # The guard counted the truck; the PO says what was ordered. A disagreement
     # here is a real discrepancy, not a rounding artefact — so it stops the line
-    # and lands in the Ops queue rather than being silently absorbed.
+    # and lands in the Admin queue rather than being silently absorbed.
     if len(allocation) != declared:
         # Returned, not raised: logging the discrepancy against the vendor is a
         # write, and raising here would roll it back along with everything else
@@ -124,7 +124,7 @@ async def generate_box_stickers(
             "exception_code": code,
             "message": (
                 f"Guard counted {declared} boxes but {entry['po_number']} expects "
-                f"{len(allocation)}. Count mismatch — contact Ops team."
+                f"{len(allocation)}. Count mismatch — contact Admin."
             ),
         }
 
@@ -389,3 +389,76 @@ async def list_sheets(conn: AsyncConnection, entry_id: UUID) -> List[Dict[str, A
         {"id": str(entry_id)},
     )
     return [dict(r) | {"stickers": []} for r in rows.mappings()]
+
+
+# ---------------------------------------------------------------------------
+# Carton stickers (0020/0021) — one per invoice, printed one at a time rather
+# than issued as a sheet, since an invoice arrives and is booked one at a time.
+# ---------------------------------------------------------------------------
+
+
+async def issue_carton_sticker(conn: AsyncConnection, invoice_id: UUID) -> Dict[str, Any]:
+    """Mint the carton sticker for one invoice.
+
+    "Reissue" means replace, the same rule 0013 sets for badges: any existing
+    live sticker for this invoice is voided first, so this never has to refuse
+    a second print run — it can always just be pressed again after a smudge or
+    a jam, and `stickers_one_live_carton_per_invoice` still only ever has one
+    live row to enforce against.
+    """
+    invoice = (
+        await conn.execute(
+            text("select id, invoice_number from invoices where id = :id"),
+            {"id": str(invoice_id)},
+        )
+    ).mappings().first()
+
+    if invoice is None:
+        raise AppError("Invoice not found.", code="not_found", http_status=404)
+
+    await conn.execute(
+        text(
+            """
+            update stickers
+               set status = 'void', void_reason = 'Reissued'
+             where invoice_id = :id and sticker_type = 'carton' and status <> 'void'
+            """
+        ),
+        {"id": str(invoice_id)},
+    )
+
+    sticker_id = (
+        await conn.execute(
+            text(
+                """
+                insert into stickers (code, sticker_type, invoice_id, sequence_no, status)
+                values (:code, 'carton', :invoice_id, 1, 'applied')
+                returning id
+                """
+            ),
+            {"code": _code("CTN"), "invoice_id": str(invoice_id)},
+        )
+    ).scalar_one()
+
+    return await get_carton_sticker(conn, sticker_id)
+
+
+async def get_carton_sticker(conn: AsyncConnection, sticker_id: UUID) -> Dict[str, Any]:
+    row = (
+        await conn.execute(
+            text(
+                """
+                select s.id, s.code, s.status::text as status, s.invoice_id,
+                       i.invoice_number, i.sku, i.units, i.customer_name
+                  from stickers s
+                  join invoices i on i.id = s.invoice_id
+                 where s.id = :id
+                """
+            ),
+            {"id": str(sticker_id)},
+        )
+    ).mappings().first()
+
+    if row is None:
+        raise AppError("Sticker not found.", code="not_found", http_status=404)
+    return dict(row)

@@ -22,11 +22,13 @@ this repo, so here is the mapping:
 | small box, individual product box | **`units`** — sticker type `unit` |
 | carton going out to a customer | an `invoice` plus its `packing_record` |
 | batch | `batches` — a group of packed cartons released together |
-| admin (who approves the gate) | the `ops_manager` role; Admin gets it at T+30m escalation |
 
-"Admin" in conversation usually means Boopathi, the Ops Manager. The `admin`
-role in the software is narrower: it provisions accounts and issues badges, and
-those are the two things Ops deliberately cannot do.
+Roles were consolidated from eight down to four: `security_guard`, `offloading`,
+`packer`, `admin`. Admin now does everything the old `ops_manager` and
+`invoice_matcher` roles did (approvals, sticker issuance, invoice matching,
+provisioning, badge issue); offloading now does everything the old `inbound`
+and `warehouse_staff` roles did (reconciliation, putaway). See DECISIONS.md
+§CE1 for the security tradeoff this collapses.
 
 ---
 
@@ -38,17 +40,17 @@ rather than a policy.
 
 | # | Where | The rule | Enforced by |
 |---|---|---|---|
-| **CP1** | Gate entry | Ops must approve before the gate opens, and the guard who filed it cannot approve it | `fn_gate_entry_guard` (0004) |
+| **CP1** | Gate entry | Admin must approve before the gate opens, and the guard who filed it cannot approve it | `fn_gate_entry_guard` (0004) |
 | **CP2** | Box count | Box stickers scanned must equal stickers issued | `fn_gate_entry_guard` (0004) |
 | **CP3** | Unit count | Units scanned into a box must equal the PO quantity | `fn_box_transition_guard`, `fn_scan_apply` (0004) |
-| **CP4** | Inbound reconciliation | Warehouse count must equal the inbound team's count before putaway | `fn_putaway_guard` (0007) |
+| **CP4** | Inbound reconciliation | Warehouse count must equal the offloading team's independently-entered count before putaway | `fn_putaway_guard` (0007) |
 | **CP5** | Packing | Invoice verified by one person, packed by a different one | `fn_packing_guard` (0009) |
 | **CP6** | Out-scan | Every carton assigned to a batch must be physically scanned | `fn_batch_release_guard` (0018) |
 | **CP7** | Gate exit | Every released carton must be verified onto the vehicle | `fn_pickup_guard` (0018) |
 | **A1** | Packing assignment | A carton goes to a named packer, who is not the verifier, holds a live badge, and is not already packing something closed | `fn_packing_assignment_guard` (0017) |
 | **A2** | Packing attribution | The pack must be recorded against the person it was assigned to | `fn_packing_matches_assignment` (0017) |
 | **A3** | Product reconciliation | Product boxes scanned into a carton must equal what the invoice promises | `fn_packing_units_complete` (0019) |
-| **A4** | Outbound approvals | A batch is not released without an approved carton count; a vehicle does not leave without a recorded Ops approval | `fn_batch_release_guard`, `fn_pickup_guard` (0018) |
+| **A4** | Outbound approvals | A batch is not released without an approved carton count; a vehicle does not leave without a recorded Admin approval | `fn_batch_release_guard`, `fn_pickup_guard` (0018) |
 
 CP1–CP7 are PRD §4. A1–A4 were added in Phase 5, after walking the process
 aloud surfaced four steps the floor had always performed and the software had
@@ -65,23 +67,23 @@ lives in 0018. Grepping the earliest match gets you a superseded version.
 
 ```mermaid
 flowchart TD
-    A["Guard registers vehicle,<br/>driver, laborers, vendor, PO"] --> B{"CP1<br/>Ops approves?"}
+    A["Guard registers vehicle,<br/>driver, laborers, vendor, PO"] --> B{"CP1<br/>Admin approves?"}
     B -- "no / no reply" --> B1["Gate stays locked.<br/>Escalates at 15m and 30m,<br/>never auto-approves"]
     B -- yes --> C["Gate opens, time_in stamped"]
     C --> D["Guard counts big boxes<br/>and declares the number"]
-    D --> E["Ops generates exactly<br/>that many box stickers"]
-    E --> F["Guard applies and<br/>scans every box sticker"]
+    D --> E["Admin generates exactly<br/>that many box stickers"]
+    E --> F["Packer applies and<br/>scans every box sticker"]
     F --> G{"CP2<br/>scanned = issued?"}
     G -- no --> G1["Boxes cannot move inside"]
-    G -- yes --> H["Ops generates unit stickers<br/>— one per product box"]
-    H --> I["Offloader applies them and<br/>scans each into its big box"]
+    G -- yes --> H["Admin generates unit stickers<br/>— one per product box"]
+    H --> I["Packer applies them and<br/>scans each into its big box"]
     I --> J{"CP3<br/>units = PO quantity?"}
     J -- no --> J1["Box held. Nothing enters.<br/>Exception logged against the vendor"]
-    J1 --> J2["Ops decides:<br/>accept short / recount / reject"]
+    J1 --> J2["Admin decides:<br/>accept short / recount / reject"]
     J -- yes --> K["Damage check answered,<br/>box closed"]
     K --> L{"CP4<br/>inbound count matches?"}
     L -- no --> L1["Putaway blocked"]
-    L -- yes --> M["Warehouse staff shelve to racks.<br/>Damaged units only to a Q rack"]
+    L -- yes --> M["Offloading team shelve to racks.<br/>Damaged units only to a Q rack"]
 ```
 
 ### Step by step
@@ -89,16 +91,16 @@ flowchart TD
 | Step | Who | Screen | Notes |
 |---|---|---|---|
 | 1 | Security Guard | *Gate Entry* | Driver and laborers, mobiles, vehicle, vendor, PO. Identity photo on first visit only, re-captured after 180 days |
-| 2 | Ops Manager | *Approvals* | **CP1.** A guard cannot approve their own entry. At T+15m it escalates to a backup Ops Manager, at T+30m to Admin. The timer escalates the *notification*, never the decision |
+| 2 | Admin | *Approvals* | **CP1.** A guard cannot approve their own entry. At T+15m it re-alerts, naming the backup Admin; at T+30m it re-alerts again and flags `sla_breached`. The timer escalates the *notification*, never the decision |
 | 3 | Security Guard | *Trucks → Count boxes* | Declares how many big boxes are on the truck |
-| 4 | Ops Manager | same page | Generates a sticker sheet with *exactly* that many QR stickers, each backed by a `stickers` row |
-| 5 | Security Guard | same page | Applies one per box, scans each. **CP2** — a re-scan is rejected, not double-counted |
-| 6 | Ops Manager | *Scan units* | Generates unit stickers, one per product box, from the PO quantity |
-| 7 | Offloading Team | *Scan units* | Scans each product box into its big box. **CP3.** Over-scan is refused outright; under-scan holds the box |
-| 8 | Ops Manager | *Exceptions* | Decides a held box: `accept short`, `recount`, or `reject`. Scanned units are kept as evidence either way |
-| 9 | Inbound Team | *Verify inbound counts* | **CP4.** Their own system's count against the warehouse's |
-| 10 | Warehouse Staff | *Putaway* | Scans a rack code. A box may be split across racks; damaged units only into a quarantine (`Q-`) rack |
-| 11 | Warehouse Staff | *Stock* | Where everything ended up, grouped by SKU |
+| 4 | Admin | same page | Generates a sticker sheet with *exactly* that many QR stickers, each backed by a `stickers` row |
+| 5 | Packer | same page | Applies one per box, scans each. **CP2** — a re-scan is rejected, not double-counted |
+| 6 | Admin | *Scan units* | Generates unit stickers, one per product box, from the PO quantity |
+| 7 | Packer | *Scan units* | Scans each product box into its big box. **CP3.** Over-scan is refused outright; under-scan holds the box |
+| 8 | Admin | *Exceptions* | Decides a held box: `accept short`, `recount`, or `reject`. Scanned units are kept as evidence either way |
+| 9 | Offloading Team | *Verify inbound counts* | **CP4.** Their own system's count against the warehouse's |
+| 10 | Offloading Team | *Putaway* | Scans a rack code. A box may be split across racks; damaged units only into a quarantine (`Q-`) rack |
+| 11 | Offloading Team | *Stock* | Where everything ended up, grouped by SKU |
 
 ---
 
@@ -106,7 +108,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["Matcher scans the invoice.<br/>App shows which rack the stock is on"] --> B["Matcher confirms the match<br/>and scans HER OWN badge"]
+    A["Admin scans the invoice.<br/>App shows which rack the stock is on"] --> B["Admin confirms the match<br/>and scans THEIR OWN badge"]
     B --> C["Lead scans the PACKER'S<br/>badge card to assign the carton"]
     C --> D{"A1<br/>different person?<br/>live badge?<br/>a packer?"}
     D -- no --> D1["Refused while the lead<br/>is still holding the card"]
@@ -116,18 +118,18 @@ flowchart TD
     G -- no --> G1["Carton cannot be closed"]
     G -- yes --> H["Packer confirms with her own badge"]
     H --> I{"CP5 + A2<br/>verifier ≠ packer,<br/>packer = assignee"}
-    I -- yes --> J["Ops selects packed cartons<br/>into a batch and out-scans each"]
+    I -- yes --> J["Admin selects packed cartons<br/>into a batch and out-scans each"]
     J --> K{"CP6<br/>all cartons scanned?"}
     K -- no --> K1["Batch cannot complete"]
     K -- yes --> L["Guard counts the cartons<br/>physically on the bay"]
-    L --> M{"A4<br/>Ops approves the count?"}
+    L --> M{"A4<br/>Admin approves the count?"}
     M -- no --> M1["Nothing is released for loading"]
     M -- yes --> N["Batch released. Guard registers<br/>the collecting vehicle"]
     N --> O["Guard scans each carton<br/>onto the vehicle"]
     O --> P{"CP7<br/>all cartons present?"}
     P -- no --> P1["Vehicle cannot leave"]
     P -- yes --> Q["Guard requests permission to leave"]
-    Q --> R{"A4<br/>Ops approves the exit?"}
+    Q --> R{"A4<br/>Admin approves the exit?"}
     R -- "held, with a reason" --> R1["Back to the guard's screen<br/>with the reason on it"]
     R1 --> Q
     R -- yes --> S["Guard opens the gate.<br/>time_out stamped"]
@@ -137,18 +139,19 @@ flowchart TD
 
 | Step | Who | Screen | Notes |
 |---|---|---|---|
-| 12 | Invoice Matcher | *Matching* | Scans the invoice number; the page says which rack the stock is on. Confirms, then scans **her own** badge. A packer's badge is refused here |
-| 13 | Matcher, packer or Ops | *Packing* | Scans the **packer's badge card** to assign the carton. **A1.** Reassignment keeps both records, so "who had it at 14:20" stays answerable |
+| 11a | Admin | *Invoices* | Books the invoice against a received PO line — SKU is derived from the line, never typed — and prints its carton sticker (family `CTN-`, DECISIONS.md §CC1 update). Reissuing voids the old code |
+| 12 | Admin | *Matching* | Scans the carton sticker, or types the invoice number if the sticker is unavailable; the page says which rack the stock is on. Confirms, then scans **their own** badge. A packer's badge is refused here |
+| 13 | Admin or packer | *Packing* | Scans the **packer's badge card** to assign the carton. **A1.** Reassignment keeps both records, so "who had it at 14:20" stays answerable |
 | 14 | Packing Lady | *Packing → My cartons* | Scans each product box into the carton. **A3.** A double scan, a big-box sticker, a wrong-SKU product and a box that never arrived are each refused with a distinct message |
 | 15 | Packing Lady | same page | Confirms with **her own** badge. **CP5** (verifier ≠ packer) and **A2** (packer = assignee) |
-| 16 | Ops Manager | *Out-Scan* | Selects packed cartons into a batch, scans each carton's invoice label. **CP6.** Cartons cannot leave a batch once scanning starts |
+| 16 | Admin | *Out-Scan* | Selects packed cartons into a batch, scans each carton's invoice label. **CP6.** Cartons cannot leave a batch once scanning starts |
 | 17 | Security Guard | *Carton Count* | Types how many cartons are physically on the bay. The system's number appears only *after* they commit to theirs |
-| 18 | Ops Manager | *Approvals* | **A4.** Approves or rejects the count. The guard who counted cannot approve it, and the approver must be Ops |
-| 19 | Ops Manager | *Out-Scan* | Releases the batch. Invoices close — the floor can no longer act on them |
+| 18 | Admin | *Approvals* | **A4.** Approves or rejects the count. The guard who counted cannot approve it, and the approver must be Admin |
+| 19 | Admin | *Out-Scan* | Releases the batch. Invoices close — the floor can no longer act on them |
 | 20 | Security Guard | *Pickup* | Registers the collecting vehicle. A driver who also delivered is recognised and not re-photographed |
 | 21 | Security Guard | *Pickup* | Scans each carton onto the vehicle. **CP7** |
 | 22 | Security Guard | *Pickup* | Requests permission to leave. The gate does **not** open yet |
-| 23 | Ops Manager | *Approvals* | **A4.** Approves, or holds with a reason that appears on the guard's screen |
+| 23 | Admin | *Approvals* | **A4.** Approves, or holds with a reason that appears on the guard's screen |
 | 24 | Security Guard | *Pickup* | Opens the gate. `time_out` stamped. Approving does not open the gate — the guard does, so the act stays attached to the person standing there |
 
 ---
@@ -162,17 +165,24 @@ re-checks the role, and RLS re-checks it again in the database.
 | Role | Pages |
 |---|---|
 | Security Guard | Gate Entry, Trucks, Pickup, Carton Count |
-| Ops Manager | everything operational — dashboard, approvals, stickers, scanning, exceptions, reports, putaway, stock, matching, packing, out-scan, pickup, carton count |
-| Offloading Team | Scan units, Exceptions, Putaway |
-| Inbound Team | Reconciliation |
-| Warehouse Staff | Putaway, Stock |
-| Invoice Matcher | Matching, Stock |
-| Packing Lady | Packing |
-| Admin | everything Ops has, plus **Staff** |
+| Offloading Team | Exceptions, Putaway, Stock, Reconciliation |
+| Packing Lady | Box counting, Scan units, Exceptions, Packing |
+| Admin | everything operational — dashboard, approvals, stickers, scanning, exceptions, reports, reconciliation, putaway, stock, matching, packing, out-scan, pickup, carton count — plus **Staff** |
 
-Two capabilities are Admin-only and deliberately withheld from Ops:
-provisioning accounts and issuing badges. An Ops Manager who could issue a badge
-could manufacture the second person CP5 requires.
+Roles were consolidated from eight down to these four (DECISIONS.md §CE1).
+Admin absorbs what used to be the separate Ops Manager and Invoice Matcher
+roles; Offloading Team absorbs what used to be the separate Inbound Team and
+Warehouse Staff roles. Packers apply and scan both box and unit stickers at
+intake (Guard still only declares the count), in addition to their outbound
+packing job — so receiving and dispatch now sit in the same pair of hands,
+which DECISIONS.md §CG6 records as a deliberate tradeoff.
+
+Provisioning accounts and issuing badges stay Admin-only, but that is no longer
+a capability withheld from a narrower Ops tier — Admin now also approves gates
+and matches invoices, so a single Admin account genuinely can manufacture the
+second person CP5 requires. §CE1 records that as an accepted tradeoff, not an
+oversight: the four-role model trades that risk for a much smaller floor role
+set, on the premise that Admin accounts stay few and trusted.
 
 ---
 
@@ -205,11 +215,11 @@ custody of the badge is the control.**
 
 | Situation | What the system does |
 |---|---|
-| Count mismatch at any control point | Refuses to proceed, and **writes**: the box is held, an exception is logged against the vendor and PO, Ops is alerted. This is why those endpoints answer `409` with a full body rather than raising — raising would roll back the record that makes the hold enforceable |
+| Count mismatch at any control point | Refuses to proceed, and **writes**: the box is held, an exception is logged against the vendor and PO, Admin is alerted. This is why those endpoints answer `409` with a full body rather than raising — raising would roll back the record that makes the hold enforceable |
 | Scanner rejects a code | The rejection is *recorded* with a reason, so "the scanner didn't work" stays a claim that can be checked |
 | Device goes offline | Scans queue in IndexedDB and replay on reconnect. Every scan carries a device-minted id with a unique constraint, so replaying is a no-op |
 | A mistake needs correcting | Nothing is deleted. Corrections are reversing entries or superseding rows, with the original still visible and still in reports |
-| Ops does not respond to a gate approval | Escalates at 15 and 30 minutes and flags `sla_breached`. Never auto-approves |
+| Admin does not respond to a gate approval | Escalates at 15 and 30 minutes and flags `sla_breached`. Never auto-approves |
 | Nobody notices the retention job stopped | `overdue` on the *Staff* screen climbs. Nothing else would report it, because not deleting breaks nothing |
 
 ---

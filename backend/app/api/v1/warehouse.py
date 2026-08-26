@@ -36,12 +36,15 @@ from app.services import stickers as sticker_service
 
 router = APIRouter(tags=["warehouse"])
 
-guard_or_ops = require_roles("security_guard", "ops_manager")
-offload_or_ops = require_roles("offloading", "ops_manager")
-inbound_or_ops = require_roles("inbound", "ops_manager")
+offload_or_ops = require_roles("offloading")
+# The inbound role folded into offloading, which now also reconciles.
+inbound_or_ops = offload_or_ops
+# Packers apply and scan both box and unit stickers at intake, in addition to
+# their outbound packing job — see the note on scans_insert in 0019.
+packer_or_ops = require_roles("packer")
 
 # ===========================================================================
-# STICKERS — Ops only (RLS enforces this independently)
+# STICKERS — Admin only (RLS enforces this independently)
 # ===========================================================================
 
 
@@ -128,9 +131,9 @@ async def scan_box(
     entry_id: UUID,
     payload: ScanIn,
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(guard_or_ops),
+    user: CurrentUser = Depends(packer_or_ops),
 ):
-    """Guard scans a box sticker at the gate. A rejection is a 200 with
+    """Packer scans a box sticker at intake. A rejection is a 200 with
     `accepted: false` — the operator needs to see and act on it, and pretending
     it is an HTTP error makes the offline queue much harder to reason about."""
     return await scan_service.record_scan(conn, payload, "box_verify")
@@ -141,9 +144,9 @@ async def scan_unit(
     entry_id: UUID,
     payload: ScanIn,
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(offload_or_ops),
+    user: CurrentUser = Depends(packer_or_ops),
 ):
-    """Offloading team scans a unit sticker (PRD Step 3)."""
+    """Packer scans a unit sticker (PRD Step 3)."""
     return await scan_service.record_scan(conn, payload, "unit_verify")
 
 
@@ -198,7 +201,7 @@ async def damage_check(
     box_id: UUID,
     payload: DamageCheckIn,
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(offload_or_ops),
+    user: CurrentUser = Depends(packer_or_ops),
 ):
     """Mandatory damage answer before a box can close (DECISIONS.md §5)."""
     return await scan_service.record_damage_check(
@@ -211,7 +214,7 @@ async def close_box(
     box_id: UUID,
     response: Response,
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(offload_or_ops),
+    user: CurrentUser = Depends(packer_or_ops),
 ):
     """CONTROL POINT 3.
 
@@ -230,7 +233,7 @@ async def close_box(
 async def finish_offloading(
     entry_id: UUID,
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(offload_or_ops),
+    user: CurrentUser = Depends(packer_or_ops),
 ):
     """Close Step 3 for the whole truck. Refused while any box is held."""
     return await scan_service.finish_offloading(conn, entry_id)

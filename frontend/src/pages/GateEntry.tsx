@@ -85,7 +85,7 @@ export function GateEntryPage() {
     return (
       <div className="space-y-4">
         <Banner tone="warn" title={t('gate.sent_for_approval')}>
-          Waiting for the Ops Manager to approve <strong>{submitted.entry_code}</strong>. The
+          Waiting for Admin to approve <strong>{submitted.entry_code}</strong>. The
           vehicle cannot enter until they do.
         </Banner>
 

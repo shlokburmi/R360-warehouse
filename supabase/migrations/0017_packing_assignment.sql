@@ -87,16 +87,16 @@ begin
   end if;
 
   -- Assignment presupposes matching. The small box and its invoice only reach a
-  -- packing bench because a matcher put them together, so an invoice with no
+  -- packing bench because Admin put them together, so an invoice with no
   -- verification has not physically been matched to goods yet.
   select v.verified_by into v_verifier
     from invoice_verifications v where v.invoice_id = new.invoice_id;
 
   if v_verifier is null then
     raise exception
-      'Invoice % has not been verified by an invoice matcher yet.', v_number
+      'Invoice % has not been matched yet.', v_number
       using errcode = 'check_violation',
-            hint = 'The matcher must scan the invoice and her badge first.';
+            hint = 'Admin must scan the invoice and their badge first.';
   end if;
 
   select p.role, p.is_active, p.badge_active, p.full_name
@@ -120,10 +120,10 @@ begin
 
   -- Only the roles that actually pack. Assigning to a guard would produce a
   -- record nobody can act on and an attribution for work she does not do.
-  if v_role not in ('packer', 'ops_manager') then
+  if v_role not in ('packer', 'admin') then
     raise exception '% is not a packer.', v_name
       using errcode = 'check_violation',
-            hint = 'Packing is done by the packing team, or by Ops covering the bench.';
+            hint = 'Packing is done by the packing team, or by an Admin covering the bench.';
   end if;
 
   -- CONTROL POINT 5, checked at assignment instead of only at packing.
@@ -131,7 +131,7 @@ begin
   -- lead is still holding the badge, rather than after the box is packed.
   if v_verifier = new.assigned_to then
     raise exception
-      '% verified invoice % and cannot also pack it (CONTROL POINT 5).', v_name, v_number
+      '% matched invoice % and cannot also pack it (CONTROL POINT 5).', v_name, v_number
       using errcode = 'check_violation',
             hint = 'Packing must be a second person. Assign it to someone else.';
   end if;
@@ -230,7 +230,7 @@ create policy packing_assignments_read on packing_assignments
 create policy packing_assignments_insert on packing_assignments
   for insert to authenticated
   with check (
-    has_role('packer', 'invoice_matcher', 'ops_manager', 'admin')
+    has_role('packer', 'admin')
     and assigned_by = auth.uid()
   );
 
@@ -239,8 +239,8 @@ create policy packing_assignments_insert on packing_assignments
 -- immutable thereafter.
 create policy packing_assignments_update on packing_assignments
   for update to authenticated
-  using (has_role('packer', 'invoice_matcher', 'ops_manager', 'admin'))
-  with check (has_role('packer', 'invoice_matcher', 'ops_manager', 'admin'));
+  using (has_role('packer', 'admin'))
+  with check (has_role('packer', 'admin'));
 
 -- Audit + no-delete, same as every other business table.
 create trigger trg_packing_assignments_audit

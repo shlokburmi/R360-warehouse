@@ -269,20 +269,23 @@ drop policy if exists putaways_insert on putaways;
 create policy putaways_insert on putaways
   for insert to authenticated
   with check (
-    has_role('warehouse_staff', 'offloading', 'ops_manager', 'admin')
+    has_role('offloading', 'admin')
     and moved_by = auth.uid()
   );
 
--- Warehouse staff must be able to UPDATE boxes, not just insert putaways.
+-- Offloading must be able to UPDATE boxes, not just insert putaways.
 --
 -- fn_putaway_close_box marks the carton 'emptied' once every unit is shelved,
 -- and that trigger runs with the caller's privileges. The Phase-1 policy did not
--- include warehouse_staff, so the update matched zero rows and the box silently
+-- include offloading, so the update matched zero rows and the box silently
 -- stayed 'complete' — no error anywhere, just a carton that looks unshelved
 -- forever. The narrow status change is still guarded by the transition trigger.
+--
+-- Packers are here too: they now apply and scan both box and unit stickers and
+-- close boxes at intake, so fn_scan_apply and close_box also run as a packer.
 drop policy if exists boxes_update on boxes;
 
 create policy boxes_update on boxes
   for update to authenticated
-  using (has_role('security_guard', 'offloading', 'warehouse_staff', 'ops_manager', 'admin'))
-  with check (has_role('security_guard', 'offloading', 'warehouse_staff', 'ops_manager', 'admin'));
+  using (has_role('packer', 'offloading', 'admin'))
+  with check (has_role('packer', 'offloading', 'admin'));

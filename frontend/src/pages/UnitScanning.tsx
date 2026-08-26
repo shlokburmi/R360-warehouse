@@ -17,7 +17,7 @@ import type { Box, GateEntry, Progress, StickerSheet } from '@/types'
  * The count that matters is per box, not per truck, so the page keeps one box
  * "open" at a time and shows its progress at the size of a scoreboard. When a
  * box's count comes up short, nothing enters the warehouse: the box is held and
- * Ops decides (accept short / recount / reject).
+ * Admin decides (accept short / recount / reject).
  */
 export function UnitScanningPage() {
   const { t } = useTranslation()
@@ -84,7 +84,7 @@ export function UnitScanningPage() {
   if (entry.isLoading) return <Spinner />
   if (!entry.data) return <Banner tone="bad" title={t('units.truck_not_found')} />
 
-  const isOps = me?.role === 'ops_manager' || me?.role === 'admin'
+  const isOps = me?.role === 'admin'
   const activeBox = boxes.data?.find((b) => b.id === activeBoxId) ?? null
   const openBoxes = boxes.data?.filter((b) => ['verified', 'scanning'].includes(b.status)) ?? []
   const heldBoxes = boxes.data?.filter((b) => b.status === 'held') ?? []
@@ -109,7 +109,7 @@ export function UnitScanningPage() {
       )}
 
       {heldBoxes.length > 0 && (
-        <Banner tone="bad" title={`${heldBoxes.length} box(es) held — Ops decision needed`}>
+        <Banner tone="bad" title={`${heldBoxes.length} box(es) held — Admin decision needed`}>
           {t('units.held_body')}
         </Banner>
       )}
@@ -351,7 +351,7 @@ function BoxCloseCard({ box, onDone }: { box: Box; onDone: () => void }) {
       {closeMessage && !closeMessage.closed && (
         <div className="mb-4">
           <Banner tone="bad" title={closeMessage.message}>
-            Exception {closeMessage.exception_code} raised. Ops must decide: accept short,
+            Exception {closeMessage.exception_code} raised. Admin must decide: accept short,
             recount, or reject the box. Nothing enters the warehouse until then.
           </Banner>
         </div>

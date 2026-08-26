@@ -46,13 +46,13 @@ The 180-day expiry exists because a photo from two years ago verifies nothing.
 Controlled by `ID_PHOTO_REVALIDATION_DAYS` (default 180).
 
 Photos live in a **private** Supabase Storage bucket (`identity-photos`), served
-only through short-lived signed URLs to Ops/Admin. Guards can upload but cannot
+only through short-lived signed URLs to Admin. Guards can upload but cannot
 list or read back other visitors' photos — see §Storage RLS.
 
 ### 3. Partial mismatch — if 8 of 10 units arrive, do 8 enter or is the box rejected?
 
-**Decision: the whole box is held, not rejected, and nothing enters until Ops
-decides.** Ops then picks one of three explicit outcomes:
+**Decision: the whole box is held, not rejected, and nothing enters until Admin
+decides.** Admin then picks one of three explicit outcomes:
 
 | Outcome | Meaning | Effect |
 |---|---|---|
@@ -70,14 +70,17 @@ decision recorded against the exception.**
 The units already scanned are *not* discarded while held — they stay attached to
 the box in `scan_events`, so `RECOUNT` and `ACCEPT_SHORT` both have evidence.
 
-### 4. Ops approval SLA before auto-escalation?
+### 4. Admin approval SLA before auto-escalation?
 
-**Decision: 15 minutes to a backup approver, 30 minutes to Admin. Never
+**Decision: 15 minutes to a backup approver, 30 minutes to a wider alert. Never
 auto-approve.**
 
-- T+0: approval request created, realtime alert + email to Ops Manager.
-- T+15m: escalates to any user with `ops_manager` role marked `is_backup_approver`, re-alerted.
-- T+30m: escalates to `admin`, and the entry is flagged `sla_breached` for the daily report.
+- T+0: approval request created, realtime alert + email to every Admin.
+- T+15m: re-alerted, naming whichever Admin is flagged `is_backup_approver`.
+- T+30m: re-alerted again, and the entry is flagged `sla_breached` for the daily
+  report. Since roles were consolidated to four (§CE1), both tiers already
+  notify the same `admin` pool — the two-tier shape is kept for the escalating
+  urgency and the `sla_breached` flag, not for reaching a different audience.
 
 Auto-approval on timeout would make the gate control point decorative — the
 single easiest way to defeat it would be to submit at lunchtime and wait. So the
@@ -91,14 +94,14 @@ Controlled by `GATE_APPROVAL_SLA_MINUTES` (15) and `GATE_ESCALATION_MINUTES` (30
 **Decision: yes — a mandatory damage checkpoint per box, but it does not block
 the line.**
 
-At unit scanning the offloader must answer one question per box before the box
+At unit scanning the packer must answer one question per box before the box
 can close: **"Any visible damage?"** → `NONE` / `PACKAGING` / `PRODUCT`. Anything
 other than `NONE` requires at least one photo and raises a `DAMAGE` exception
 tagged to the vendor and PO, but the good units still flow through. Damaged units
 are scanned into a `QUARANTINE` disposition instead of stock.
 
 Rationale: damage is a commercial dispute, not an integrity failure. Blocking
-putaway on it would stall the warehouse over something Ops settles with the
+putaway on it would stall the warehouse over something Admin settles with the
 vendor days later. But making it optional means it never gets recorded, and then
 there's no evidence when the claim is raised. Mandatory to answer, cheap to
 answer, non-blocking.
@@ -208,7 +211,7 @@ signed with an asymmetric pair's public key.
 ### B7. Failed control points return 409 with a body, they do not raise
 
 A failed hard stop is not a read-only event — it holds the box, writes an
-exception against the vendor and PO, and alerts Ops. Raising out of the request
+exception against the vendor and PO, and alerts Admin. Raising out of the request
 would roll back the transaction containing the very record that makes the hold
 enforceable and auditable.
 
@@ -253,11 +256,16 @@ Placement totals are checked against the scan ledger. Without this, putaway
 would be a second, unaudited route to creating inventory — one that bypasses
 every count in Phase 1.
 
-### C5. Warehouse staff *and* the offloading team can shelve goods
+### C5. The offloading team shelves goods too
 
-On a busy shift the people unloading also move cartons to racks. Restricting
-putaway to `warehouse_staff` alone would produce exactly the workaround this
-system exists to prevent: one person's login being used by three people.
+On a busy shift the same small team both handles goods and moves cartons to
+racks, which is why this was never split into its own role. When roles were
+later consolidated to four (§CE1), the separate `warehouse_staff` role folded
+into `offloading` outright, for the same reason: restricting putaway to a role
+of its own would produce exactly the workaround this system exists to
+prevent — one person's login being used by three people. (§CG6 records the
+later move of box/unit sticker scanning from offloading to packer; putaway
+stayed with offloading.)
 
 ---
 
@@ -273,6 +281,22 @@ scan type; the accepted-scan constraint became "one of the two".
 The alternative — minting a sticker per carton at packing time — would have added
 a printing step to a station that does not have a printer, to gain nothing.
 
+**Update — a printer arrived.** Migrations 0020-0021 add a third sticker
+family, `carton`, printed by Admin from the dashboard when an invoice is
+booked. This does not reverse the decision above so much as complete its
+condition: the reasoning was "no printer, so gain nothing" — once there is a
+printer, a QR is strictly better than an invoice number a human has to type or
+present a barcode for, for the same reason box and unit stickers exist at all.
+
+The invoice number is kept as a fallback rather than retired: `fn_scan_resolve`
+tries a `stickers` row first and falls through to `upper(invoice_number) =
+raw_code` if none matches, the same "QR first, human-readable text as
+fallback" shape every sticker in this system already has (§CE2). A carton
+sticker is one-live-per-invoice — reissuing voids the old one, mirroring
+`admin_issue_badge`'s "reissue means replace" — and issuing one is gated by
+the same `stickers_insert` policy (is_ops()) as a box or unit sticker, so this
+added no new RLS surface.
+
 ### CC2. Badges are unreadable, and resolved one-way
 
 `profiles.badge_code` is revoked from `authenticated` **at the column level**
@@ -282,7 +306,7 @@ take effect). Badges are resolved through `resolve_badge_holder(code)`, a
 the system performs the inverse.
 
 The reason is CONTROL POINT 5. If one packer could read another's badge code,
-they could attribute work to them — and an Ops manager could satisfy both halves
+they could attribute work to them — and an Admin could satisfy both halves
 of the two-person rule alone. Codes are 64 bits of randomness, so the function is
 not an enumeration oracle.
 
@@ -290,16 +314,16 @@ Names and roles *are* readable by all staff, because they appear on badges,
 rosters and the wall, and because every screen showing "verified by X" needs
 them. Treating them as secret would break the UI while protecting nothing.
 
-### CC3. Ops managers carry badges too
+### CC3. Admins carry badges too
 
-Ops covers the matching and packing stations during breaks. This is also the only
-way the two-person rule is reachable at all: a matcher's badge cannot pack and a
-packer's badge cannot verify, so the same-person case only arises for someone
-permitted to do both.
+Admin does the matching itself (§CE1) and covers the packing station during
+breaks. This is also the only way the two-person rule is reachable at all: the
+same Admin cannot both match and pack one invoice, so the same-person case only
+arises for someone permitted to do both.
 
 ### CC4. Batches are planned before they are scanned
 
-Ops selects packed cartons into a batch, and only then out-scans them. CONTROL
+Admin selects packed cartons into a batch, and only then out-scans them. CONTROL
 POINT 6 compares cartons assigned against cartons physically scanned — the same
 shape as the box count at the gate.
 
@@ -337,8 +361,8 @@ cartons present" ambiguous about which cartons belong to which truck, and
 CONTROL POINT 7 would have nothing meaningful to compare.
 
 A consequence: cancelling a pickup does not free the batch for a new one without
-Ops involvement. That is deliberate — the goods are still in the pickup area, and
-silently allowing a second attempt is how a carton goes out twice.
+Admin involvement. That is deliberate — the goods are still in the pickup area,
+and silently allowing a second attempt is how a carton goes out twice.
 
 ### CD3. A carton cannot be loaded unless its batch was released
 
@@ -370,6 +394,22 @@ This is the one place the codebase distinguishes Admin from Ops as a capability
 rather than a job title, which is why `require_admin` is named in `deps.py`
 instead of written inline: `require_roles("admin")` reads like a mistake, given
 admin is silently added to every other guard.
+
+**Update — role consolidation.** The role model was later collapsed from eight
+roles to four: `security_guard`, `offloading`, `packer`, `admin`. `ops_manager`
+and `invoice_matcher` both folded into `admin`, which is a deliberate widening
+of exactly the capability this section describes protecting. Admin now also
+approves gates, matches invoices and decides load/exit approvals — the same
+account that provisions staff and issues badges.
+
+The consequence stated plainly: a single Admin *can* now manufacture the second
+person CONTROL POINT 5 requires, by creating a second account, badging it, and
+using it as the "matcher" side of a pack they perform themselves. The four-role
+model accepts that risk in exchange for a much smaller floor role set, on the
+premise that Admin accounts are few and trusted — the same premise CE3's
+last-Admin rule already depends on. If that premise stops holding (many Admin
+accounts, or Admin used as a day-to-day operational login), reintroducing a
+narrower approval-only role is the fix, not a patch to this function.
 
 ### CE2. A badge code is returned once, at the moment it is minted
 
@@ -550,9 +590,9 @@ what the floor does.
 
 ### CG4. Two approval gates on the outbound side
 
-The guard counts the cartons on the bay and Ops decides; nothing is released for
-loading without that decision. Then the loaded, verified vehicle waits for a
-second Ops decision before the gate opens.
+The guard counts the cartons on the bay and Admin decides; nothing is released
+for loading without that decision. Then the loaded, verified vehicle waits for
+a second Admin decision before the gate opens.
 
 Both copy CP1's shape, including the part people skip: **the approver must hold a
 role entitled to approve, not merely be a different person.** A first draft
@@ -573,9 +613,30 @@ standing at it — the same reasoning as §CD4.
 ### CG5. A rejection returns the vehicle to `verified`
 
 `exit_pending → verified` is a legal transition so the guard can re-request once
-whatever Ops asked about is dealt with. The alternative is a pickup wedged in a
+whatever Admin asked about is dealt with. The alternative is a pickup wedged in a
 state with no way out but SQL, which is the class of problem the Admin screen was
 built to remove.
+
+### CG6. Packers apply and scan both box and unit stickers at intake
+
+Originally the guard applied and scanned box stickers (CP2) and the offloading
+team applied and scanned unit stickers (CP3), on the reasoning in the 0019
+migration: the same role scanning goods in and scanning goods out would put
+receiving and dispatch in one pair of hands. The floor process was later
+described the other way round — packers physically stick up and scan both
+sticker types at intake, and offloading only reconciles the count (CP4) and
+shelves goods (putaway). That does reunite receiving and dispatch in one role.
+
+Accepted for the same reason §CE1 accepts Admin holding both approvals and
+provisioning: the count and two-person guarantees this system exists to
+enforce are unweakened by who operates the scanner. CP2 and CP3 still compare
+scanned counts against declared/PO counts regardless of role, and CP5's
+two-person rule is still enforced by identity (verifier ≠ packer), not by
+which role each belongs to — a packer cannot manufacture a second person for
+CP5 by also having scanned the goods in. What is lost is the separation of
+*custody*: a single packer now has physical access to a box from the moment it
+arrives to the moment its contents are packed out. Guard still declares the
+box count before any sticker exists, which is unaffected.
 
 ---
 

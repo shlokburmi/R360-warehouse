@@ -1,8 +1,8 @@
-"""The guard's carton count on a finished batch, and Ops's decision on it.
+"""The guard's carton count on a finished batch, and Admin's decision on it.
 
 Added in Phase 5 because the process has always had this step and the software
 did not: after packing, somebody physically counts the cartons on the bay, and
-nothing is released to the pickup area until Ops has signed off on that number.
+nothing is released to the pickup area until Admin has signed off on that number.
 
 The shape is copied from CONTROL POINT 1 at the other end of the process, and
 for the same reasons. The person who counts is not the person who approves. The
@@ -133,7 +133,7 @@ async def count_cartons(
 
     approval = await get_approval(conn, batch_id)
 
-    # Ops is told either way, but a mismatch says so in the subject line. The
+    # Admin is told either way, but a mismatch says so in the subject line. The
     # difference between "please approve 25" and "counted 24, expected 25" is the
     # difference between a rubber stamp and a decision.
     if approval["matches"]:
@@ -155,7 +155,7 @@ async def count_cartons(
         conn,
         title=title,
         body=body,
-        recipient_role="ops_manager",
+        recipient_role="admin",
         channel="email",
     )
 
@@ -171,7 +171,7 @@ async def count_cartons(
 async def decide_count(
     conn: AsyncConnection, batch_id: UUID, approve: bool, note: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Ops approves or rejects the guard's count.
+    """Admin approves or rejects the guard's count.
 
     A rejection must say why. "Rejected" with no reason is an argument waiting to
     happen on a loading bay at 7pm, and the database refuses it too.
@@ -231,7 +231,7 @@ async def decide_count(
             conn,
             title=f"Carton count rejected: {after['batch_code']}",
             body=(
-                f"Ops rejected the count on batch {after['batch_code']}: {note}. "
+                f"Admin rejected the count on batch {after['batch_code']}: {note}. "
                 "Recount the cartons and file again."
             ),
             recipient_role="security_guard",

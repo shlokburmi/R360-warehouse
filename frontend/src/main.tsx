@@ -12,7 +12,7 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       // Counts change while you are looking at them — another operator scanning
-      // the same truck, Ops resolving a held box. Refetching on focus is what
+      // the same truck, Admin resolving a held box. Refetching on focus is what
       // keeps a tablet left on a shelf for ten minutes from lying to whoever
       // picks it up.
       refetchOnWindowFocus: true,

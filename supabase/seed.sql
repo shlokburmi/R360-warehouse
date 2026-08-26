@@ -78,17 +78,21 @@ begin
 end;
 $$;
 
-select seed_user('guard@r360.local',    'Sanjeev Kumar',  'security_guard',  'EMP-G01', '9876500001');
-select seed_user('boopathi@r360.local', 'Boopathi',       'ops_manager',     'EMP-O01', '9876500002');
-select seed_user('opsbackup@r360.local','Ramesh Iyer',    'ops_manager',     'EMP-O02', '9876500003');
-select seed_user('offload@r360.local',  'Arun Prasad',    'offloading',      'EMP-F01', '9876500004');
-select seed_user('inbound@r360.local',  'Divya Nair',     'inbound',         'EMP-I01', '9876500005');
-select seed_user('store@r360.local',    'Mahesh Rao',     'warehouse_staff', 'EMP-W01', '9876500006');
-select seed_user('match1@r360.local',   'Lakshmi Devi',   'invoice_matcher', 'EMP-M01', '9876500007');
-select seed_user('match2@r360.local',   'Priya Menon',    'invoice_matcher', 'EMP-M02', '9876500008');
-select seed_user('pack1@r360.local',    'Kavitha S',      'packer',          'EMP-P01', '9876500009');
-select seed_user('pack2@r360.local',    'Anitha R',       'packer',          'EMP-P02', '9876500010');
-select seed_user('admin@r360.local',    'Warehouse Admin','admin',           'EMP-A01', '9876500011');
+-- Four roles: security_guard, offloading, packer, admin. Admin absorbs the
+-- old ops_manager and invoice_matcher duties (approvals, sticker issuance,
+-- invoice matching); offloading absorbs the old inbound and warehouse_staff
+-- duties (reconciliation, putaway).
+select seed_user('guard@r360.local',    'Sanjeev Kumar',  'security_guard', 'EMP-G01', '9876500001');
+select seed_user('boopathi@r360.local', 'Boopathi',       'admin',          'EMP-O01', '9876500002');
+select seed_user('opsbackup@r360.local','Ramesh Iyer',    'admin',          'EMP-O02', '9876500003');
+select seed_user('offload@r360.local',  'Arun Prasad',    'offloading',     'EMP-F01', '9876500004');
+select seed_user('inbound@r360.local',  'Divya Nair',     'offloading',     'EMP-I01', '9876500005');
+select seed_user('store@r360.local',    'Mahesh Rao',     'offloading',     'EMP-W01', '9876500006');
+select seed_user('match1@r360.local',   'Lakshmi Devi',   'admin',          'EMP-M01', '9876500007');
+select seed_user('match2@r360.local',   'Priya Menon',    'admin',          'EMP-M02', '9876500008');
+select seed_user('pack1@r360.local',    'Kavitha S',      'packer',         'EMP-P01', '9876500009');
+select seed_user('pack2@r360.local',    'Anitha R',       'packer',         'EMP-P02', '9876500010');
+select seed_user('admin@r360.local',    'Warehouse Admin','admin',          'EMP-A01', '9876500011');
 
 -- Backup approver for the T+15m escalation path (DECISIONS.md §4).
 update profiles set is_backup_approver = true
@@ -96,13 +100,13 @@ update profiles set is_backup_approver = true
 
 -- Attribution badges for the roles that scan one (Phase 3).
 --
--- Ops managers get one too, because they cover both the matching and packing
+-- Admins get one too, because they cover both the matching and packing
 -- stations when someone is on a break. That is also the only way the
--- two-person rule in CONTROL POINT 5 can actually be exercised: a matcher's
--- badge cannot pack and a packer's badge cannot verify, so the same-person case
+-- two-person rule in CONTROL POINT 5 can actually be exercised: an admin's
+-- badge cannot pack the invoice they just matched, so the same-person case
 -- only arises for someone permitted to do both.
 update profiles set badge_code = generate_badge_code()
- where role in ('packer', 'invoice_matcher', 'ops_manager') and badge_code is null;
+ where role in ('packer', 'admin') and badge_code is null;
 
 -- ---------------------------------------------------------------------------
 -- Vendors

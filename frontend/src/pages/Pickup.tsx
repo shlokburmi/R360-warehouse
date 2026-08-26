@@ -381,9 +381,9 @@ function PickupDetail({ pickupId, onBack }: { pickupId: string; onBack: () => vo
       )}
 
       {/* CONTROL POINT 7 passing is no longer enough on its own: the guard asks,
-          Ops decides, and only then does the gate open. If Ops sent it back, the
-          reason is shown here rather than in a notification the guard may never
-          have seen. */}
+          Admin decides, and only then does the gate open. If Admin sent it back,
+          the reason is shown here rather than in a notification the guard may
+          never have seen. */}
       {p.status === 'verified' && (
         <>
           <Banner

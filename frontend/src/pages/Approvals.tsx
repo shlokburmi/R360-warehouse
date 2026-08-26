@@ -15,7 +15,7 @@ function waitedFor(seconds: number | null | undefined): string {
 }
 
 /**
- * PRD §5.8 — the Ops approval queue. CONTROL POINT 1.
+ * PRD §5.8 — the Admin approval queue. CONTROL POINT 1.
  *
  * Oldest first, because the truck that has waited longest is the one blocking a
  * yard. The wait time is shown in words rather than a timestamp: "22 min" is
@@ -210,7 +210,7 @@ export function ApprovalsPage() {
  *
  * The mismatch is the whole point of the screen, so it is stated in words rather
  * than left for the reader to spot by comparing two numbers. Approving a count
- * that does not match is allowed — short supply happens and Ops is entitled to
+ * that does not match is allowed — short supply happens and Admin is entitled to
  * accept it — but it should never happen by accident.
  */
 function CartonCountApprovals() {
@@ -338,7 +338,7 @@ function CartonCountApprovals() {
  *
  * Approving does not open the gate — the guard still performs the release, so the
  * gate opening stays attached to the person standing at it. This screen only
- * records that Ops is content for it to happen.
+ * records that Admin is content for it to happen.
  */
 function ExitApprovals() {
   const { t } = useTranslation()

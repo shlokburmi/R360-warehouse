@@ -25,7 +25,7 @@ create policy identity_upload on storage.objects
   for insert to authenticated
   with check (
     bucket_id = 'identity-photos'
-    and has_role('security_guard', 'ops_manager', 'admin')
+    and has_role('security_guard', 'admin')
   );
 
 create policy identity_read on storage.objects
@@ -45,7 +45,7 @@ create policy damage_upload on storage.objects
   for insert to authenticated
   with check (
     bucket_id = 'damage-photos'
-    and has_role('offloading', 'security_guard', 'ops_manager', 'admin')
+    and has_role('packer', 'admin')
   );
 
 create policy damage_read on storage.objects

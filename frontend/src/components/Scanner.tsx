@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'
  *
  * The ZXing decoder is by far the largest dependency in the app — bigger than
  * React and the router combined. Loading it eagerly would put it in the initial
- * bundle for everyone, including an Ops Manager who only ever opens the
+ * bundle for everyone, including an Admin who only ever opens the
  * dashboard on a desktop.
  *
  * Splitting it out means the gate entry form, the approval queue and the

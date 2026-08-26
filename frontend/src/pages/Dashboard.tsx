@@ -13,7 +13,7 @@ function waited(seconds: number | null): string {
 }
 
 /**
- * PRD §5.8 — Ops Manager dashboard.
+ * PRD §5.8 — Admin dashboard.
  *
  * The tiles are ordered by what blocks someone else: approvals first (a driver
  * is waiting at a gate), then held boxes (an offloader is standing still), then

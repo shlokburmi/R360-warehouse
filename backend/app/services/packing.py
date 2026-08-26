@@ -73,10 +73,10 @@ async def resolve_badge(
             f"{row['full_name']}'s badge has been deactivated.",
             code="badge_inactive",
             http_status=403,
-            hint="Ask Ops to issue a replacement badge.",
+            hint="Ask an Admin to issue a replacement badge.",
         )
 
-    if row["role"] not in expected_roles and row["role"] not in ("ops_manager", "admin"):
+    if row["role"] not in expected_roles and row["role"] != "admin":
         readable = " or ".join(r.replace("_", " ") for r in expected_roles)
         raise AppError(
             f"{row['full_name']} is not a {readable}.",
@@ -106,6 +106,74 @@ _INVOICE_SELECT = """
 """
 
 
+async def create_invoice(
+    conn: AsyncConnection,
+    *,
+    invoice_number: str,
+    purchase_order_line_id: UUID,
+    units: int,
+    customer_name: Optional[str],
+) -> Dict[str, Any]:
+    """Admin books an invoice against a received PO line (PRD §5.4).
+
+    `sku` is deliberately not a caller-supplied field — it is derived from the
+    PO line, the same reasoning as CG3's sticker-knows-its-own-SKU check: a
+    typed SKU can disagree with the line it is booked against, and a derived
+    one cannot.
+    """
+    invoice_number = invoice_number.strip().upper()
+
+    line = (
+        await conn.execute(
+            text("select id, sku from purchase_order_lines where id = :id"),
+            {"id": str(purchase_order_line_id)},
+        )
+    ).mappings().first()
+
+    if line is None:
+        raise AppError(
+            "That purchase order line does not exist.",
+            code="unknown_po_line",
+            http_status=404,
+        )
+
+    existing = (
+        await conn.execute(
+            text("select 1 from invoices where upper(invoice_number) = :num"),
+            {"num": invoice_number},
+        )
+    ).first()
+
+    if existing is not None:
+        raise AppError(
+            f"Invoice {invoice_number} already exists.",
+            code="duplicate_invoice",
+            http_status=409,
+        )
+
+    invoice_id = (
+        await conn.execute(
+            text(
+                """
+                insert into invoices
+                  (invoice_number, purchase_order_line_id, sku, units, customer_name)
+                values (:num, :line_id, :sku, :units, :customer)
+                returning id
+                """
+            ),
+            {
+                "num": invoice_number,
+                "line_id": str(line["id"]),
+                "sku": line["sku"],
+                "units": units,
+                "customer": (customer_name or "").strip() or None,
+            },
+        )
+    ).scalar_one()
+
+    return await get_invoice(conn, invoice_id)
+
+
 async def list_invoices(
     conn: AsyncConnection, stage: Optional[str] = None, limit: int = 200
 ) -> List[Dict[str, Any]]:
@@ -124,19 +192,61 @@ async def list_invoices(
 
 
 async def get_invoice_by_number(conn: AsyncConnection, invoice_number: str) -> Dict[str, Any]:
-    row = (
+    """Resolve the scanned code to an invoice.
+
+    Tries a carton sticker first — the printed, unique QR admin issues per
+    invoice (0020/0021) — and falls back to matching the raw invoice number
+    directly, the same "QR first, human-readable text as fallback" shape every
+    other sticker in this system has. A code that turns out to be a box or unit
+    sticker is refused with a specific message rather than "not found".
+    """
+    code = invoice_number.strip().upper()
+
+    sticker = (
         await conn.execute(
-            text(_INVOICE_SELECT + " where upper(invoice_number) = :num"),
-            {"num": invoice_number.strip().upper()},
+            text("select sticker_type::text as sticker_type, status::text as status, "
+                 "invoice_id from stickers where code = :code"),
+            {"code": code},
         )
     ).mappings().first()
 
+    if sticker is not None and sticker["sticker_type"] != "carton":
+        raise AppError(
+            f"{code} is a {sticker['sticker_type']} sticker, not a carton sticker.",
+            code="wrong_sticker_type",
+            http_status=422,
+            hint="Scan the carton sticker, or type the invoice number.",
+        )
+
+    if sticker is not None and sticker["status"] == "void":
+        raise AppError(
+            "That carton sticker has been voided.",
+            code="sticker_void",
+            http_status=409,
+            hint="Ask Admin to reissue it.",
+        )
+
+    if sticker is not None:
+        row = (
+            await conn.execute(
+                text(_INVOICE_SELECT + " where invoice_id = :id"),
+                {"id": str(sticker["invoice_id"])},
+            )
+        ).mappings().first()
+    else:
+        row = (
+            await conn.execute(
+                text(_INVOICE_SELECT + " where upper(invoice_number) = :num"),
+                {"num": code},
+            )
+        ).mappings().first()
+
     if row is None:
         raise AppError(
-            f"No invoice with number {invoice_number.strip().upper()}.",
+            f"No invoice with number {code}.",
             code="unknown_invoice",
             http_status=404,
-            hint="Check the number on the invoice sheet.",
+            hint="Check the number on the invoice sheet, or scan its carton sticker.",
         )
     return dict(row)
 
@@ -347,9 +457,9 @@ async def record_order_no(
 async def verify_invoice(
     conn: AsyncConnection, invoice_number: str, badge_code: str
 ) -> Dict[str, Any]:
-    """CONTROL POINT 5, first half: the matcher confirms product against invoice."""
+    """CONTROL POINT 5, first half: Admin confirms product against invoice."""
     invoice = await lookup_for_matching(conn, invoice_number)
-    badge = await resolve_badge(conn, badge_code, ["invoice_matcher"])
+    badge = await resolve_badge(conn, badge_code, ["admin"])
 
     await conn.execute(
         text(
@@ -402,22 +512,22 @@ async def pack_invoice(
 
     if invoice["verified_at"] is None:
         raise AppError(
-            f"Invoice {invoice['invoice_number']} has not been verified by an "
-            "invoice matcher (CONTROL POINT 5).",
+            f"Invoice {invoice['invoice_number']} has not been matched "
+            "(CONTROL POINT 5).",
             code="control_point_failed",
             http_status=409,
-            hint="The matcher must scan the invoice and their badge first.",
+            hint="Admin must scan the invoice and their badge first.",
         )
 
     badge = await resolve_badge(conn, badge_code, ["packer"])
 
     if str(badge["profile_id"]) == str(invoice["verified_by"]):
         raise AppError(
-            "The invoice matcher and the packer must be different people "
-            "(CONTROL POINT 5).",
+            "The person who matched the invoice and the packer must be "
+            "different people (CONTROL POINT 5).",
             code="control_point_failed",
             http_status=409,
-            hint=f"{invoice['verified_by_name']} verified this invoice.",
+            hint=f"{invoice['verified_by_name']} matched this invoice.",
         )
 
     await conn.execute(
@@ -770,18 +880,17 @@ async def assign_invoice(
 
     if invoice["verified_at"] is None:
         raise AppError(
-            f"Invoice {invoice['invoice_number']} has not been verified by an "
-            "invoice matcher yet.",
+            f"Invoice {invoice['invoice_number']} has not been matched yet.",
             code="control_point_failed",
             http_status=409,
-            hint="The matcher must scan the invoice and her badge first.",
+            hint="Admin must scan the invoice and their badge first.",
         )
 
     badge = await resolve_badge(conn, badge_code, ["packer"])
 
     if str(badge["profile_id"]) == str(invoice["verified_by"]):
         raise AppError(
-            f"{badge['full_name']} verified this invoice and cannot also pack it "
+            f"{badge['full_name']} matched this invoice and cannot also pack it "
             "(CONTROL POINT 5).",
             code="control_point_failed",
             http_status=409,

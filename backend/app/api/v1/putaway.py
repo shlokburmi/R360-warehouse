@@ -13,9 +13,9 @@ from app.services import putaway as putaway_service
 
 router = APIRouter(tags=["putaway"])
 
-# Warehouse staff own this step; the offloading team does it too on a busy
-# shift, and Ops can always act. Matched by the RLS policy in 0007.
-store_or_ops = require_roles("warehouse_staff", "offloading", "ops_manager")
+# The offloading team owns this step (the old warehouse_staff role folded
+# into it), and Admin can always act. Matched by the RLS policy in 0007.
+store_or_ops = require_roles("offloading")
 
 
 # ---------------------------------------------------------------------------

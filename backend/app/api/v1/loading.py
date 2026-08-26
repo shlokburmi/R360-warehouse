@@ -1,4 +1,4 @@
-"""The guard's carton count on a finished batch, and Ops's decision on it.
+"""The guard's carton count on a finished batch, and Admin's decision on it.
 
 The outbound mirror of CONTROL POINT 1. Two roles, two endpoints, and the
 database refuses to let one person be both.
@@ -17,7 +17,7 @@ from app.services import loading as loading_service
 
 router = APIRouter(tags=["loading"])
 
-guard_or_ops = require_roles("security_guard", "ops_manager")
+guard_or_ops = require_roles("security_guard")
 
 
 class BatchAwaitingCount(BaseModel):
@@ -53,7 +53,7 @@ class LoadApprovalOut(BaseModel):
     is_current: bool = True
 
     #: Whether the guard's number agreed with the system's. The reason this is a
-    #: field rather than something the UI computes: it is the one thing Ops needs
+    #: field rather than something the UI computes: it is the one thing Admin needs
     #: to see before deciding, and it must not depend on the client getting the
     #: comparison right.
     matches: bool
@@ -89,7 +89,7 @@ async def pending_decisions(
     conn: AsyncConnection = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Counts filed and waiting on Ops. Oldest first — the batch that has waited
+    """Counts filed and waiting on Admin. Oldest first — the batch that has waited
     longest is the one holding up a bay."""
     return await loading_service.pending_decisions(conn)
 
@@ -110,7 +110,7 @@ async def count_cartons(
     conn: AsyncConnection = Depends(get_db),
     user: CurrentUser = Depends(guard_or_ops),
 ):
-    """File a physical carton count. Ops is alerted, and told if it mismatches."""
+    """File a physical carton count. Admin is alerted, and told if it mismatches."""
     return await loading_service.count_cartons(conn, batch_id, payload.counted_cartons)
 
 
