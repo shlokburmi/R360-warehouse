@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useOnline, usePendingScans } from '@/hooks/useOnline'
 import { flushQueue } from '@/lib/offlineQueue'
 import { GradientBackdrop, LanguageToggle, ThemeToggle } from '@/components/ui'
+import { NotificationBell } from '@/components/NotificationBell'
 import { cn } from '@/lib/utils'
 
 const NAV: { page: string; to: string; key: string }[] = [
@@ -76,6 +77,11 @@ export function Layout({ children }: { children: ReactNode }) {
               {t('common.pending_scans', { count: pending })}
             </button>
           )}
+
+          {/* notify_ops()/notify_admin() only ever target these two roles
+              (docs/DECISIONS.md §CH1) — anyone else would see a bell that is
+              always empty, so it isn't shown to them at all. */}
+          {(me?.role === 'ops_manager' || me?.role === 'admin') && <NotificationBell />}
 
           <LanguageToggle />
           <ThemeToggle />

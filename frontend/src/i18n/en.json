@@ -7,6 +7,11 @@
     "wrong_role_title": "This page is not for your role",
     "wrong_role_body": "You are signed in as {{role}}. Ask Ops if you need access."
   },
+  "notifications": {
+    "title": "Notifications",
+    "empty": "Nothing new",
+    "tap_to_dismiss": "tap to dismiss"
+  },
   "common": {
     "cancel": "Cancel",
     "confirm": "Confirm",

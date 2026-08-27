@@ -1,3 +1,15 @@
+/** Named AppNotification, not Notification — that name is already taken by
+ * the browser's own Web Notifications API global. */
+export type AppNotification = {
+  id: string
+  title: string
+  body: string
+  payload: Record<string, unknown> | null
+  created_at: string
+  gate_entry_id: string | null
+  exception_id: string | null
+}
+
 export type Person = {
   visitor_id: string
   full_name: string
