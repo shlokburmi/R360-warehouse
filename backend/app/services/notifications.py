@@ -63,18 +63,28 @@ async def notify(
 
 
 async def notify_ops(conn: AsyncConnection, *, title: str, body: str, **kw) -> None:
-    """In-app alert to every Admin, plus a queued email.
+    """In-app alert to every Ops Manager, plus a queued email.
 
     Both, not either: the in-app alert is what gets seen during a shift, the
     email is what gets seen when nobody is looking at the dashboard.
+
+    Targets `ops_manager`, not `admin` — gate approvals, exceptions raised and
+    count mismatches (this function's actual call sites) are Ops Manager's day
+    to day per PRD §8/§5.8, now that role is reintroduced (0022-0023). Admin
+    does not lose visibility: `notifications_read`'s RLS policy already has a
+    separate `is_admin()` clause that sees every notification regardless of
+    `recipient_role` (0005_rls.sql), so this only narrows *who else* sees it.
     """
-    await notify(conn, title=title, body=body, recipient_role="admin", **kw)
+    await notify(conn, title=title, body=body, recipient_role="ops_manager", **kw)
     await notify(
-        conn, title=title, body=body, recipient_role="admin", channel="email", **kw
+        conn, title=title, body=body, recipient_role="ops_manager", channel="email", **kw
     )
 
 
 async def notify_admin(conn: AsyncConnection, *, title: str, body: str, **kw) -> None:
+    """In-app alert to Admin specifically — the escalation tier (SLA-breach
+    wider alert, superadmin escalation), not the everyday approver. Left
+    targeting `admin`, unlike notify_ops above."""
     await notify(conn, title=title, body=body, recipient_role="admin", **kw)
     await notify(
         conn, title=title, body=body, recipient_role="admin", channel="email", **kw

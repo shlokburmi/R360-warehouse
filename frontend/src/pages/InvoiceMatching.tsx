@@ -1,24 +1,31 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, get, post } from '@/lib/api'
 import { useErrorText } from '@/hooks/useErrorText'
+import { useScanning } from '@/hooks/useScanning'
 import { CodeCapture } from '@/components/CodeCapture'
 import { BadgeScan } from '@/components/BadgeScan'
+import { Scanner } from '@/components/Scanner'
 import { OrderNoScanner, type OrderNoReading } from '@/components/OrderNoScanner'
-import { Banner, Card } from '@/components/ui'
-import type { AttributionResult, Invoice, OrderNoResult } from '@/types'
+import { Banner, Card, ProgressCounter } from '@/components/ui'
+import type { AttributionResult, Invoice, MatchingState, OrderNoResult } from '@/types'
 
 /**
- * PRD §5.4 — Invoice matching (Invoice Matching Ladies #1 and #2).
+ * PRD §5.4/§7 — Invoice matching (Invoice Matching operators).
  * CONTROL POINT 5, first half.
  *
- * The physical process is: take an invoice, find the product, put the product on
- * top of the invoice, confirm they match, scan your badge. The screen follows
- * exactly that order and shows one step at a time — this is a station where
- * someone is holding a box in one hand.
+ * The physical process is: take an invoice, find the product, put the product
+ * on top of the invoice, scan every unit sticker to confirm it, scan your
+ * badge. The screen follows exactly that order and shows one step at a time —
+ * this is a station where someone is holding a box in one hand.
+ *
+ * The unit scan (`scan_units`) is additive to the equivalent check at packing
+ * (CG3, DECISIONS.md) — a second, independent product-in-hand confirmation,
+ * required before the badge scan can succeed (fn_matching_units_complete,
+ * 0024_matching_unit_scan.sql).
  */
-type Step = 'scan_invoice' | 'read_order_no' | 'confirm_match' | 'scan_badge' | 'done'
+type Step = 'scan_invoice' | 'read_order_no' | 'scan_units' | 'scan_badge' | 'done'
 
 export function InvoiceMatchingPage() {
   const { t } = useTranslation()
@@ -48,6 +55,27 @@ export function InvoiceMatchingPage() {
     setNotice(null)
   }
 
+  const invoiceId = invoice?.invoice_id ?? ''
+
+  // The unit scan that must complete before the badge scan is allowed
+  // (fn_matching_units_complete, 0024) — same scanning loop as every other
+  // station, so the offline queue and its idempotent replay apply unchanged.
+  const matching = useQuery({
+    queryKey: ['matching-state', invoiceId],
+    queryFn: () => get<MatchingState>(`/invoices/${invoiceId}/matching`),
+    enabled: Boolean(invoiceId) && step === 'scan_units',
+  })
+  const scanning = useScanning(invoiceId, 'match_unit')
+
+  // Move on the moment every unit is confirmed, whether that happened on this
+  // scan or — resuming an interrupted match — was already true when the page
+  // loaded.
+  useEffect(() => {
+    if (step === 'scan_units' && matching.data?.ready_to_verify) {
+      setStep('scan_badge')
+    }
+  }, [step, matching.data?.ready_to_verify])
+
   /**
    * Resolve an invoice from whichever identifier the operator produced.
    *
@@ -76,7 +104,7 @@ export function InvoiceMatchingPage() {
         setInvoice(saved.invoice)
         setNotice(t('matching.order_no_saved', { value: pendingOrderNo }))
         setPendingOrderNo(null)
-        setStep('confirm_match')
+        setStep('scan_units')
         void queryClient.invalidateQueries({ queryKey: ['invoices'] })
         return
       }
@@ -86,7 +114,7 @@ export function InvoiceMatchingPage() {
       // An Order No already on file is not read again. Re-reading it could only
       // either agree (no gain) or disagree (a conflict the server refuses), so
       // the second scan costs the matcher time to buy nothing.
-      setStep(found.order_no ? 'confirm_match' : 'read_order_no')
+      setStep(found.order_no ? 'scan_units' : 'read_order_no')
     } catch (err) {
       setError(err as ApiError)
     }
@@ -111,7 +139,7 @@ export function InvoiceMatchingPage() {
       setResult(null)
       setPendingOrderNo(null)
       setNotice(null)
-      setStep('confirm_match')
+      setStep('scan_units')
     } catch {
       // Deliberately not surfaced as an error. Nothing went wrong: the file was
       // read, and the only missing piece is which invoice it belongs to.
@@ -134,11 +162,11 @@ export function InvoiceMatchingPage() {
     onSuccess: (data) => {
       setInvoice(data.invoice)
       setError(null)
-      setStep('confirm_match')
+      setStep('scan_units')
     },
     onError: (err) => {
       setError(err as ApiError)
-      setStep('confirm_match')
+      setStep('scan_units')
     },
   })
 
@@ -196,7 +224,7 @@ export function InvoiceMatchingPage() {
           <button
             type="button"
             className="btn-ghost mt-3 w-full text-sm"
-            onClick={() => setStep('confirm_match')}
+            onClick={() => setStep('scan_units')}
             disabled={saveOrderNo.isPending}
           >
             {t('matching.skip_order_no')}
@@ -204,7 +232,7 @@ export function InvoiceMatchingPage() {
         </Card>
       )}
 
-      {step === 'confirm_match' && invoice && (
+      {step === 'scan_units' && invoice && (
         <>
           <Card title={invoice.invoice_number} subtitle={invoice.customer_name ?? undefined}>
             <dl className="grid grid-cols-1 gap-3 text-base sm:grid-cols-2">
@@ -244,23 +272,30 @@ export function InvoiceMatchingPage() {
             )}
           </Card>
 
-          <Card title={t('matching.step3')}>
-            <p className="mb-4 text-base">
-              {t('matching.fetch_product')}
-              quantity above match what you are holding.
-            </p>
-            <div className="flex gap-3">
-              <button type="button" className="btn-ghost flex-1" onClick={restart}>
-                {t('matching.doesnt_match')}
-              </button>
-              <button
-                type="button"
-                className="btn-success flex-1"
-                onClick={() => setStep('scan_badge')}
-              >
-                {t('matching.it_matches')}
-              </button>
-            </div>
+          <ProgressCounter
+            scanned={matching.data?.matched_units ?? 0}
+            total={matching.data?.required_units ?? invoice.units}
+            label={t('matching.units_confirmed')}
+          />
+
+          <Card title={t('matching.step3')} subtitle={t('matching.step3_hint')}>
+            <Scanner onScan={(code) => void scanning.submit(code)} paused={scanning.busy} />
+
+            {scanning.feedback.length > 0 && (
+              <ul className="mt-3 space-y-2">
+                {scanning.feedback.map((item) => (
+                  <li key={item.id}>
+                    <Banner tone={item.tone} title={item.code}>
+                      {item.message}
+                    </Banner>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <button type="button" className="btn-ghost mt-3 w-full" onClick={restart}>
+              {t('matching.doesnt_match')}
+            </button>
           </Card>
         </>
       )}

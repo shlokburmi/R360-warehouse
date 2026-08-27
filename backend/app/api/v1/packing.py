@@ -8,7 +8,14 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from app.api.deps import CurrentUser, get_current_user, get_db, require_ops, require_roles
+from app.api.deps import (
+    CurrentUser,
+    get_current_user,
+    get_db,
+    require_invoice_matcher,
+    require_ops_manager,
+    require_roles,
+)
 from app.core.errors import AppError
 from app.schemas.warehouse import ScanIn, ScanResult
 from app.services import packing as packing_service
@@ -17,8 +24,7 @@ from app.services import stickers as sticker_service
 
 router = APIRouter(tags=["packing"])
 
-# Matching is an Admin-only action now that invoice_matcher has folded into it.
-matcher_or_ops = require_ops
+matcher_or_ops = require_invoice_matcher
 packer_or_ops = require_roles("packer")
 
 
@@ -165,6 +171,35 @@ class AttributionResult(BaseModel):
     message: str
 
 
+class MatchingState(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    invoice_id: UUID
+    invoice_number: str
+    sku: Optional[str] = None
+    required_units: int
+    matched_units: int
+    remaining_units: int
+    ready_to_verify: bool
+    is_open: bool = True
+    verified_by: Optional[UUID] = None
+    verified_by_name: Optional[str] = None
+
+
+class MatchScanResult(ScanResult):
+    """A unit-sticker scan at matching, plus where the invoice now stands.
+
+    Extends ScanResult rather than replacing it, same as PackScanResult below —
+    the frontend's existing scan handling, including the offline queue's
+    idempotent replay, applies unchanged.
+    """
+
+    matched_units: Optional[int] = None
+    required_units: Optional[int] = None
+    remaining_units: Optional[int] = None
+    ready_to_verify: Optional[bool] = None
+
+
 class Carton(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -229,7 +264,7 @@ async def resolve_badge(
     payload: BadgeIn,
     expect: str = Query(default="any", pattern="^(any|matcher|packer)$"),
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_roles("packer")),
+    user: CurrentUser = Depends(require_roles("packer", "invoice_matcher")),
 ):
     """Identify the holder of a scanned badge.
 
@@ -237,9 +272,16 @@ async def resolve_badge(
     cannot be exchanged for a session, and this endpoint is the only thing that
     reads one.
 
-    "matcher" is a station, not a role — matching is done by Admin.
+    invoice_matcher as well as packer: this is what a matcher calls before
+    /invoices/assign, to identify whose badge she is holding when she hands the
+    carton to a packer.
     """
-    expected = ["admin", "packer"] if expect == "any" else (["admin"] if expect == "matcher" else [expect])
+    if expect == "any":
+        expected = ["invoice_matcher", "packer", "admin"]
+    elif expect == "matcher":
+        expected = ["invoice_matcher", "admin"]
+    else:
+        expected = [expect]
     return await packing_service.resolve_badge(conn, payload.badge_code, expected)
 
 
@@ -252,9 +294,9 @@ async def resolve_badge(
 async def create_invoice(
     payload: InvoiceCreate,
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_ops),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
-    """Admin books an invoice against a received PO line, from the dashboard."""
+    """Ops books an invoice against a received PO line, from the dashboard."""
     return await packing_service.create_invoice(
         conn,
         invoice_number=payload.invoice_number,
@@ -272,7 +314,7 @@ async def create_invoice(
 async def issue_carton_sticker(
     invoice_id: UUID,
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_ops),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
     """Print the carton sticker for this invoice. Reissuing voids the old one."""
     return await sticker_service.issue_carton_sticker(conn, invoice_id)
@@ -349,6 +391,33 @@ async def record_order_no(
     )
 
 
+@router.get("/invoices/{invoice_id}/matching", response_model=MatchingState)
+async def invoice_matching_state(
+    invoice_id: UUID,
+    conn: AsyncConnection = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    return await packing_service.matching_state(conn, invoice_id)
+
+
+@router.post("/invoices/{invoice_id}/match-scan", response_model=MatchScanResult)
+async def scan_matching_unit(
+    invoice_id: UUID,
+    payload: ScanIn,
+    conn: AsyncConnection = Depends(get_db),
+    user: CurrentUser = Depends(matcher_or_ops),
+):
+    """Scan one unit sticker to confirm product-in-hand before matching.
+
+    Additive to the packing-stage scan (CG3, DECISIONS.md) — this is a second,
+    independent check at the earlier step PRD §5.4/§7 describes: the matcher
+    physically places the product on the invoice before scanning her badge. A
+    rejected scan comes back 200 with `accepted: false`, like every other
+    scanning endpoint.
+    """
+    return await packing_service.scan_matching_unit(conn, invoice_id, payload)
+
+
 @router.post("/invoices/verify", response_model=AttributionResult)
 async def verify_invoice(
     payload: VerifyIn,
@@ -407,7 +476,7 @@ async def list_batches(
 async def create_batch(
     payload: BatchCreate,
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_ops),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
     """Plan a batch from packed cartons.
 
@@ -432,7 +501,7 @@ async def out_scan(
     batch_id: UUID,
     payload: ScanIn,
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_ops),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
     """Out-scan one carton. The label is the invoice number (PRD §5.6).
 
@@ -448,7 +517,7 @@ async def complete_batch(
     batch_id: UUID,
     response: Response,
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_ops),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
     """CONTROL POINT 6. 409 with the two counts if any carton is unscanned."""
     result = await packing_service.complete_batch(conn, batch_id)
@@ -461,7 +530,7 @@ async def complete_batch(
 async def release_batch(
     batch_id: UUID,
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_ops),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
     """Release to the pickup area, and close the invoices it contains."""
     return await packing_service.release_batch(conn, batch_id)
@@ -471,7 +540,7 @@ async def release_batch(
 async def packer_productivity(
     from_date: Optional[str] = Query(default=None),
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_ops),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
     """PRD §5.10 Packer Productivity."""
     return await packing_service.packing_productivity(conn, from_date)
@@ -559,12 +628,14 @@ class PackScanResult(ScanResult):
 async def assign_invoice(
     payload: AssignIn,
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_roles("packer")),
+    user: CurrentUser = Depends(require_roles("packer", "invoice_matcher")),
 ):
     """Hand a carton to a named packer.
 
-    Admin can do this as well as packers, since the person who matched the
-    invoice is usually the one physically handing the box over.
+    invoice_matcher as well as packer (and Admin, who covers both stations):
+    the person who matched the invoice is usually the one physically handing
+    the box over, which is why this was already "packer or Admin" before the
+    role split reintroduced invoice_matcher as distinct from Admin.
     """
     return await packing_service.assign_invoice(
         conn, payload.invoice_number, payload.badge_code, payload.note

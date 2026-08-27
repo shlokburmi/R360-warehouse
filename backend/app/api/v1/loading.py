@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from app.api.deps import CurrentUser, get_current_user, get_db, require_ops, require_roles
+from app.api.deps import CurrentUser, get_current_user, get_db, require_ops_manager, require_roles
 from app.services import loading as loading_service
 
 router = APIRouter(tags=["loading"])
@@ -119,7 +119,7 @@ async def decide_count(
     batch_id: UUID,
     payload: CountDecision,
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_ops),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
     """Approve or reject the count. Nothing is released until this is recorded."""
     return await loading_service.decide_count(conn, batch_id, payload.approve, payload.note)

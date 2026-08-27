@@ -96,7 +96,10 @@ function Home() {
   const landing: Record<string, string> = {
     security_guard: '/gate-entry',
     admin: '/dashboard',
+    ops_manager: '/dashboard',
     offloading: '/entries',
+    warehouse_staff: '/putaway',
+    invoice_matcher: '/invoice-matching',
     packer: '/packing',
   }
 

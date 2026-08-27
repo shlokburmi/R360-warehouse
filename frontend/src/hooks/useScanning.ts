@@ -28,6 +28,8 @@ export type ScanFeedback = {
 export type ScanContext =
   | 'box_verify'
   | 'unit_verify'
+  /** Product-in-hand confirmation at invoice matching, before the badge scan. */
+  | 'match_unit'
   /** Product boxes going into a carton at the packing bench. */
   | 'pack_unit'
   | 'out_scan'
@@ -65,11 +67,13 @@ export function useScanning(contextId: string, scanType: ScanContext) {
             ? `/entries/${entryId}/scan/box`
             : scanType === 'unit_verify'
               ? `/entries/${entryId}/scan/unit`
-              : scanType === 'pack_unit'
-                ? `/invoices/${entryId}/pack-scan`
-                : scanType === 'out_scan'
-                  ? `/batches/${entryId}/scan`
-                  : `/pickups/${entryId}/scan`
+              : scanType === 'match_unit'
+                ? `/invoices/${entryId}/match-scan`
+                : scanType === 'pack_unit'
+                  ? `/invoices/${entryId}/pack-scan`
+                  : scanType === 'out_scan'
+                    ? `/batches/${entryId}/scan`
+                    : `/pickups/${entryId}/scan`
 
         const result = await post<ScanResult>(endpoint, {
           client_event_id: clientEventId,
@@ -92,6 +96,7 @@ export function useScanning(contextId: string, scanType: ScanContext) {
         void queryClient.invalidateQueries({ queryKey: ['batch', entryId] })
         void queryClient.invalidateQueries({ queryKey: ['pickup', entryId] })
         void queryClient.invalidateQueries({ queryKey: ['packing-state', entryId] })
+        void queryClient.invalidateQueries({ queryKey: ['matching-state', entryId] })
 
         return result
       } catch (error) {

@@ -19,14 +19,17 @@ from app.db.session import rls_transaction
 
 ROLE_LABELS = {
     "security_guard": "Security Guard",
+    "ops_manager": "Ops Manager",
     "offloading": "Offloading Team",
+    "warehouse_staff": "Warehouse Staff",
+    "invoice_matcher": "Invoice Matching",
     "packer": "Packing",
     "admin": "Admin",
 }
 
-# Historically "ops_manager or admin"; ops_manager folded into admin when the
-# role model was consolidated to four roles, so this is now just admin.
-OPS_ROLES = ("admin",)
+# ops_manager and admin both count as "ops" for display purposes. Admin still
+# passes every require_roles() check regardless of this tuple (see below).
+OPS_ROLES = ("admin", "ops_manager")
 
 
 @dataclass(frozen=True)
@@ -142,9 +145,10 @@ def require_roles(*roles: str):
     return _guard
 
 
-# Admin used to be its own role (ops_manager); it is now just admin, and every
-# other page is shared between the role that performs the step and admin
-# covering for them, so those are declared at the route with require_roles(...).
+# Admin-exclusive: only provisioning and badge issuance (DECISIONS.md §CE1) —
+# exception resolution/escalation and the audit log moved to Ops Manager too
+# (see require_ops_manager below), per PRD §8's explicit grant: "Ops Manager
+# can see everything, approve exceptions, view reports."
 require_ops = require_roles("admin")
 
 # Admin is not "Admin with more buttons". Provisioning accounts and issuing
@@ -153,3 +157,16 @@ require_ops = require_roles("admin")
 # requires. `require_roles("admin")` reads oddly given admin is added to every
 # guard, so it is named here to make the intent explicit at the call site.
 require_admin = require_roles("admin")
+
+# Ops Manager, reintroduced as a distinct role: gate/exit decisions, sticker
+# sheets, out-scan, batch release, packer productivity, ID-photo viewing.
+# Admin still passes (require_roles always unions with "admin").
+require_ops_manager = require_roles("ops_manager")
+
+# Invoice Matcher, reintroduced as a distinct role: invoice lookup/order-no
+# capture/verify (CONTROL POINT 5 first half) and the matching-stage unit scan.
+require_invoice_matcher = require_roles("invoice_matcher")
+
+# Warehouse Staff, carved out of Offloading: putaway only. Offloading keeps
+# inbound reconciliation (CONTROL POINT 4) and receiving.
+require_warehouse_staff = require_roles("warehouse_staff")

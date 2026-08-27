@@ -41,6 +41,8 @@ REJECT_MESSAGES = {
     "wrong_invoice": "This product does not belong to that invoice. Check the paperwork.",
     "unit_not_in_stock": "This product box was never counted in at offloading. Call Admin.",
     "invoice_already_full": "This carton is already full. Start the next one.",
+    # Matching-stage unit scan (Phase 5, additive)
+    "invoice_already_matched": "Every unit for this invoice is already confirmed. Scan your badge to verify.",
 }
 
 _INSERT_SCAN = text(

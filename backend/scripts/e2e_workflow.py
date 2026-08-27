@@ -139,6 +139,49 @@ def main():
 
         print(f"\nUsing invoice {invoice_number}")
 
+        print("\n0. Matching-stage unit scan (0024) — additive to CG3, required "
+              "before the badge scan")
+        r = client.get(
+            f"{API}/invoices/lookup", headers=matcher,
+            params={"invoice_number": invoice_number},
+        )
+        ok("matcher can look up the invoice", r.status_code == 200, r.text[:200])
+        match_invoice_id = r.json()["invoice_id"]
+        required_for_match = r.json()["units"]
+
+        r = client.post(
+            f"{API}/invoices/verify",
+            headers=matcher,
+            json={"invoice_number": invoice_number, "badge_code": matcher_badge},
+        )
+        ok("verify is refused before every unit is match-scanned (fn_matching_units_complete)",
+           r.status_code == 409, r.text[:250])
+
+        match_codes = sql(
+            f"""
+            select string_agg(s.code, ',')
+              from stickers s
+              join purchase_order_lines pol on pol.id = s.purchase_order_line_id
+              join invoices i on i.purchase_order_line_id = pol.id
+              join scan_events se on se.sticker_id = s.id
+                   and se.scan_type = 'unit_verify' and se.accepted
+             where i.invoice_number = '{invoice_number}'
+            """
+        ).split(",")
+        match_codes = [c for c in match_codes if c][:required_for_match]
+        ok(f"found {required_for_match} received units to match-scan",
+           len(match_codes) == required_for_match, f"got {len(match_codes)}")
+
+        for n, code in enumerate(match_codes, start=1):
+            r = scan(client, f"{API}/invoices/{match_invoice_id}/match-scan", matcher, code)
+            body = r.json()
+            ok(f"unit {n}/{required_for_match} match-scanned",
+               r.status_code == 200 and body.get("accepted") is True, r.text[:200])
+
+        r = client.get(f"{API}/invoices/{match_invoice_id}/matching", headers=matcher)
+        ok("matching reports ready_to_verify",
+           r.status_code == 200 and r.json()["ready_to_verify"] is True, r.text[:250])
+
         print("\n1. Assignment by scanning a colleague's badge")
         r = client.post(
             f"{API}/invoices/assign",
@@ -152,7 +195,8 @@ def main():
             headers=matcher,
             json={"invoice_number": invoice_number, "badge_code": matcher_badge},
         )
-        ok("matcher verifies the invoice", r.status_code == 200, r.text[:250])
+        ok("matcher verifies the invoice, now that matching is complete",
+           r.status_code == 200, r.text[:250])
 
         # Refused by CONTROL POINT 5's self-assignment check: Admin does both
         # matching and packing, so the role check alone would not catch this —

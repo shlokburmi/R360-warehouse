@@ -457,9 +457,16 @@ async def record_order_no(
 async def verify_invoice(
     conn: AsyncConnection, invoice_number: str, badge_code: str
 ) -> Dict[str, Any]:
-    """CONTROL POINT 5, first half: Admin confirms product against invoice."""
+    """CONTROL POINT 5, first half: the matcher confirms product against invoice.
+
+    Refused (by `fn_matching_units_complete`, 0024) unless every unit sticker
+    for this invoice has already been scanned via `/invoices/{id}/match-scan` —
+    the database raises a check_violation the global error handler turns into
+    a 409, the same way `pack_invoice` below relies on `fn_packing_units_complete`
+    for its own units-complete check.
+    """
     invoice = await lookup_for_matching(conn, invoice_number)
-    badge = await resolve_badge(conn, badge_code, ["admin"])
+    badge = await resolve_badge(conn, badge_code, ["invoice_matcher", "admin"])
 
     await conn.execute(
         text(
@@ -968,6 +975,56 @@ async def scan_product_box(
     result["required_units"] = after["required_units"]
     result["remaining_units"] = after["remaining_units"]
     result["ready_to_close"] = after["ready_to_close"]
+    return result
+
+
+async def matching_state(conn: AsyncConnection, invoice_id: UUID) -> Dict[str, Any]:
+    """How many units have been scanned to confirm product-in-hand at matching."""
+    row = (
+        await conn.execute(
+            text(
+                """
+                select invoice_id, invoice_number, sku, required_units, matched_units,
+                       remaining_units, ready_to_verify, is_open,
+                       verified_by, verified_by_name
+                  from v_invoice_matching where invoice_id = :id
+                """
+            ),
+            {"id": str(invoice_id)},
+        )
+    ).mappings().first()
+
+    if row is None:
+        raise AppError("That invoice does not exist.", code="not_found", http_status=404)
+    return dict(row)
+
+
+async def scan_matching_unit(
+    conn: AsyncConnection, invoice_id: UUID, scan: ScanIn
+) -> Dict[str, Any]:
+    """Scan one unit sticker to confirm product-in-hand before matching.
+
+    Additive to `scan_product_box` above (CG3) — a second, independent check at
+    an earlier step. Same refusal shape: a rejected scan is recorded with a
+    reason rather than raised.
+    """
+    state = await matching_state(conn, invoice_id)
+
+    if state["verified_by"] is not None:
+        raise AppError(
+            f"Invoice {state['invoice_number']} was already verified by "
+            f"{state['verified_by_name']}.",
+            code="already_verified",
+            http_status=409,
+        )
+
+    result = await scans.record_scan(conn, scan, "match_unit", invoice_id=invoice_id)
+    after = await matching_state(conn, invoice_id)
+
+    result["matched_units"] = after["matched_units"]
+    result["required_units"] = after["required_units"]
+    result["remaining_units"] = after["remaining_units"]
+    result["ready_to_verify"] = after["ready_to_verify"]
     return result
 
 

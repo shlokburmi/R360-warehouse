@@ -11,7 +11,13 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from app.api.deps import CurrentUser, get_current_user, get_db, require_ops, require_roles
+from app.api.deps import (
+    CurrentUser,
+    get_current_user,
+    get_db,
+    require_ops_manager,
+    require_roles,
+)
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError
 from app.services import notifications as notif_service
@@ -43,15 +49,29 @@ PAGE_ACCESS: Dict[str, List[str]] = {
     # Guard still declares the box count on this page (Step 1); the scanning
     # steps on it now belong to packers.
     "security_guard": ["gate-entry", "box-counting", "pickup", "my-entries", "loading"],
+    # Ops Manager, reintroduced: PRD §8 — "can see everything, approve
+    # exceptions, view reports". The admin screen (provisioning/badges) stays
+    # Admin-only per DECISIONS.md §CE1, which this role split does not reverse.
+    "ops_manager": [
+        "dashboard", "approvals", "stickers", "exceptions", "reports",
+        "gate-entry", "pickup", "invoices", "batches", "loading",
+    ],
     # Offloading no longer scans goods in — packers do (see scans_insert in
-    # 0019) — but still reconciles inbound counts and shelves goods (the old
-    # inbound and warehouse_staff roles folded into this one).
-    "offloading": ["exceptions", "putaway", "stock", "reconciliation"],
+    # 0019) — and no longer shelves goods either, now that warehouse_staff is
+    # its own role again. Reconciliation (CONTROL POINT 4) and receiving stay.
+    "offloading": ["exceptions", "reconciliation"],
+    # Carved back out of offloading: putaway only.
+    "warehouse_staff": ["exceptions", "putaway", "stock"],
+    # Invoice Matching, reintroduced: matching, the exceptions anyone can
+    # raise, and "packing" — the /invoices/assign handover step (PRD §7: "call
+    # a packing lady while handing them over") lives on that page, and
+    # packing_assignments_insert now names invoice_matcher explicitly.
+    "invoice_matcher": ["exceptions", "invoice-matching", "packing"],
     # Packers apply and scan both box and unit stickers at intake, in addition
     # to their outbound packing job.
     "packer": ["box-counting", "unit-scanning", "exceptions", "packing"],
-    # Admin absorbs everything the old ops_manager and invoice_matcher roles
-    # did, plus its own screen.
+    # Admin keeps everything, including what's now split out to the roles
+    # above (require_roles always unions with admin) plus its own screen.
     "admin": [
         "dashboard", "approvals", "stickers", "box-counting", "unit-scanning",
         "exceptions", "reports", "gate-entry", "reconciliation", "pickup",
@@ -265,9 +285,9 @@ async def damage_photo_ticket(
 async def view_identity_photo(
     path: str = Query(min_length=3),
     settings: Settings = Depends(get_settings),
-    user: CurrentUser = Depends(require_ops),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
-    """Short-lived signed link to a stored ID photo. Admin and Admin only —
+    """Short-lived signed link to a stored ID photo. Ops and Admin only —
     PRD §8 Data Privacy / DPDP Act 2023."""
     if not settings.supabase_service_role_key:
         raise AppError("Storage is not configured.", code="storage_unconfigured", http_status=503)

@@ -13,9 +13,10 @@ from app.services import putaway as putaway_service
 
 router = APIRouter(tags=["putaway"])
 
-# The offloading team owns this step (the old warehouse_staff role folded
-# into it), and Admin can always act. Matched by the RLS policy in 0007.
-store_or_ops = require_roles("offloading")
+# Warehouse Staff owns this step, carved back out of Offloading (which keeps
+# inbound reconciliation and receiving). Admin can always act. Matched by the
+# RLS policy in 0023_role_split.sql.
+store_or_ops = require_roles("warehouse_staff")
 
 
 # ---------------------------------------------------------------------------

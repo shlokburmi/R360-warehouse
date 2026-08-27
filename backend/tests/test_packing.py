@@ -93,12 +93,62 @@ async def invoice(db):
 
 
 async def _verify(db, invoice_id, who):
+    """Insert the verification row directly, same as the floor's badge scan.
+
+    Since 0024_matching_unit_scan.sql this is refused unless every unit for the
+    invoice has already been match-scanned (mirroring 0019's identical
+    requirement for pack_unit) — so, exactly like `_stock_and_pack_scan` below
+    has always had to produce real received goods before a carton can close,
+    this now has to produce real received goods and match-scan them before an
+    invoice can verify. Self-contained (looks up its own guard/offloader
+    rather than taking them as arguments) so the ~20 existing call sites across
+    the test suite did not all need to start threading `people`/`invoice`
+    dicts through a helper that, from the caller's side, is still just "mark
+    this invoice verified".
+    """
+    await _confirm_all_units(db, invoice_id)
     await db.execute(
         text(
             "insert into invoice_verifications (invoice_id, verified_by) values (:i, :w)"
         ),
         {"i": invoice_id, "w": who},
     )
+
+
+async def _confirm_all_units(db, invoice_id):
+    already = (
+        await db.execute(
+            text("select invoice_matched_units(:i) as n"), {"i": invoice_id}
+        )
+    ).scalar_one()
+
+    row = (
+        await db.execute(
+            text("select units from invoices where id = :i"), {"i": invoice_id}
+        )
+    ).mappings().one()
+
+    if already >= row["units"]:
+        return
+
+    actors = (
+        await db.execute(
+            text(
+                "select employee_code, id from profiles "
+                "where employee_code in ('EMP-G01', 'EMP-F01', 'EMP-O01')"
+            )
+        )
+    ).mappings().all()
+    by_code = {r["employee_code"]: r["id"] for r in actors}
+
+    invoice = {"id": invoice_id, "units": row["units"]}
+    people = {
+        "guard": {"id": by_code["EMP-G01"]},
+        "ops": {"id": by_code["EMP-O01"]},
+        "offloader_id": by_code["EMP-F01"],
+    }
+    codes = await _receive_goods(db, invoice, people)
+    await _match_scan(db, invoice_id, codes)
 
 
 async def _pack(db, invoice_id, who):
@@ -186,6 +236,228 @@ class TestControlPoint5:
             await _pack(db, invoice["id"], people["packer_a"]["id"])
 
 
+class TestMatchingUnitScan:
+    """0024_matching_unit_scan.sql — the matching-stage hard stop.
+
+    Additive to CONTROL POINT 5's badge check: a matcher's badge cannot be
+    attached to an invoice (invoice_verifications) until every unit sticker
+    for it has been match-scanned, mirroring the equivalent requirement 0019
+    already puts on packing_records (CG3).
+
+    These drive the trigger directly rather than through `_verify` (which
+    produces and match-scans the goods for every other test in this file) so
+    the partial and zero cases are actually reachable.
+    """
+
+    async def test_verify_is_refused_with_no_units_scanned(self, db, people):
+        inv = await _new_invoice(db, units=2)
+
+        async with rejected(db, containing="0 of 2 units scanned at matching"):
+            await db.execute(
+                text(
+                    "insert into invoice_verifications (invoice_id, verified_by) "
+                    "values (:i, :w)"
+                ),
+                {"i": inv["id"], "w": people["matcher_a"]["id"]},
+            )
+
+    async def test_verify_is_refused_with_units_still_remaining(self, db, people):
+        inv = await _new_invoice(db, units=2)
+        inv["units"] = 2
+        codes = await _receive_goods(db, inv, people)
+        await _match_scan(db, inv["id"], codes[:1])  # only one of two
+
+        async with rejected(db, containing="1 of 2 units scanned at matching"):
+            await db.execute(
+                text(
+                    "insert into invoice_verifications (invoice_id, verified_by) "
+                    "values (:i, :w)"
+                ),
+                {"i": inv["id"], "w": people["matcher_a"]["id"]},
+            )
+
+    async def test_verify_succeeds_once_every_unit_is_matched(self, db, people):
+        inv = await _new_invoice(db, units=2)
+        inv["units"] = 2
+        codes = await _receive_goods(db, inv, people)
+        await _match_scan(db, inv["id"], codes)
+
+        await db.execute(
+            text(
+                "insert into invoice_verifications (invoice_id, verified_by) "
+                "values (:i, :w)"
+            ),
+            {"i": inv["id"], "w": people["matcher_a"]["id"]},
+        )
+
+        row = (
+            await db.execute(
+                text("select matched_units, ready_to_verify from v_invoice_matching where invoice_id = :i"),
+                {"i": inv["id"]},
+            )
+        ).mappings().one()
+        assert row["matched_units"] == 2
+        assert row["ready_to_verify"] is True
+
+    async def test_a_unit_cannot_be_matched_twice(self, db, people):
+        """Scanned once accepted, scanned again (same code) rejected.
+
+        Checked by aggregate rather than "the latest row": `now()` is the
+        transaction's start time in Postgres, so two scans in one test
+        transaction share one `scanned_at` and cannot be told apart by
+        ordering on it.
+        """
+        inv = await _new_invoice(db, units=2)
+        inv["units"] = 2
+        codes = await _receive_goods(db, inv, people)
+        await _match_scan(db, inv["id"], codes[:1])
+        await _match_scan(db, inv["id"], codes[:1])
+
+        counts = (
+            await db.execute(
+                text(
+                    "select count(*)::int as total, "
+                    "count(*) filter (where accepted)::int as accepted, "
+                    "count(*) filter (where reject_reason = 'already_scanned')::int as rejected "
+                    "from scan_events where raw_code = :c and scan_type = 'match_unit'"
+                ),
+                {"c": codes[0]},
+            )
+        ).mappings().one()
+        assert counts["total"] == 2
+        assert counts["accepted"] == 1
+        assert counts["rejected"] == 1
+
+    async def test_a_unit_not_yet_received_cannot_be_matched(self, db, people):
+        """A matcher cannot confirm a product that never arrived — the same
+        `unit_not_in_stock` requirement pack_unit makes later.
+
+        A unit sticker applied but never scanned at offloading (unit_verify):
+        stickers_family_shape requires a gate entry and sheet, so one exists,
+        but nothing in this test ever calls _raw_scan(..., 'unit_verify', ...)
+        against it.
+        """
+        inv = await _new_invoice(db, units=1)
+
+        line_id = (
+            await db.execute(
+                text("select purchase_order_line_id from invoices where id = :i"),
+                {"i": inv["id"]},
+            )
+        ).scalar_one()
+
+        po = (
+            await db.execute(
+                text(
+                    """
+                    select po.id, po.vendor_id from purchase_orders po
+                      join purchase_order_lines pol on pol.purchase_order_id = po.id
+                     where pol.id = :l
+                    """
+                ),
+                {"l": line_id},
+            )
+        ).mappings().one()
+
+        entry_id = (
+            await db.execute(
+                text(
+                    """
+                    insert into gate_entries
+                      (status, vehicle_number, vendor_id, purchase_order_id,
+                       requested_by, requested_at)
+                    values ('pending_approval', :veh, :vendor, :po, :guard, now())
+                    returning id
+                    """
+                ),
+                {
+                    "veh": f"KA01UN{uuid.uuid4().hex[:4].upper()}",
+                    "vendor": po["vendor_id"],
+                    "po": po["id"],
+                    "guard": people["guard"]["id"],
+                },
+            )
+        ).scalar_one()
+
+        sheet_id = (
+            await db.execute(
+                text(
+                    "insert into sticker_sheets (gate_entry_id, sticker_type, quantity, generated_by) "
+                    "values (:e, 'unit', 1, :o) returning id"
+                ),
+                {"e": entry_id, "o": people["ops"]["id"]},
+            )
+        ).scalar_one()
+        code = f"UNT-{uuid.uuid4().hex[:8].upper()}"
+        await db.execute(
+            text(
+                """
+                insert into stickers
+                  (code, sticker_type, sheet_id, gate_entry_id, purchase_order_line_id,
+                   sequence_no, status)
+                values (:c, 'unit', :sh, :e, :l, 1, 'applied')
+                """
+            ),
+            {"c": code, "sh": sheet_id, "e": entry_id, "l": line_id},
+        )
+
+        await _match_scan(db, inv["id"], [code])
+        row = (
+            await db.execute(
+                text(
+                    "select accepted, reject_reason::text as reject_reason "
+                    "from scan_events where raw_code = :c order by scanned_at desc limit 1"
+                ),
+                {"c": code},
+            )
+        ).mappings().one()
+        assert row["accepted"] is False
+        assert row["reject_reason"] == "unit_not_in_stock"
+
+    async def test_matching_and_packing_scans_do_not_collide(self, db, people):
+        """The same unit sticker is scanned once at matching and, independently,
+        once again at packing — scan_events_one_accept_per_sticker is keyed
+        (sticker_id, scan_type), so this is not a double-scan."""
+        inv = await _new_invoice(db, units=1)
+        inv["units"] = 1
+        codes = await _receive_goods(db, inv, people)
+        await _match_scan(db, inv["id"], codes)
+        # _verify's internal goods production is a no-op here: every unit for
+        # this invoice is already match-scanned, so _confirm_all_units sees
+        # `already >= units` and produces nothing further.
+        await _verify(db, inv["id"], people["matcher_a"]["id"])
+
+        for code in codes:
+            await db.execute(
+                text(
+                    """
+                    insert into scan_events
+                      (client_event_id, scan_type, raw_code, invoice_id,
+                       accepted, scanned_by, scanned_at)
+                    values (:cid, 'pack_unit', :code, :inv, false, :who, now())
+                    """
+                ),
+                {
+                    "cid": str(uuid.uuid4()),
+                    "code": code,
+                    "inv": inv["id"],
+                    "who": people["packer_a"]["id"],
+                },
+            )
+
+        row = (
+            await db.execute(
+                text(
+                    "select accepted from scan_events "
+                    "where raw_code = :c and scan_type = 'pack_unit' "
+                    "order by scanned_at desc limit 1"
+                ),
+                {"c": codes[0]},
+            )
+        ).mappings().one()
+        assert row["accepted"] is True
+
+
 async def _stock_and_pack_scan(db, invoice, people):
     """Give an invoice real product boxes, received and scanned into the carton.
 
@@ -198,6 +470,65 @@ async def _stock_and_pack_scan(db, invoice, people):
     Written out in full rather than shortcut because the shortcut is the thing
     under test: if product boxes could be packed without having arrived, packing
     would be a second, unaudited route to creating inventory.
+    """
+    codes = await _receive_goods(db, invoice, people)
+
+    for code in codes:
+        await db.execute(
+            text(
+                """
+                insert into scan_events
+                  (client_event_id, scan_type, raw_code, invoice_id,
+                   accepted, scanned_by, scanned_at)
+                values (:cid, 'pack_unit', :code, :inv, false, :who, now())
+                """
+            ),
+            {
+                "cid": str(uuid.uuid4()),
+                "code": code,
+                "inv": invoice["id"],
+                "who": people["packer_a"]["id"],
+            },
+        )
+
+    return codes
+
+
+async def _match_scan(db, invoice_id, codes):
+    """Confirm every unit sticker code at matching, before the badge scan.
+
+    Mirrors the pack_unit inserts in `_stock_and_pack_scan` — same shape, a
+    different scan_type and hard stop (0024_matching_unit_scan.sql).
+    """
+    matcher = (
+        await db.execute(
+            text("select id from profiles where employee_code = 'EMP-M01'")
+        )
+    ).scalar_one()
+
+    for code in codes:
+        await db.execute(
+            text(
+                """
+                insert into scan_events
+                  (client_event_id, scan_type, raw_code, invoice_id,
+                   accepted, scanned_by, scanned_at)
+                values (:cid, 'match_unit', :code, :inv, false, :who, now())
+                """
+            ),
+            {
+                "cid": str(uuid.uuid4()),
+                "code": code,
+                "inv": invoice_id,
+                "who": matcher,
+            },
+        )
+
+
+async def _receive_goods(db, invoice, people):
+    """Receive real product boxes at the gate — box count, box sticker, unit
+    stickers — exactly as far as CONTROL POINT 3, without packing or matching
+    them into anything. Returns the unit sticker codes.
     """
     line_id = (
         await db.execute(
@@ -331,24 +662,6 @@ async def _stock_and_pack_scan(db, invoice, people):
         )
         await _raw_scan(db, code, "unit_verify", people["offloader_id"])
         codes.append(code)
-
-    for code in codes:
-        await db.execute(
-            text(
-                """
-                insert into scan_events
-                  (client_event_id, scan_type, raw_code, invoice_id,
-                   accepted, scanned_by, scanned_at)
-                values (:cid, 'pack_unit', :code, :inv, false, :who, now())
-                """
-            ),
-            {
-                "cid": str(uuid.uuid4()),
-                "code": code,
-                "inv": invoice["id"],
-                "who": people["packer_a"]["id"],
-            },
-        )
 
     return codes
 

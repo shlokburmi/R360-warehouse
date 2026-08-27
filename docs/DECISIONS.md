@@ -640,6 +640,61 @@ box count before any sticker exists, which is unaffected.
 
 ---
 
+## Part CH — Phase 6: the role split reversed, and a second matching check
+
+### CH1. Ops Manager, Invoice Matcher and Warehouse Staff are roles again
+
+§CE1 and §C5 record the four-role consolidation as a deliberate, explicitly
+overrulable trade-off — fewer floor logins, in exchange for accepting that a
+single Admin *could* manufacture the second person CONTROL POINT 5 requires.
+The user reviewed that trade-off and asked to reverse it: `ops_manager`,
+`invoice_matcher` and `warehouse_staff` are reintroduced as real roles
+(0022–0023), restoring most of the eight-role shape described in §CE1's own
+history.
+
+The split, decided from PRD §2 and the explicit grant in §8 ("Ops Manager can
+see everything, approve exceptions, view reports"):
+
+- **ops_manager** — gate/exit decisions (CP1, the two CG4 approvals), sticker
+  sheets, out-scan, batch release, reports, exceptions (both read and
+  resolve/escalate — §8 grants Ops Manager the same exception and audit access
+  Admin has, which the four-role model had folded into "Admin" without
+  distinguishing).
+- **invoice_matcher** — invoice lookup, order-no, and CONTROL POINT 5's badge
+  scan. Carries a badge (`fn_badge_holder_guard` in 0023 replaces `array['admin']`
+  with `array['invoice_matcher', 'admin']` for `invoice_verifications`).
+- **warehouse_staff** — putaway only, carved back out of `offloading`, which
+  keeps inbound reconciliation (CP4) and receiving.
+
+What did **not** move: provisioning and badge issuance stay Admin-only
+(§CE1's reasoning — an Ops Manager who could provision accounts could
+manufacture the second person CONTROL POINT 5 requires — is a distinct
+capability from approvals/exceptions/reports and is unaffected by this
+split). `require_roles()` still unions every check with `admin` (§CC3's
+"Admin covers the bench" pattern), so Admin keeps acting as any of the three
+new roles; the identity-based CP5 check (`verified_by <> packed_by`) is what
+actually stops a single logged-in account self-dealing, regardless of role.
+
+### CH2. Matching gets its own unit-sticker scan, additive to CG3
+
+The user also asked for a second, independent product-in-hand check at
+matching, in addition to CG3's existing one at packing. 0024 mirrors CG3
+exactly: a `match_unit` scan type, a derived `invoice_matched_units()` ledger,
+and a new hard stop (`fn_matching_units_complete`, on `invoice_verifications`
+insert) refusing the matcher's badge scan until every unit sticker for the
+invoice has been match-scanned. The same unit sticker is later scanned again
+at packing under `pack_unit` — safe because
+`scan_events_one_accept_per_sticker` is keyed `(sticker_id, scan_type)`, so
+the two scans don't collide.
+
+This is deliberately additive: CG3's packing-stage check was already
+sufficient to close the gap PRD's open item #8 worried about, from packing's
+side. The matching-stage check adds the same guarantee one step earlier, at
+the cost of a second scan per unit — a trade-off the user chose knowingly
+after CG3's existing coverage was pointed out.
+
+---
+
 ## Part D — What running the stack changed
 
 These are defects found by actually booting the system, not by reading it. They

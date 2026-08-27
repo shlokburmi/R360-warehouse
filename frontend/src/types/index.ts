@@ -525,6 +525,28 @@ export type PackScanResult = ScanResult & {
   ready_to_close?: boolean
 }
 
+/** How many units have been confirmed at matching, before the badge scan. */
+export type MatchingState = {
+  invoice_id: string
+  invoice_number: string
+  sku: string | null
+  required_units: number
+  matched_units: number
+  remaining_units: number
+  ready_to_verify: boolean
+  is_open: boolean
+  verified_by: string | null
+  verified_by_name: string | null
+}
+
+/** A unit-sticker scan at matching, plus where the invoice now stands. */
+export type MatchScanResult = ScanResult & {
+  matched_units?: number
+  required_units?: number
+  remaining_units?: number
+  ready_to_verify?: boolean
+}
+
 export type BatchAwaitingCount = {
   batch_id: string
   batch_code: string

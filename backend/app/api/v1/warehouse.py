@@ -9,7 +9,13 @@ from uuid import UUID
 from fastapi import APIRouter, Body, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from app.api.deps import CurrentUser, get_current_user, get_db, require_ops, require_roles
+from app.api.deps import (
+    CurrentUser,
+    get_current_user,
+    get_db,
+    require_ops_manager,
+    require_roles,
+)
 from app.schemas.gate import GateEntryOut
 from app.schemas.warehouse import (
     BoxCloseResult,
@@ -58,7 +64,7 @@ async def generate_box_stickers(
     response: Response,
     payload: StickerSheetRequest = Body(default=StickerSheetRequest()),
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_ops),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
     """Issue exactly as many box stickers as the guard counted (PRD Step 2).
 
@@ -82,7 +88,7 @@ async def generate_box_stickers(
 async def generate_unit_stickers(
     entry_id: UUID,
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_ops),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
     """One sticker per unit, bound to its box at issue time (PRD Step 3)."""
     return await sticker_service.generate_unit_stickers(conn, entry_id)
@@ -113,7 +119,7 @@ async def void_sheet(
     sheet_id: UUID,
     reason: str = Body(embed=True, min_length=3, max_length=300),
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_ops),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
     """Void the unscanned stickers on a sheet. Scanned ones are left alone —
     a scan that happened is a fact, and a reprint must not erase it."""
@@ -153,12 +159,15 @@ async def scan_unit(
 @router.post("/scan/sync", response_model=ScanBatchResult)
 async def sync_offline_scans(
     payload: ScanBatchIn,
-    scan_type: str = Query(pattern="^(box_verify|unit_verify|pack_unit|out_scan|gate_exit)$"),
+    scan_type: str = Query(
+        pattern="^(box_verify|unit_verify|match_unit|pack_unit|out_scan|gate_exit)$"
+    ),
     invoice_id: Optional[UUID] = Query(
         default=None,
         description=(
-            "Required for pack_unit: which carton the queued product boxes went into. "
-            "A product sticker knows the box it arrived in, not the order it leaves on."
+            "Required for match_unit and pack_unit: which invoice the queued "
+            "product-box scans belong to. A product sticker knows the box it "
+            "arrived in, not the order or carton it is bound for."
         ),
     ),
     conn: AsyncConnection = Depends(get_db),
@@ -281,7 +290,7 @@ async def resolve_exception(
     exception_id: UUID,
     payload: ExceptionResolve,
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_ops),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
     """APPROVE & PROCEED / REJECT & RETURN (PRD §5.9).
 
@@ -297,7 +306,7 @@ async def escalate_exception(
     exception_id: UUID,
     payload: ExceptionEscalate,
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_ops),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
     """SEND EMAIL TO SUPERADMIN. Escalating does not release the goods."""
     return await exc_service.escalate_exception(

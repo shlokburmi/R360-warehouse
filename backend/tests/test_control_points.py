@@ -761,4 +761,5 @@ class TestImmutability:
 
         approval = [r for r in rows if r["changed_keys"] and "decided_by" in r["changed_keys"]]
         assert approval, "the approval itself is in the trail"
-        assert approval[0]["actor_role"] == "admin"
+        # actors["ops"] (boopathi) is the Ops Manager who decides gate entries.
+        assert approval[0]["actor_role"] == "ops_manager"

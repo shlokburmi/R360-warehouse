@@ -6,7 +6,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from app.api.deps import CurrentUser, get_current_user, get_db, require_ops, require_roles
+from app.api.deps import (
+    CurrentUser,
+    get_current_user,
+    get_db,
+    require_ops_manager,
+    require_roles,
+)
 from app.core.errors import AppError
 from app.schemas.gate import (
     BoxCountDeclare,
@@ -72,10 +78,10 @@ async def list_entries(
 @router.get("/entries/pending", response_model=List[GateEntryOut])
 async def pending_approvals(
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_ops),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
-    """The Admin approval queue (PRD §5.8), oldest first — the truck that has been
-    waiting longest is the one to decide next."""
+    """The Ops Manager approval queue (PRD §5.8), oldest first — the truck that
+    has been waiting longest is the one to decide next."""
     entries = await gate_service.list_entries(conn, status_filter=["pending_approval"], limit=100)
     return sorted(entries, key=lambda e: e["requested_at"] or e["created_at"])
 
@@ -94,9 +100,9 @@ async def decide_entry(
     entry_id: UUID,
     payload: GateDecision,
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_ops),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
-    """CONTROL POINT 1. Only Admin, never the requester."""
+    """CONTROL POINT 1. Only Admin or Ops Manager, never the requester."""
     try:
         payload.require_note_on_reject()
     except ValueError as exc:

@@ -12,7 +12,7 @@ from app.api.deps import (
     CurrentUser,
     get_current_user,
     get_db,
-    require_ops,
+    require_ops_manager,
     require_roles,
 )
 from app.schemas.gate import PersonOut, PersonIn, VEHICLE_RE
@@ -284,9 +284,9 @@ async def decide_exit(
     pickup_id: UUID,
     payload: ExitDecision,
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_ops),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
-    """Admin approves or holds the vehicle.
+    """Admin or Ops Manager approves or holds the vehicle.
 
     Approving records the approval; it does not open the gate. The guard still
     performs the release, so the gate opening stays attached to the person

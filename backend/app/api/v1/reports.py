@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from app.api.deps import CurrentUser, get_current_user, get_db, require_ops
+from app.api.deps import CurrentUser, get_current_user, get_db, require_ops_manager
 
 router = APIRouter(tags=["reports"])
 
@@ -97,7 +97,7 @@ async def dashboard(
 @router.get("/reports/vendor-accuracy")
 async def vendor_accuracy(
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_ops),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
     """Which vendors send what they said they would (PRD §5.10).
 
@@ -125,7 +125,7 @@ async def exception_log(
     from_date: Optional[date] = Query(default=None),
     to_date: Optional[date] = Query(default=None),
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_ops),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
     rows = await conn.execute(
         text(
@@ -160,7 +160,7 @@ async def exception_log(
 async def gate_register(
     on_date: Optional[date] = Query(default=None),
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_ops),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
     """Every person in and out, with timestamps — the statutory gate register."""
     rows = await conn.execute(
@@ -193,7 +193,7 @@ async def gate_register(
 async def outbound_register(
     on_date: Optional[date] = Query(default=None),
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_ops),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
     """Every collecting vehicle in and out, with who verified and released it.
 
@@ -237,7 +237,7 @@ async def outbound_register(
 async def daily_activity(
     on_date: Optional[date] = Query(default=None),
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_ops),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
     row = (
         await conn.execute(
@@ -281,7 +281,7 @@ async def daily_activity(
 async def operator_productivity(
     from_date: Optional[date] = Query(default=None),
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_ops),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
     """Scans per operator, with the rejection rate alongside.
 
@@ -317,7 +317,7 @@ async def audit_trail(
     record_id: Optional[str] = Query(default=None),
     limit: int = Query(default=200, le=1000),
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_ops),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
     """Who did what, when. PRD §7 — nothing is ever deleted, so this is complete."""
     rows = await conn.execute(

@@ -18,6 +18,7 @@ from sqlalchemy import text
 from app.core.errors import ControlPointError
 from app.services import pickup as pickup_service
 from tests.conftest import act_as, rejected
+from tests.test_packing import _verify
 
 pytestmark = pytest.mark.asyncio
 
@@ -85,13 +86,6 @@ async def _invoice(db, units=2):
     return {"id": invoice_id, "invoice_number": number, "units": units}
 
 
-async def _verify(db, invoice_id, who):
-    await db.execute(
-        text("insert into invoice_verifications (invoice_id, verified_by) values (:i, :w)"),
-        {"i": invoice_id, "w": who},
-    )
-
-
 async def _assign(db, invoice_id, to_whom, by_whom):
     return (
         await db.execute(
@@ -153,13 +147,20 @@ class TestPackingAssignment:
 
     async def test_the_verifier_cannot_be_assigned_the_pack(self, db, people):
         """CONTROL POINT 5, caught while the lead is still holding the badge
-        rather than after the carton is packed."""
+        rather than after the carton is packed.
+
+        Admin, not the matcher: assignment also requires the assignee to be a
+        packer-eligible role (fn_packing_assignment_guard checks that before
+        CONTROL POINT 5), and Admin is the one role that is always both —
+        exactly the "same Admin can't self-deal" case DECISIONS.md §CC3
+        describes.
+        """
         inv = await _invoice(db)
-        await act_as(db, people["ops"]["id"])
-        await _verify(db, inv["id"], people["ops"]["id"])
+        await act_as(db, people["admin"]["id"])
+        await _verify(db, inv["id"], people["admin"]["id"])
 
         async with rejected(db, containing="CONTROL POINT 5"):
-            await _assign(db, inv["id"], people["ops"]["id"], people["ops"]["id"])
+            await _assign(db, inv["id"], people["admin"]["id"], people["admin"]["id"])
 
     async def test_a_guard_cannot_be_assigned_a_pack(self, db, people):
         inv = await _invoice(db)
