@@ -57,17 +57,21 @@ begin
 end;
 $$;
 
-select seed_user('guard@r360.local',    'Sanjeev Kumar',  'security_guard',  'EMP-G01', '9876500001', 'Guard@2026!');
-select seed_user('boopathi@r360.local', 'Boopathi',       'ops_manager',     'EMP-O01', '9876500002', 'OpsMgr@2026!');
-select seed_user('opsbackup@r360.local','Ramesh Iyer',    'admin',           'EMP-O02', '9876500003', 'B@ckupAdm!n2026#Xk');
-select seed_user('offload@r360.local',  'Arun Prasad',    'offloading',      'EMP-F01', '9876500004', 'Offload@2026!');
-select seed_user('inbound@r360.local',  'Divya Nair',     'offloading',      'EMP-I01', '9876500005', 'Inbound@2026!');
-select seed_user('store@r360.local',    'Mahesh Rao',     'warehouse_staff', 'EMP-W01', '9876500006', 'Store@2026!');
-select seed_user('match1@r360.local',   'Lakshmi Devi',   'invoice_matcher', 'EMP-M01', '9876500007', 'Match1@2026!');
-select seed_user('match2@r360.local',   'Priya Menon',    'invoice_matcher', 'EMP-M02', '9876500008', 'Match2@2026!');
-select seed_user('pack1@r360.local',    'Kavitha S',      'packer',          'EMP-P01', '9876500009', 'Pack1@2026!');
-select seed_user('pack2@r360.local',    'Anitha R',       'packer',          'EMP-P02', '9876500010', 'Pack2@2026!');
-select seed_user('admin@r360.local',    'Warehouse Admin','admin',           'EMP-A01', '9876500011', 'Adm!n#2026$Xk9Qz');
+-- full_name is just the role/station label, not an invented person — these
+-- are shared logins, not individual staff identities. employee_code values
+-- avoid EMP-A01 and EMP-O01, which already belong to two real accounts
+-- (shlok.b@reward360.co, dhruv.g@reward360.co).
+select seed_user('guard@r360.local',    'Security Guard',       'security_guard',  'EMP-G01',  '9876500001', 'Guard@2026!');
+select seed_user('boopathi@r360.local', 'Ops Manager',           'ops_manager',     'EMP-OM01', '9876500002', 'OpsMgr@2026!');
+select seed_user('opsbackup@r360.local','Admin (Backup Approver)','admin',         'EMP-O02',  '9876500003', 'B@ckupAdm!n2026#Xk');
+select seed_user('offload@r360.local',  'Offloading',            'offloading',      'EMP-F01',  '9876500004', 'Offload@2026!');
+select seed_user('inbound@r360.local',  'Offloading',            'offloading',      'EMP-I01',  '9876500005', 'Inbound@2026!');
+select seed_user('store@r360.local',    'Warehouse Staff',       'warehouse_staff', 'EMP-W01',  '9876500006', 'Store@2026!');
+select seed_user('match1@r360.local',   'Invoice Matcher',       'invoice_matcher', 'EMP-M01',  '9876500007', 'Match1@2026!');
+select seed_user('match2@r360.local',   'Invoice Matcher',       'invoice_matcher', 'EMP-M02',  '9876500008', 'Match2@2026!');
+select seed_user('pack1@r360.local',    'Packer',                'packer',          'EMP-P01',  '9876500009', 'Pack1@2026!');
+select seed_user('pack2@r360.local',    'Packer',                'packer',          'EMP-P02',  '9876500010', 'Pack2@2026!');
+select seed_user('admin@r360.local',    'Admin',                 'admin',           'EMP-A02',  '9876500011', 'Adm!n#2026$Xk9Qz');
 
 update profiles set is_backup_approver = true
  where employee_code = 'EMP-O02';
