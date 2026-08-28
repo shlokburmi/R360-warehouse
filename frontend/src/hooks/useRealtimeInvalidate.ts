@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useQueryClient, type QueryKey } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 
@@ -26,9 +26,17 @@ export function useRealtimeInvalidate(
 ) {
   const queryClient = useQueryClient()
 
+  // Supabase's client dedupes channels by topic name — if two components
+  // subscribe to the same table+filter, the second `.channel()` call would
+  // return the first's already-subscribed channel object, and calling `.on()`
+  // on an already-subscribed channel throws (an uncaught error, so it takes
+  // the whole app down). A per-instance id keeps every hook instance's
+  // channel topic unique, even when several subscribe to the same table.
+  const instanceId = useRef(Math.random().toString(36).slice(2))
+
   useEffect(() => {
     const channel = supabase
-      .channel(`rt:${table}:${filter ?? 'all'}`)
+      .channel(`rt:${table}:${filter ?? 'all'}:${instanceId.current}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table, filter },
