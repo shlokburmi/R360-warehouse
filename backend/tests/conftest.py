@@ -158,7 +158,10 @@ async def gate_entry(db, actors):
                 """
             ),
             {
-                "vehicle": f"KA01AB{uuid.uuid4().hex[:4].upper()}",
+                # Must be exactly 2 letters, 2 digits, 2 letters, 4 digits
+                # (gate_entries_vehicle_number_check, 0027) — a hex suffix can
+                # contain a-f, which a strict numeric suffix can't.
+                "vehicle": f"KA01AB{uuid.uuid4().int % 10000:04d}",
                 "vendor": po["vendor_id"],
                 "po": po["id"],
                 "guard": actors["guard"],

@@ -371,7 +371,9 @@ class TestMatchingUnitScan:
                     """
                 ),
                 {
-                    "veh": f"KA01UN{uuid.uuid4().hex[:4].upper()}",
+                    # Must be exactly 2 letters, 2 digits, 2 letters, 4 digits
+                    # (gate_entries_vehicle_number_check, 0027).
+                    "veh": f"KA01UN{uuid.uuid4().int % 10000:04d}",
                     "vendor": po["vendor_id"],
                     "po": po["id"],
                     "guard": people["guard"]["id"],
@@ -564,7 +566,9 @@ async def _receive_goods(db, invoice, people):
                 """
             ),
             {
-                "veh": f"KA01PK{uuid.uuid4().hex[:4].upper()}",
+                # Must be exactly 2 letters, 2 digits, 2 letters, 4 digits
+                # (gate_entries_vehicle_number_check, 0027).
+                "veh": f"KA01PK{uuid.uuid4().int % 10000:04d}",
                 "vendor": po["vendor_id"],
                 "po": po["id"],
                 "guard": people["guard"]["id"],

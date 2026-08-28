@@ -35,9 +35,12 @@ begin
   select id into v_ops   from profiles where employee_code = 'EMP-O01';
   select id into v_off   from profiles where employee_code = 'EMP-F01';
 
+  -- Must be exactly 2 letters, 2 digits, 2 letters, 4 digits
+  -- (gate_entries_vehicle_number_check, 0027) — a hex suffix can contain
+  -- a-f, which a strict numeric suffix can't.
   insert into gate_entries
     (status, vehicle_number, vendor_id, purchase_order_id, requested_by, requested_at)
-  values ('pending_approval', 'KA01WF' || upper(substr(md5(random()::text), 1, 4)),
+  values ('pending_approval', 'KA01WF' || lpad(floor(random() * 10000)::int::text, 4, '0'),
           v_vendor, v_po, v_guard, now())
   returning id into v_entry;
 

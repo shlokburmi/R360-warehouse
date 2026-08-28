@@ -1,7 +1,7 @@
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { get, post } from '@/lib/api'
+import { get } from '@/lib/api'
 import { Banner, Card, Field } from '@/components/ui'
+import { CameraCapture } from '@/components/CameraCapture'
 import type { VisitorLookup } from '@/types'
 
 /**
@@ -97,6 +97,14 @@ export function PersonFields({
               }}
               placeholder={t('person.mobile_placeholder')}
             />
+            {/* Immediate feedback on the one thing that's wrong the moment it's
+                wrong — a bad first digit doesn't need nine more keystrokes
+                before the guard finds out. */}
+            {person.mobile.length > 0 && !/^[6-9]/.test(person.mobile) && (
+              <p className="mt-1 text-sm font-semibold text-bad dark:text-bad-dark">
+                {t('person.mobile_bad_start')}
+              </p>
+            )}
           </Field>
 
           {person.lookup && (
@@ -155,11 +163,17 @@ export function PersonFields({
               required
               hint={t('person.id_photo_hint')}
             >
-              <PhotoCapture
-                mobile={person.mobile}
-                path={person.id_photo_path}
-                onUploaded={(path) => update(person.key, { id_photo_path: path })}
-              />
+              {person.id_photo_path ? (
+                <div className="flex items-center gap-3 rounded-xl bg-ok-bg p-4 text-ok dark:bg-ok-darkbg dark:text-ok-dark">
+                  <span className="text-2xl">✓</span>
+                  <span className="font-bold">{t('person.photo_captured')}</span>
+                </div>
+              ) : (
+                <CameraCapture
+                  mobile={person.mobile}
+                  onUploaded={(path) => update(person.key, { id_photo_path: path })}
+                />
+              )}
             </Field>
           )}
         </Card>
@@ -178,80 +192,3 @@ export function PersonFields({
   )
 }
 
-/**
- * Capture-and-upload for an ID photo.
- *
- * The file goes straight from the device to Supabase Storage using a one-shot
- * signed URL, never through the API. A guard on a weak mobile connection should
- * not be holding an API worker open for the length of a 4MB upload.
- */
-function PhotoCapture({
-  mobile,
-  path,
-  onUploaded,
-}: {
-  mobile: string
-  path?: string
-  onUploaded: (path: string) => void
-}) {
-  const { t } = useTranslation()
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function upload(file: File) {
-    setBusy(true)
-    setError(null)
-    try {
-      const ticket = await post<{ path: string; upload_url: string }>(
-        '/uploads/identity-photo',
-        { mobile },
-      )
-
-      const response = await fetch(ticket.upload_url, {
-        method: 'PUT',
-        body: file,
-        headers: { 'Content-Type': file.type || 'image/jpeg' },
-      })
-
-      if (!response.ok) throw new Error('Upload failed')
-      onUploaded(ticket.path)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed. Please retry.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  if (path) {
-    return (
-      <div className="flex items-center gap-3 rounded-xl bg-ok-bg p-4 text-ok dark:bg-ok-darkbg dark:text-ok-dark">
-        <span className="text-2xl">✓</span>
-        <span className="font-bold">{t('person.photo_captured')}</span>
-      </div>
-    )
-  }
-
-  return (
-    <div>
-      <label className="btn-ghost w-full cursor-pointer">
-        {busy ? 'Uploading…' : '📷 Take photo'}
-        <input
-          type="file"
-          accept="image/*"
-          // `capture` opens the rear camera directly rather than the photo
-          // library — the guard wants the person in front of them, now.
-          capture="environment"
-          className="sr-only"
-          disabled={busy}
-          onChange={(event) => {
-            const file = event.target.files?.[0]
-            if (file) void upload(file)
-          }}
-        />
-      </label>
-      {error && (
-        <p className="mt-2 text-sm font-semibold text-bad dark:text-bad-dark">{error}</p>
-      )}
-    </div>
-  )
-}

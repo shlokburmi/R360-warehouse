@@ -68,7 +68,9 @@ async def pending_entry(db, people):
                 """
             ),
             {
-                "veh": f"KA01RS{uuid.uuid4().hex[:4].upper()}",
+                # Must be exactly 2 letters, 2 digits, 2 letters, 4 digits
+                # (gate_entries_vehicle_number_check, 0027).
+                "veh": f"KA01RS{uuid.uuid4().int % 10000:04d}",
                 "vendor": po["vendor_id"],
                 "po": po["id"],
                 "guard": people["guard"],
