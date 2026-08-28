@@ -141,11 +141,21 @@ export function LoginPage() {
           <div className="card mt-4 text-sm">
             <p className="font-bold">{t('login.demo_accounts')}</p>
             <p className="mt-1 text-slate-600 dark:text-slate-400">
-              guard@r360.local · boopathi@r360.local · offload@r360.local ·
-              store@r360.local · match1@r360.local · pack1@r360.local ·
-              pack2@r360.local · admin@r360.local
+              guard@r360.local · <code>Guard@2026!</code>
               <br />
-              {t('login.demo_password')}: <code>Warehouse@123</code>
+              boopathi@r360.local · <code>OpsMgr@2026!</code>
+              <br />
+              offload@r360.local · <code>Offload@2026!</code>
+              <br />
+              store@r360.local · <code>Store@2026!</code>
+              <br />
+              match1@r360.local · <code>Match1@2026!</code>
+              <br />
+              pack1@r360.local · <code>Pack1@2026!</code>
+              <br />
+              pack2@r360.local · <code>Pack2@2026!</code>
+              <br />
+              admin@r360.local · <code>Adm!n#2026$Xk9Qz</code>
             </p>
           </div>
         )}
