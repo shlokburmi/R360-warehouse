@@ -9,10 +9,10 @@
 -- §C5). `match_unit` and `invoice_already_matched` support a new hard stop
 -- at invoice matching, mirroring the existing `pack_unit` mechanism (§CG3).
 
-alter type user_role add value 'ops_manager';
-alter type user_role add value 'invoice_matcher';
-alter type user_role add value 'warehouse_staff';
+alter type user_role add value if not exists 'ops_manager';
+alter type user_role add value if not exists 'invoice_matcher';
+alter type user_role add value if not exists 'warehouse_staff';
 
-alter type scan_type add value 'match_unit';
+alter type scan_type add value if not exists 'match_unit';
 
-alter type scan_reject_reason add value 'invoice_already_matched';
+alter type scan_reject_reason add value if not exists 'invoice_already_matched';
