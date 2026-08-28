@@ -79,7 +79,7 @@ export function GateEntryPage() {
         vehicle_number: vehicle,
         vendor_id: vendorId,
         purchase_order_id: poId || null,
-        po_reference_note: poId ? null : poNote.trim().toUpperCase() || null,
+        po_reference_note: poNote.trim().toUpperCase() || null,
         transporter_name: transporter || null,
         persons: persons.map((p) => ({
           full_name: p.full_name.trim(),
@@ -106,7 +106,7 @@ export function GateEntryPage() {
   if (!vendorId) problems.push(t('gate.problem_vendor'))
   if (driverCount !== 1) problems.push(t('gate.one_driver'))
   if (blocked) problems.push(t('gate.problem_blocked'))
-  if (!poId && poNote.trim() && !PO_REFERENCE_RE.test(poNote.trim().toUpperCase()))
+  if (poNote.trim() && !PO_REFERENCE_RE.test(poNote.trim().toUpperCase()))
     problems.push(t('gate.problem_po_note'))
   persons.forEach((p, index) => {
     const label = p.visitor_role === 'driver' ? t('person.driver') : `#${index + 1}`
@@ -299,26 +299,28 @@ export function GateEntryPage() {
           </select>
         </Field>
 
-        {!poId && (
-          <Field label={t('gate.po_reference_note')} hint={t('gate.po_reference_note_hint')}>
-            <input
-              className="input font-mono uppercase"
-              value={poNote}
-              onChange={(event) => setPoNote(event.target.value.toUpperCase())}
-              placeholder="PO-2026-0001"
-              maxLength={12}
-              disabled={!vendorId}
-              autoCapitalize="characters"
-              autoCorrect="off"
-              spellCheck={false}
-            />
-            {poNote.trim().length > 0 && !PO_REFERENCE_RE.test(poNote.trim()) && (
-              <p className="mt-1 text-sm font-semibold text-bad dark:text-bad-dark">
-                {t('gate.problem_po_note')}
-              </p>
-            )}
-          </Field>
-        )}
+        {/* Always visible, regardless of whether a PO got picked from the
+            dropdown above — it was previously hidden the moment any PO was
+            selected there, with no obvious way back to it, which is exactly
+            what looked like "I can't type a PO" from the outside. */}
+        <Field label={t('gate.po_reference_note')} hint={t('gate.po_reference_note_hint')}>
+          <input
+            className="input font-mono uppercase"
+            value={poNote}
+            onChange={(event) => setPoNote(event.target.value.toUpperCase())}
+            placeholder="PO-2026-0001"
+            maxLength={12}
+            disabled={!vendorId}
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+          />
+          {poNote.trim().length > 0 && !PO_REFERENCE_RE.test(poNote.trim()) && (
+            <p className="mt-1 text-sm font-semibold text-bad dark:text-bad-dark">
+              {t('gate.problem_po_note')}
+            </p>
+          )}
+        </Field>
 
         <Field label={t('gate.transporter')} hint={t('gate.transporter_hint')}>
           <input

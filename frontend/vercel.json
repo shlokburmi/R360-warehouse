@@ -13,7 +13,6 @@
         { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
         {
           "key": "Permissions-Policy",
-          "comment": "camera is required for QR scanning; everything else is off",
           "value": "camera=(self), microphone=(), geolocation=(), payment=()"
         }
       ]
