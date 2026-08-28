@@ -6,6 +6,7 @@ import { ApiError, get, post, postControlPoint } from '@/lib/api'
 import { useErrorText } from '@/hooks/useErrorText'
 import { useAuth } from '@/hooks/useAuth'
 import { useScanning } from '@/hooks/useScanning'
+import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate'
 import { Scanner } from '@/components/Scanner'
 import { StickerSheetPrint } from '@/components/StickerSheetPrint'
 import { Banner, Card, ProgressCounter, Spinner, StatusChip } from '@/components/ui'
@@ -46,6 +47,12 @@ export function UnitScanningPage() {
     queryFn: () => get<Progress>(`/entries/${entryId}/unit-progress`),
     refetchInterval: 10_000,
   })
+
+  useRealtimeInvalidate(
+    'boxes',
+    [['boxes', entryId], ['unit-progress', entryId]],
+    `gate_entry_id=eq.${entryId}`,
+  )
 
   const sheets = useQuery({
     queryKey: ['sheets', entryId],

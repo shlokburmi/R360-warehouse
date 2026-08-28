@@ -1,5 +1,6 @@
 """Request/response models for the gate flow (PRD §5.1, §5.2)."""
 
+import re
 from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
@@ -7,14 +8,61 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 MOBILE_RE = r"^[6-9][0-9]{9}$"
-VEHICLE_RE = r"^[A-Z0-9-]{4,15}$"
+# Exactly the shape of an Indian vehicle registration plate as this PRD wants
+# it entered — state code, RTO code, series, number — e.g. KA01AB1234. Real
+# plates occasionally vary (a 1-letter series, a 1-letter UT code), but the
+# user asked for one fixed, compulsory format rather than accommodating every
+# real-world variant, so this is deliberately exact: 2 letters, 2 digits, 2
+# letters, 4 digits, nothing more.
+VEHICLE_RE = r"^[A-Z]{2}[0-9]{2}[A-Z]{2}[0-9]{4}$"
+# The guard's free-text PO reference (gate_entries.po_reference_note) is kept
+# in the same shape real purchase_orders.po_number values already use (see
+# supabase/seed.sql, e.g. PO-2026-0001) — not because the column is
+# constrained to it, but so a reference typed by a guard is easy to search
+# for and attach to the real PO once Ops enters it.
+PO_REFERENCE_RE = r"^PO-[0-9]{4}-[0-9]{4}$"
+
+
+def clean_and_validate_vehicle(v: str) -> str:
+    """Normalise, then check the strict plate shape.
+
+    Deliberately *not* a `Field(pattern=...)` constraint: Pydantic applies a
+    Field-level pattern before any `@field_validator` on the same field runs
+    (confirmed empirically — a validator meant to strip spaces/lowercase
+    never got the chance to, because the pattern check had already rejected
+    the raw input). Cleaning and validating in one place, here, is what
+    actually lets "ka 01 ab 1234" become the accepted "KA01AB1234" instead of
+    being rejected before it could be normalised.
+    """
+    cleaned = "".join(ch for ch in v.upper() if ch.isalnum())
+    if not re.match(VEHICLE_RE, cleaned):
+        raise ValueError(
+            "Vehicle number must be exactly 2 letters, 2 digits, 2 letters, "
+            "4 digits — e.g. KA01AB1234."
+        )
+    return cleaned
+
+
+def clean_and_validate_po_reference(v: Optional[str]) -> Optional[str]:
+    if v is None:
+        return None
+    cleaned = v.strip().upper()
+    if not cleaned:
+        return None
+    if not re.match(PO_REFERENCE_RE, cleaned):
+        raise ValueError("PO reference must look like PO-2026-0001.")
+    return cleaned
 
 
 class PersonIn(BaseModel):
     """One human arriving on the vehicle."""
 
     full_name: str = Field(min_length=2, max_length=120)
-    mobile: str = Field(pattern=MOBILE_RE, description="10 digits, Indian mobile")
+    # Not `Field(pattern=MOBILE_RE)` — same reason as clean_and_validate_vehicle
+    # above: a Field-level pattern is checked before _clean_mobile below ever
+    # runs, so "+91 98765 43210" would be rejected before it could be
+    # normalised. Cleaned and validated together in the validator instead.
+    mobile: str = Field(description="10 digits, Indian mobile")
     visitor_role: str = Field(pattern="^(driver|laborer|supervisor)$")
     id_photo_path: Optional[str] = Field(
         default=None,
@@ -40,20 +88,28 @@ class PersonIn(BaseModel):
             digits = digits[2:]
         if digits.startswith("0") and len(digits) == 11:
             digits = digits[1:]
+        if not re.match(MOBILE_RE, digits):
+            raise ValueError("Mobile must be 10 digits starting 6-9.")
         return digits
 
 
 class GateEntryCreate(BaseModel):
-    vehicle_number: str = Field(pattern=VEHICLE_RE)
+    vehicle_number: str
     vendor_id: UUID
     purchase_order_id: Optional[UUID] = None
+    po_reference_note: Optional[str] = Field(default=None, max_length=120)
     transporter_name: Optional[str] = Field(default=None, max_length=160)
     persons: List[PersonIn] = Field(min_length=1, max_length=12)
 
     @field_validator("vehicle_number")
     @classmethod
     def _clean_vehicle(cls, v: str) -> str:
-        return "".join(ch for ch in v.upper() if ch.isalnum() or ch == "-")
+        return clean_and_validate_vehicle(v)
+
+    @field_validator("po_reference_note")
+    @classmethod
+    def _clean_po_reference(cls, v: Optional[str]) -> Optional[str]:
+        return clean_and_validate_po_reference(v)
 
     @field_validator("persons")
     @classmethod
@@ -66,6 +122,29 @@ class GateEntryCreate(BaseModel):
         if len(set(mobiles)) != len(mobiles):
             raise ValueError("Two people cannot share the same mobile number")
         return v
+
+
+class VendorProposeIn(BaseModel):
+    """A guard registering a vendor that isn't in the system yet.
+
+    Not a general vendor-creation form — see guard_propose_vendor() in
+    0025_vendor_proposal_and_po_note.sql. The vendor is created immediately
+    but unconfirmed (is_active = false); Ops/Admin confirms it by approving
+    the gate entry that names it.
+    """
+
+    name: str = Field(min_length=2, max_length=160)
+    mobile: Optional[str] = Field(default=None, pattern=MOBILE_RE)
+
+    @field_validator("name")
+    @classmethod
+    def _clean_name(cls, v: str) -> str:
+        return " ".join(v.split())
+
+
+class VendorProposeOut(BaseModel):
+    id: UUID
+    name: str
 
 
 class GateDecision(BaseModel):
@@ -110,8 +189,10 @@ class GateEntryOut(BaseModel):
     vehicle_number: str
     vendor_id: UUID
     vendor_name: Optional[str] = None
+    vendor_is_active: bool = True
     purchase_order_id: Optional[UUID] = None
     po_number: Optional[str] = None
+    po_reference_note: Optional[str] = None
     transporter_name: Optional[str] = None
 
     requested_by: UUID

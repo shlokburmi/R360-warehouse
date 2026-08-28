@@ -5,6 +5,7 @@ import { ApiError, get, post, postControlPoint } from '@/lib/api'
 import { useErrorText } from '@/hooks/useErrorText'
 import { Scanner } from '@/components/Scanner'
 import { useScanning } from '@/hooks/useScanning'
+import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate'
 import { PersonFields, type PersonDraft, blankPerson } from '@/components/PersonFields'
 import {
   Banner,
@@ -36,6 +37,9 @@ export function PickupPage() {
     queryFn: () => get<AwaitingPickup[]>('/pickups/awaiting'),
     refetchInterval: 20_000,
   })
+
+  useRealtimeInvalidate('batches', [['awaiting-pickup']])
+  useRealtimeInvalidate('pickups', [['pickups']])
 
   const active = useQuery({
     queryKey: ['pickups'],
@@ -179,16 +183,22 @@ function RegisterPickup({
   })
 
   const driverCount = persons.filter((p) => p.visitor_role === 'driver').length
-  const valid =
-    vehicle.trim().length >= 4 &&
-    driverCount === 1 &&
-    !persons.some((p) => p.lookup?.is_blocked) &&
-    persons.every(
-      (p) =>
-        p.full_name.trim().length >= 2 &&
-        /^[6-9]\d{9}$/.test(p.mobile.replace(/\D/g, '')) &&
-        (!p.lookup?.photo_required || Boolean(p.id_photo_path)),
-    )
+  const blocked = persons.some((p) => p.lookup?.is_blocked)
+
+  const problems: string[] = []
+  if (vehicle.trim().length < 4) problems.push(t('gate.problem_vehicle'))
+  if (driverCount !== 1) problems.push(t('gate.one_driver'))
+  if (blocked) problems.push(t('gate.problem_blocked'))
+  persons.forEach((p, index) => {
+    const label = p.visitor_role === 'driver' ? t('person.driver') : `#${index + 1}`
+    if (p.full_name.trim().length < 2) problems.push(t('gate.problem_name', { who: label }))
+    if (!/^[6-9]\d{9}$/.test(p.mobile.replace(/\D/g, '')))
+      problems.push(t('gate.problem_mobile', { who: label }))
+    if (p.lookup?.photo_required && !p.id_photo_path)
+      problems.push(t('gate.problem_photo', { who: label }))
+  })
+
+  const valid = problems.length === 0
 
   return (
     <div className="space-y-4">
@@ -234,8 +244,14 @@ function RegisterPickup({
 
       <PersonFields persons={persons} setPersons={setPersons} />
 
-      {driverCount !== 1 && (
-        <Banner tone="warn" title={t('gate.one_driver')} />
+      {problems.length > 0 && (
+        <Banner tone="warn" title={t('gate.cant_submit_yet')}>
+          <ul className="list-disc space-y-0.5 pl-4">
+            {problems.map((problem) => (
+              <li key={problem}>{problem}</li>
+            ))}
+          </ul>
+        </Banner>
       )}
 
       <button
@@ -262,6 +278,8 @@ function PickupDetail({ pickupId, onBack }: { pickupId: string; onBack: () => vo
     queryFn: () => get<Pickup>(`/pickups/${pickupId}`),
     refetchInterval: 10_000,
   })
+
+  useRealtimeInvalidate('pickups', [['pickup', pickupId]], `id=eq.${pickupId}`)
 
   // Same scan loop as every other scanning page, so gate exit gets offline
   // queueing and idempotent replay without any extra work.

@@ -15,7 +15,7 @@ from app.api.deps import (
     require_ops_manager,
     require_roles,
 )
-from app.schemas.gate import PersonOut, PersonIn, VEHICLE_RE
+from app.schemas.gate import PersonOut, PersonIn, clean_and_validate_vehicle
 from app.schemas.warehouse import ScanIn, ScanResult
 from app.services import pickup as pickup_service
 from app.services import scans as scan_service
@@ -101,7 +101,7 @@ class PickupCreate(BaseModel):
     """
 
     batch_id: UUID
-    vehicle_number: str = Field(pattern=VEHICLE_RE)
+    vehicle_number: str
     courier_name: Optional[str] = Field(default=None, max_length=160)
     transporter_name: Optional[str] = Field(default=None, max_length=160)
     persons: List[PersonIn] = Field(min_length=1, max_length=8)
@@ -109,7 +109,7 @@ class PickupCreate(BaseModel):
     @field_validator("vehicle_number")
     @classmethod
     def _clean_vehicle(cls, v: str) -> str:
-        return "".join(ch for ch in v.upper() if ch.isalnum() or ch == "-")
+        return clean_and_validate_vehicle(v)
 
     @field_validator("persons")
     @classmethod

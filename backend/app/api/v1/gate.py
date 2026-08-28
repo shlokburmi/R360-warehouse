@@ -19,6 +19,8 @@ from app.schemas.gate import (
     GateDecision,
     GateEntryCreate,
     GateEntryOut,
+    VendorProposeIn,
+    VendorProposeOut,
     VerifyBoxesResult,
     VisitorLookup,
 )
@@ -45,6 +47,17 @@ async def lookup_visitor(
     reachable — the guard finds out after ten digits, not after the whole form."""
     digits = "".join(ch for ch in mobile if ch.isdigit())[-10:]
     return await gate_service.lookup_visitor(conn, digits)
+
+
+@router.post("/vendors/propose", response_model=VendorProposeOut, status_code=status.HTTP_201_CREATED)
+async def propose_vendor(
+    payload: VendorProposeIn,
+    conn: AsyncConnection = Depends(get_db),
+    user: CurrentUser = Depends(guard_or_ops),
+):
+    """A vendor not yet in the system. Created unconfirmed (is_active =
+    false); Ops/Admin confirms it by approving the gate entry that names it."""
+    return await gate_service.propose_vendor(conn, payload.name, payload.mobile)
 
 
 @router.post("/entries", response_model=GateEntryOut, status_code=status.HTTP_201_CREATED)

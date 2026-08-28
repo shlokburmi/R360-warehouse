@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, get, post } from '@/lib/api'
 import { useErrorText } from '@/hooks/useErrorText'
+import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate'
 import { Banner, Card, EmptyState, Spinner } from '@/components/ui'
 import type { ExitDecisionResult, GateEntry, LoadApproval, Pickup } from '@/types'
 
@@ -33,9 +34,13 @@ export function ApprovalsPage() {
     queryKey: ['pending-approvals'],
     queryFn: () => get<GateEntry[]>('/gate/entries/pending'),
     // A guard is standing at a gate waiting on this. Polling is cheap; a stale
-    // queue costs a truck ten minutes.
+    // queue costs a truck ten minutes. Realtime below is what actually gets
+    // a new truck onto this screen without waiting for the timer.
     refetchInterval: 15_000,
   })
+
+  useRealtimeInvalidate('gate_entries', [['pending-approvals'], ['dashboard']])
+  useRealtimeInvalidate('vendors', [['pending-approvals']])
 
   const decide = useMutation({
     mutationFn: ({ id, approve }: { id: string; approve: boolean }) =>
@@ -105,6 +110,14 @@ export function ApprovalsPage() {
               </div>
             )}
 
+            {!entry.vendor_is_active && (
+              <div className="mb-4">
+                <Banner tone="warn" title={t('approvals.new_vendor', { name: entry.vendor_name })}>
+                  {t('approvals.new_vendor_hint')}
+                </Banner>
+              </div>
+            )}
+
             <dl className="mb-4 grid grid-cols-1 gap-3 text-base sm:grid-cols-2">
               <div>
                 <dt className="text-slate-500 dark:text-slate-400">{t('person.driver')}</dt>
@@ -114,6 +127,11 @@ export function ApprovalsPage() {
               <div>
                 <dt className="text-slate-500 dark:text-slate-400">PO</dt>
                 <dd className="font-bold">{entry.po_number ?? 'Not linked'}</dd>
+                {entry.po_reference_note && (
+                  <dd className="text-sm text-slate-500 dark:text-slate-400">
+                    {t('approvals.po_note', { note: entry.po_reference_note })}
+                  </dd>
+                )}
               </div>
               <div>
                 <dt className="text-slate-500 dark:text-slate-400">{t('approvals.people_on_board')}</dt>
@@ -224,6 +242,8 @@ function CartonCountApprovals() {
     queryFn: () => get<LoadApproval[]>('/loading/pending'),
     refetchInterval: 15_000,
   })
+
+  useRealtimeInvalidate('batch_load_approvals', [['loading', 'pending']])
 
   const decide = useMutation({
     mutationFn: ({ batchId, approve }: { batchId: string; approve: boolean }) =>
@@ -353,6 +373,8 @@ function ExitApprovals() {
     // this system to keep waiting, so this polls faster than the rest.
     refetchInterval: 10_000,
   })
+
+  useRealtimeInvalidate('pickups', [['pickups', 'awaiting-exit']])
 
   const decide = useMutation({
     mutationFn: ({ pickupId, approve }: { pickupId: string; approve: boolean }) =>

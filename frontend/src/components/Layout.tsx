@@ -78,10 +78,12 @@ export function Layout({ children }: { children: ReactNode }) {
             </button>
           )}
 
-          {/* notify_ops()/notify_admin() only ever target these two roles
-              (docs/DECISIONS.md §CH1) — anyone else would see a bell that is
-              always empty, so it isn't shown to them at all. */}
-          {(me?.role === 'ops_manager' || me?.role === 'admin') && <NotificationBell />}
+          {/* Shown to everyone signed in — decide_entry sends a personal
+              notification to whichever guard submitted an entry, so any role
+              can be on the receiving end of one, not just ops_manager/admin
+              (who additionally get the role-wide notify_ops/notify_admin
+              alerts). */}
+          {me && <NotificationBell />}
 
           <LanguageToggle />
           <ThemeToggle />

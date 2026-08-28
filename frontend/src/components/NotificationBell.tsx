@@ -2,19 +2,22 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { get, post } from '@/lib/api'
+import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate'
 import { cn } from '@/lib/utils'
 import type { AppNotification } from '@/types'
 
 /**
  * PRD §9 real-time alerts, the in-app half — the backend has always written
  * these and emailed them (services/notifications.py); nothing in the
- * frontend read them back until now. Polled rather than pushed: this app has
- * no websocket/SSE channel anywhere else, and a 20s poll is well inside
- * "real-time" for a warehouse floor without adding new infrastructure.
+ * frontend read them back until this session. Now pushed via Supabase
+ * Realtime on the `notifications` table (0026_realtime_publication.sql) —
+ * the poll interval below is a long fallback, not the primary mechanism.
  *
- * Shown only to ops_manager/admin — the two roles notify_ops()/notify_admin()
- * actually target (see docs/DECISIONS.md §CH1) — so a guard or packer, who
- * would only ever see an empty bell, doesn't get one at all.
+ * Shown to every signed-in user, not just ops_manager/admin: those two are
+ * the only roles notify_ops()/notify_admin() target with a *role-wide*
+ * alert, but decide_entry (services/gate.py) already sends a *personal*
+ * notification (recipient_id) to whichever guard submitted an entry, once
+ * Ops decides it — any role can be on the receiving end of one of those.
  */
 export function NotificationBell() {
   const { t } = useTranslation()
@@ -25,8 +28,10 @@ export function NotificationBell() {
   const notifications = useQuery({
     queryKey: ['notifications'],
     queryFn: () => get<AppNotification[]>('/notifications'),
-    refetchInterval: 20_000,
+    refetchInterval: 60_000,
   })
+
+  useRealtimeInvalidate('notifications', [['notifications']])
 
   const markRead = useMutation({
     mutationFn: (id: string) => post(`/notifications/${id}/read`),

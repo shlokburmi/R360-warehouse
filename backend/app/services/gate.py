@@ -19,6 +19,23 @@ from app.services import notifications
 # ---------------------------------------------------------------------------
 
 
+async def propose_vendor(
+    conn: AsyncConnection, name: str, mobile: Optional[str]
+) -> Dict[str, Any]:
+    """A guard registering a vendor that isn't in the system yet.
+
+    The database function is the actual privilege boundary (0025) — this is
+    a thin wrapper. Returns the new, unconfirmed (is_active = false) vendor.
+    """
+    row = (
+        await conn.execute(
+            text("select id, name from guard_propose_vendor(:name, :mobile)"),
+            {"name": name, "mobile": mobile},
+        )
+    ).mappings().one()
+    return dict(row)
+
+
 async def lookup_visitor(conn: AsyncConnection, mobile: str) -> VisitorLookup:
     settings = get_settings()
 
@@ -199,10 +216,10 @@ async def create_entry(
                 """
                 insert into gate_entries
                   (status, vehicle_number, vendor_id, purchase_order_id,
-                   transporter_name, requested_by, requested_at)
+                   po_reference_note, transporter_name, requested_by, requested_at)
                 values
                   ('pending_approval', :vehicle, :vendor_id, :po_id,
-                   :transporter, auth.uid(), now())
+                   :po_note, :transporter, auth.uid(), now())
                 returning id
                 """
             ),
@@ -210,6 +227,7 @@ async def create_entry(
                 "vehicle": payload.vehicle_number,
                 "vendor_id": str(payload.vendor_id),
                 "po_id": str(payload.purchase_order_id) if payload.purchase_order_id else None,
+                "po_note": payload.po_reference_note,
                 "transporter": payload.transporter_name,
             },
         )
@@ -306,6 +324,19 @@ async def decide_entry(
     )
 
     entry = await get_entry(conn, entry_id)
+
+    # A guard-proposed vendor (guard_propose_vendor, 0025) starts unconfirmed.
+    # Approving this entry is the confirmation — Ops is looking at exactly
+    # this vendor name at exactly this moment, which is the whole reason this
+    # doesn't need its own screen. A rejection leaves it unconfirmed rather
+    # than deleting it (no-deletion policy) — it can be reused or cleaned up
+    # later.
+    if approve and not entry["vendor_is_active"]:
+        await conn.execute(
+            text("update vendors set is_active = true where id = :id"),
+            {"id": str(entry["vendor_id"])},
+        )
+        entry["vendor_is_active"] = True
 
     await notifications.notify(
         conn,
@@ -530,8 +561,8 @@ async def raise_count_exception(
 
 _ENTRY_SELECT = """
     select ge.id, ge.entry_code, ge.status::text as status, ge.vehicle_number,
-           ge.vendor_id, v.name as vendor_name,
-           ge.purchase_order_id, po.po_number,
+           ge.vendor_id, v.name as vendor_name, v.is_active as vendor_is_active,
+           ge.purchase_order_id, po.po_number, ge.po_reference_note,
            ge.transporter_name,
            ge.requested_by, rp.full_name as requested_by_name, ge.requested_at,
            ge.decided_by, dp.full_name as decided_by_name, ge.decided_at, ge.decision_note,

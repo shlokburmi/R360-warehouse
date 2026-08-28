@@ -6,6 +6,7 @@ import { ApiError, get, post, postControlPoint } from '@/lib/api'
 import { useErrorText } from '@/hooks/useErrorText'
 import { useAuth } from '@/hooks/useAuth'
 import { useScanning } from '@/hooks/useScanning'
+import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate'
 import { Scanner } from '@/components/Scanner'
 import { StickerSheetPrint } from '@/components/StickerSheetPrint'
 import { Banner, Card, Field, ProgressCounter, Spinner, StatusChip } from '@/components/ui'
@@ -75,6 +76,17 @@ export function BoxCountingPage() {
     queryFn: () => get<Box[]>(`/entries/${entryId}/boxes`),
     refetchInterval: 15_000,
   })
+
+  useRealtimeInvalidate(
+    'gate_entries',
+    [['entry', entryId], ['box-progress', entryId]],
+    `id=eq.${entryId}`,
+  )
+  useRealtimeInvalidate(
+    'boxes',
+    [['boxes', entryId], ['box-progress', entryId]],
+    `gate_entry_id=eq.${entryId}`,
+  )
 
   const { feedback, submit } = useScanning(entryId, 'box_verify')
 

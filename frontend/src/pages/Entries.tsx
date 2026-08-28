@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { ApiError, get, post } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
+import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate'
 import { Banner, Card, EmptyState, Spinner, StatusChip } from '@/components/ui'
 import type { GateEntry } from '@/types'
 
@@ -27,6 +28,10 @@ export function EntriesPage() {
       ),
     refetchInterval: 20_000,
   })
+
+  // This is what makes an Ops decision appear here without the guard waiting
+  // out the 20s timer.
+  useRealtimeInvalidate('gate_entries', [['entries']])
 
   const admit = useMutation({
     mutationFn: (id: string) => post<GateEntry>(`/gate/entries/${id}/admit`),

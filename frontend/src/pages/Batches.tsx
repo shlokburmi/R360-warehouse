@@ -5,6 +5,7 @@ import { ApiError, get, post, postControlPoint } from '@/lib/api'
 import { useErrorText } from '@/hooks/useErrorText'
 import { Scanner } from '@/components/Scanner'
 import { useScanning } from '@/hooks/useScanning'
+import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate'
 import {
   Banner,
   Card,
@@ -42,6 +43,8 @@ export function BatchesPage() {
     queryFn: () => get<Batch[]>('/batches'),
     refetchInterval: 20_000,
   })
+
+  useRealtimeInvalidate('batches', [['batches']])
 
   const createBatch = useMutation({
     mutationFn: () =>
@@ -206,6 +209,8 @@ function BatchDetail({ batchId, onBack }: { batchId: string; onBack: () => void 
     queryFn: () => get<Batch>(`/batches/${batchId}`),
     refetchInterval: 10_000,
   })
+
+  useRealtimeInvalidate('batches', [['batch', batchId]], `id=eq.${batchId}`)
 
   // Reuses the same scan loop as the gate and offloading pages, so out-scan gets
   // offline queueing and idempotent replay for free.

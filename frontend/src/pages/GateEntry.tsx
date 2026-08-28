@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { get, post, ApiError } from '@/lib/api'
 import { useErrorText } from '@/hooks/useErrorText'
+import { cleanVehicleNumber, VEHICLE_RE, PO_REFERENCE_RE } from '@/lib/validation'
 import { Banner, Card, Field, StatusChip } from '@/components/ui'
 import {
   PersonFields,
@@ -24,14 +25,42 @@ export function GateEntryPage() {
   const { t } = useTranslation()
   const errorText = useErrorText()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   const [vehicle, setVehicle] = useState('')
   const [vendorId, setVendorId] = useState('')
   const [poId, setPoId] = useState('')
+  const [poNote, setPoNote] = useState('')
   const [transporter, setTransporter] = useState('')
   const [persons, setPersons] = useState<PersonDraft[]>([blankPerson('driver')])
   const [error, setError] = useState<ApiError | null>(null)
   const [submitted, setSubmitted] = useState<GateEntry | null>(null)
+
+  // A vendor not yet in the system: the guard proposes it (name + optional
+  // mobile), it's saved as a real-but-unconfirmed vendor row (`is_active =
+  // false`), and Ops confirms it as part of deciding this same gate entry —
+  // no separate approval screen needed for it.
+  const [addingVendor, setAddingVendor] = useState(false)
+  const [newVendorName, setNewVendorName] = useState('')
+  const [newVendorMobile, setNewVendorMobile] = useState('')
+
+  const proposeVendor = useMutation({
+    mutationFn: () =>
+      post<{ id: string; name: string }>('/gate/vendors/propose', {
+        name: newVendorName.trim(),
+        mobile: newVendorMobile ? newVendorMobile.replace(/\D/g, '') : null,
+      }),
+    onSuccess: (vendor) => {
+      void queryClient.invalidateQueries({ queryKey: ['vendors'] })
+      setVendorId(vendor.id)
+      setPoId('')
+      setAddingVendor(false)
+      setNewVendorName('')
+      setNewVendorMobile('')
+      setError(null)
+    },
+    onError: (err) => setError(err as ApiError),
+  })
 
   const vendors = useQuery({
     queryKey: ['vendors'],
@@ -47,9 +76,10 @@ export function GateEntryPage() {
   const submit = useMutation({
     mutationFn: () =>
       post<GateEntry>('/gate/entries', {
-        vehicle_number: vehicle.toUpperCase().replace(/\s/g, ''),
+        vehicle_number: vehicle,
         vendor_id: vendorId,
         purchase_order_id: poId || null,
+        po_reference_note: poId ? null : poNote.trim().toUpperCase() || null,
         transporter_name: transporter || null,
         persons: persons.map((p) => ({
           full_name: p.full_name.trim(),
@@ -68,18 +98,26 @@ export function GateEntryPage() {
   const driverCount = persons.filter((p) => p.visitor_role === 'driver').length
   const blocked = persons.some((p) => p.lookup?.is_blocked)
 
-  const valid =
-    vehicle.trim().length >= 4 &&
-    vendorId &&
-    driverCount === 1 &&
-    !blocked &&
-    persons.every(
-      (p) =>
-        p.full_name.trim().length >= 2 &&
-        /^[6-9]\d{9}$/.test(p.mobile.replace(/\D/g, '')) &&
-        // Photo is only demanded when the lookup says so (DECISIONS.md §2).
-        (!p.lookup?.photo_required || Boolean(p.id_photo_path)),
-    )
+  // One boolean disabling a button with no explanation left the guard unable
+  // to tell which of ~6 conditions was unmet. Each one is named here instead,
+  // so "why can't I submit" always has a visible answer.
+  const problems: string[] = []
+  if (!VEHICLE_RE.test(vehicle)) problems.push(t('gate.problem_vehicle'))
+  if (!vendorId) problems.push(t('gate.problem_vendor'))
+  if (driverCount !== 1) problems.push(t('gate.one_driver'))
+  if (blocked) problems.push(t('gate.problem_blocked'))
+  if (!poId && poNote.trim() && !PO_REFERENCE_RE.test(poNote.trim().toUpperCase()))
+    problems.push(t('gate.problem_po_note'))
+  persons.forEach((p, index) => {
+    const label = p.visitor_role === 'driver' ? t('person.driver') : `#${index + 1}`
+    if (p.full_name.trim().length < 2) problems.push(t('gate.problem_name', { who: label }))
+    if (!/^[6-9]\d{9}$/.test(p.mobile.replace(/\D/g, '')))
+      problems.push(t('gate.problem_mobile', { who: label }))
+    if (p.lookup?.photo_required && !p.id_photo_path)
+      problems.push(t('gate.problem_photo', { who: label }))
+  })
+
+  const valid = problems.length === 0
 
   if (submitted) {
     return (
@@ -118,6 +156,7 @@ export function GateEntryPage() {
               setSubmitted(null)
               setVehicle('')
               setPoId('')
+              setPoNote('')
               setTransporter('')
               setPersons([blankPerson('driver')])
             }}
@@ -147,34 +186,96 @@ export function GateEntryPage() {
       )}
 
       <Card title={t('gate.vehicle')}>
-        <Field label={t('gate.vehicle_number')} required>
+        <Field
+          label={t('gate.vehicle_number')}
+          required
+          hint={t('gate.vehicle_format_hint')}
+        >
           <input
             className="input font-mono uppercase"
             value={vehicle}
-            onChange={(event) => setVehicle(event.target.value.toUpperCase())}
+            onChange={(event) => setVehicle(cleanVehicleNumber(event.target.value))}
             placeholder="KA01AB1234"
+            maxLength={10}
             autoCapitalize="characters"
             autoCorrect="off"
             spellCheck={false}
           />
+          {vehicle.length === 10 && !VEHICLE_RE.test(vehicle) && (
+            <p className="mt-1 text-sm font-semibold text-bad dark:text-bad-dark">
+              {t('gate.problem_vehicle')}
+            </p>
+          )}
         </Field>
 
         <Field label={t('gate.vendor')} required>
-          <select
-            className="input"
-            value={vendorId}
-            onChange={(event) => {
-              setVendorId(event.target.value)
-              setPoId('')
-            }}
-          >
-            <option value="">{t('gate.select_vendor')}</option>
-            {vendors.data?.map((vendor) => (
-              <option key={vendor.id} value={vendor.id}>
-                {vendor.name}
-              </option>
-            ))}
-          </select>
+          {!addingVendor ? (
+            <select
+              className="input"
+              value={vendorId}
+              onChange={(event) => {
+                if (event.target.value === '__new__') {
+                  setAddingVendor(true)
+                  return
+                }
+                setVendorId(event.target.value)
+                setPoId('')
+              }}
+            >
+              <option value="">{t('gate.select_vendor')}</option>
+              {vendors.data?.map((vendor) => (
+                <option key={vendor.id} value={vendor.id}>
+                  {vendor.name}
+                </option>
+              ))}
+              <option value="__new__">{t('gate.add_new_vendor')}</option>
+            </select>
+          ) : (
+            <div className="space-y-2 rounded-xl border-2 border-dashed border-slate-300 p-3 dark:border-slate-700">
+              <input
+                className="input"
+                value={newVendorName}
+                onChange={(event) => setNewVendorName(event.target.value)}
+                placeholder={t('gate.new_vendor_name')}
+                autoFocus
+              />
+              <input
+                className="input font-mono"
+                type="tel"
+                inputMode="numeric"
+                maxLength={10}
+                value={newVendorMobile}
+                onChange={(event) =>
+                  setNewVendorMobile(event.target.value.replace(/\D/g, '').slice(0, 10))
+                }
+                placeholder={t('gate.new_vendor_mobile')}
+              />
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {t('gate.new_vendor_hint')}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="btn-ghost flex-1"
+                  onClick={() => {
+                    setAddingVendor(false)
+                    setNewVendorName('')
+                    setNewVendorMobile('')
+                  }}
+                >
+                  {t('common.cancel')}
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary flex-1"
+                  disabled={newVendorName.trim().length < 2 || proposeVendor.isPending}
+                  onClick={() => proposeVendor.mutate()}
+                >
+                  {proposeVendor.isPending ? t('common.saving') : t('common.add')}
+                </button>
+              </div>
+            </div>
+          )}
         </Field>
 
         <Field
@@ -198,7 +299,28 @@ export function GateEntryPage() {
           </select>
         </Field>
 
-        <Field label={t('gate.transporter')}>
+        {!poId && (
+          <Field label={t('gate.po_reference_note')} hint={t('gate.po_reference_note_hint')}>
+            <input
+              className="input font-mono uppercase"
+              value={poNote}
+              onChange={(event) => setPoNote(event.target.value.toUpperCase())}
+              placeholder="PO-2026-0001"
+              maxLength={12}
+              disabled={!vendorId}
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+            />
+            {poNote.trim().length > 0 && !PO_REFERENCE_RE.test(poNote.trim()) && (
+              <p className="mt-1 text-sm font-semibold text-bad dark:text-bad-dark">
+                {t('gate.problem_po_note')}
+              </p>
+            )}
+          </Field>
+        )}
+
+        <Field label={t('gate.transporter')} hint={t('gate.transporter_hint')}>
           <input
             className="input"
             value={transporter}
@@ -210,8 +332,14 @@ export function GateEntryPage() {
 
       <PersonFields persons={persons} setPersons={setPersons} />
 
-      {driverCount !== 1 && persons.length > 0 && (
-        <Banner tone="warn" title={t('gate.one_driver')} />
+      {problems.length > 0 && persons.length > 0 && (
+        <Banner tone="warn" title={t('gate.cant_submit_yet')}>
+          <ul className="list-disc space-y-0.5 pl-4">
+            {problems.map((problem) => (
+              <li key={problem}>{problem}</li>
+            ))}
+          </ul>
+        </Banner>
       )}
 
       <button

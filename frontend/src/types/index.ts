@@ -26,8 +26,10 @@ export type GateEntry = {
   vehicle_number: string
   vendor_id: string
   vendor_name: string | null
+  vendor_is_active: boolean
   purchase_order_id: string | null
   po_number: string | null
+  po_reference_note: string | null
   transporter_name: string | null
   requested_by: string
   requested_by_name: string | null

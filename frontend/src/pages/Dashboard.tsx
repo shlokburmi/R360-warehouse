@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router-dom'
 import { get } from '@/lib/api'
+import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate'
 import { Card, EmptyState, Spinner, Stat, StatusChip } from '@/components/ui'
 import type { Dashboard } from '@/types'
 
@@ -28,6 +29,10 @@ export function DashboardPage() {
     queryFn: () => get<Dashboard>('/dashboard'),
     refetchInterval: 20_000,
   })
+
+  useRealtimeInvalidate('gate_entries', [['dashboard']])
+  useRealtimeInvalidate('boxes', [['dashboard']])
+  useRealtimeInvalidate('notifications', [['dashboard']])
 
   if (dashboard.isLoading) return <Spinner label={t('dashboard.loading')} />
   if (!dashboard.data) return null

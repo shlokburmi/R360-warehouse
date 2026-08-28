@@ -16,6 +16,15 @@ major_version = 15
 enabled = true
 port = 54323
 
+[realtime]
+# Explicit rather than relying on the CLI default, per this file's own habit
+# of naming config that would otherwise silently mean something (see the
+# [local_smtp] note below, and DECISIONS.md's own catalogue of config keys
+# that don't mean what their names suggest). Which tables broadcast changes
+# is controlled by the supabase_realtime publication (0026_realtime_publication.sql),
+# not here — this only turns the feature on.
+enabled = true
+
 [local_smtp]
 # Local mail catcher — approval-request and escalation emails land here in dev
 # and never leave the machine. UI at http://127.0.0.1:54324

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, get, post } from '@/lib/api'
 import { useErrorText } from '@/hooks/useErrorText'
+import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate'
 import { Banner, Card, EmptyState, Field, Spinner } from '@/components/ui'
 import type { BatchAwaitingCount, LoadApproval } from '@/types'
 
@@ -37,6 +38,9 @@ export function LoadingPage() {
     queryFn: () => get<LoadApproval[]>('/loading/pending'),
     refetchInterval: 20_000,
   })
+
+  useRealtimeInvalidate('batches', [['loading', 'awaiting-count']])
+  useRealtimeInvalidate('batch_load_approvals', [['loading', 'pending'], ['loading', 'awaiting-count']])
 
   const fileCount = useMutation({
     mutationFn: ({ batchId, counted }: { batchId: string; counted: number }) =>

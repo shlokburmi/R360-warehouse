@@ -10,8 +10,10 @@ if (!url || !anonKey) {
 }
 
 /**
- * Supabase is used for authentication only — every read and write goes through
- * the FastAPI backend, which enforces the control points.
+ * Every read and write still goes through the FastAPI backend, which
+ * enforces the control points — Supabase itself is used for authentication,
+ * and (since useRealtimeInvalidate) for realtime change notifications, which
+ * are read-only and RLS-scoped exactly like a REST read would be.
  *
  * `persistSession` keeps a guard signed in across a phone restart; the token
  * itself is short-lived and refreshed automatically, so a lost device is
