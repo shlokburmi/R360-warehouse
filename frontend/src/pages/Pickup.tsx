@@ -6,6 +6,7 @@ import { useErrorText } from '@/hooks/useErrorText'
 import { Scanner } from '@/components/Scanner'
 import { useScanning } from '@/hooks/useScanning'
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate'
+import { cleanVehicleNumber, VEHICLE_RE } from '@/lib/validation'
 import { PersonFields, type PersonDraft, blankPerson } from '@/components/PersonFields'
 import {
   Banner,
@@ -169,7 +170,7 @@ function RegisterPickup({
     mutationFn: () =>
       post<Pickup>('/pickups', {
         batch_id: batch.batch_id,
-        vehicle_number: vehicle.toUpperCase().replace(/\s/g, ''),
+        vehicle_number: vehicle,
         courier_name: courier || null,
         persons: persons.map((p) => ({
           full_name: p.full_name.trim(),
@@ -186,7 +187,7 @@ function RegisterPickup({
   const blocked = persons.some((p) => p.lookup?.is_blocked)
 
   const problems: string[] = []
-  if (vehicle.trim().length < 4) problems.push(t('gate.problem_vehicle'))
+  if (!VEHICLE_RE.test(vehicle)) problems.push(t('gate.problem_vehicle'))
   if (driverCount !== 1) problems.push(t('gate.one_driver'))
   if (blocked) problems.push(t('gate.problem_blocked'))
   persons.forEach((p, index) => {
@@ -221,16 +222,26 @@ function RegisterPickup({
       )}
 
       <Card title={t('gate.vehicle')}>
-        <Field label={t('gate.vehicle_number')} required>
+        <Field
+          label={t('gate.vehicle_number')}
+          required
+          hint={t('gate.vehicle_format_hint')}
+        >
           <input
             className="input font-mono uppercase"
             value={vehicle}
-            onChange={(event) => setVehicle(event.target.value.toUpperCase())}
+            onChange={(event) => setVehicle(cleanVehicleNumber(event.target.value))}
             placeholder="KA01AB1234"
+            maxLength={10}
             autoCapitalize="characters"
             autoCorrect="off"
             spellCheck={false}
           />
+          {vehicle.length === 10 && !VEHICLE_RE.test(vehicle) && (
+            <p className="mt-1 text-sm font-semibold text-bad dark:text-bad-dark">
+              {t('gate.problem_vehicle')}
+            </p>
+          )}
         </Field>
         <Field label={t('pickup.courier')}>
           <input
