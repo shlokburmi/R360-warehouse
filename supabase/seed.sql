@@ -1,7 +1,9 @@
 -- seed.sql — development data. Applied automatically by `supabase db reset`.
 --
 -- Creates one demo user per role so the whole Phase 1 flow can be walked
--- end to end without wiring up real accounts. Password for all: Warehouse@123
+-- end to end without wiring up real accounts. Each account has its own
+-- password (listed next to its seed_user() call below); admin accounts use a
+-- longer, more complex one since they hold the widest access.
 --
 -- These accounts exist ONLY in local/dev. Never run this against production —
 -- see the guard at the bottom of the file.
@@ -42,7 +44,8 @@ alter role api_user with password 'api_password';
 -- uniqueness by instance), so ON CONFLICT (email) is not valid here. Check
 -- first instead, which also makes re-running the seed a no-op.
 create or replace function seed_user(
-  p_email text, p_name text, p_role user_role, p_code text, p_mobile text
+  p_email text, p_name text, p_role user_role, p_code text, p_mobile text,
+  p_password text
 ) returns uuid
 language plpgsql as $$
 declare
@@ -62,7 +65,7 @@ begin
     confirmation_token, recovery_token, email_change_token_new, email_change
   ) values (
     v_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
-    p_email, crypt('Warehouse@123', gen_salt('bf')),
+    p_email, crypt(p_password, gen_salt('bf')),
     now(), now(), now(), null,
     jsonb_build_object('provider', 'email', 'providers', array['email']),
     jsonb_build_object(
@@ -82,17 +85,20 @@ $$;
 -- invoice_matcher, packer, admin — reintroduced from the four-role
 -- consolidation at the user's request (see 0023_role_split.sql). Boopathi is
 -- the Ops Manager named as the document contact in the PRD itself.
-select seed_user('guard@r360.local',    'Sanjeev Kumar',  'security_guard',  'EMP-G01', '9876500001');
-select seed_user('boopathi@r360.local', 'Boopathi',       'ops_manager',     'EMP-O01', '9876500002');
-select seed_user('opsbackup@r360.local','Ramesh Iyer',    'admin',           'EMP-O02', '9876500003');
-select seed_user('offload@r360.local',  'Arun Prasad',    'offloading',      'EMP-F01', '9876500004');
-select seed_user('inbound@r360.local',  'Divya Nair',     'offloading',      'EMP-I01', '9876500005');
-select seed_user('store@r360.local',    'Mahesh Rao',     'warehouse_staff', 'EMP-W01', '9876500006');
-select seed_user('match1@r360.local',   'Lakshmi Devi',   'invoice_matcher', 'EMP-M01', '9876500007');
-select seed_user('match2@r360.local',   'Priya Menon',    'invoice_matcher', 'EMP-M02', '9876500008');
-select seed_user('pack1@r360.local',    'Kavitha S',      'packer',          'EMP-P01', '9876500009');
-select seed_user('pack2@r360.local',    'Anitha R',       'packer',          'EMP-P02', '9876500010');
-select seed_user('admin@r360.local',    'Warehouse Admin','admin',           'EMP-A01', '9876500011');
+--
+-- Each account gets its own password; the two admin accounts get a longer,
+-- more complex one since admin holds the widest access of any role.
+select seed_user('guard@r360.local',    'Sanjeev Kumar',  'security_guard',  'EMP-G01', '9876500001', 'Guard@2026!');
+select seed_user('boopathi@r360.local', 'Boopathi',       'ops_manager',     'EMP-O01', '9876500002', 'OpsMgr@2026!');
+select seed_user('opsbackup@r360.local','Ramesh Iyer',    'admin',           'EMP-O02', '9876500003', 'B@ckupAdm!n2026#Xk');
+select seed_user('offload@r360.local',  'Arun Prasad',    'offloading',      'EMP-F01', '9876500004', 'Offload@2026!');
+select seed_user('inbound@r360.local',  'Divya Nair',     'offloading',      'EMP-I01', '9876500005', 'Inbound@2026!');
+select seed_user('store@r360.local',    'Mahesh Rao',     'warehouse_staff', 'EMP-W01', '9876500006', 'Store@2026!');
+select seed_user('match1@r360.local',   'Lakshmi Devi',   'invoice_matcher', 'EMP-M01', '9876500007', 'Match1@2026!');
+select seed_user('match2@r360.local',   'Priya Menon',    'invoice_matcher', 'EMP-M02', '9876500008', 'Match2@2026!');
+select seed_user('pack1@r360.local',    'Kavitha S',      'packer',          'EMP-P01', '9876500009', 'Pack1@2026!');
+select seed_user('pack2@r360.local',    'Anitha R',       'packer',          'EMP-P02', '9876500010', 'Pack2@2026!');
+select seed_user('admin@r360.local',    'Warehouse Admin','admin',           'EMP-A01', '9876500011', 'Adm!n#2026$Xk9Qz');
 
 -- Backup approver for the T+15m escalation path (DECISIONS.md §4) stays an
 -- Admin account — update_staff() requires role == 'admin' for this flag.
@@ -216,7 +222,7 @@ values
   ('9900112244', 'Ravi Shankar (Laborer)', null, null)
 on conflict (mobile) do nothing;
 
-drop function seed_user(text, text, user_role, text, text);
+drop function seed_user(text, text, user_role, text, text, text);
 
 -- ---------------------------------------------------------------------------
 -- Production guard: refuse to leave demo credentials in a non-local database.
