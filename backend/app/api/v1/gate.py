@@ -17,6 +17,7 @@ from app.core.errors import AppError
 from app.schemas.gate import (
     BoxCountDeclare,
     GateDecision,
+    GateEntryCancel,
     GateEntryCreate,
     GateEntryOut,
     VendorProposeIn,
@@ -122,6 +123,18 @@ async def decide_entry(
         raise AppError(str(exc), code="note_required", http_status=422)
 
     return await gate_service.decide_entry(conn, user, entry_id, payload.approve, payload.note)
+
+
+@router.post("/entries/{entry_id}/cancel", response_model=GateEntryOut)
+async def cancel_entry(
+    entry_id: UUID,
+    payload: GateEntryCancel,
+    conn: AsyncConnection = Depends(get_db),
+    user: CurrentUser = Depends(require_ops_manager),
+):
+    """Ops abandons a truck's process mid-flow (0028) — e.g. a stuck entry
+    with no PO linked that can never reach CONTROL POINT 2."""
+    return await gate_service.cancel_entry(conn, entry_id, payload.reason)
 
 
 @router.post("/entries/{entry_id}/admit", response_model=GateEntryOut)

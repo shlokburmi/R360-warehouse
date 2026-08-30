@@ -163,6 +163,17 @@ class GateDecision(BaseModel):
             raise ValueError("A rejection must say why")
 
 
+class GateEntryCancel(BaseModel):
+    """Ops abandoning a truck's process mid-flow (0028)."""
+
+    reason: str = Field(min_length=3, max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def _strip(cls, v):
+        return v.strip()
+
+
 class BoxCountDeclare(BaseModel):
     """Guard's physical count of boxes on the truck (PRD Step 2)."""
 

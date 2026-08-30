@@ -235,7 +235,10 @@
     "scan_units": "Scan units",
     "stickers": "Stickers",
     "verify_counts": "Verify inbound counts",
-    "awaiting_ops": "Waiting for Ops approval — the gate is locked."
+    "awaiting_ops": "Waiting for Ops approval — the gate is locked.",
+    "cancel": "Cancel",
+    "confirm_cancel": "Confirm cancel",
+    "cancel_reason": "Why is this truck's process being cancelled? (required)"
   },
   "approvals": {
     "title": "Pending Approvals",

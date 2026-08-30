@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
@@ -41,6 +42,19 @@ export function EntriesPage() {
   const admit = useMutation({
     mutationFn: (id: string) => post<GateEntry>(`/gate/entries/${id}/admit`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['entries'] }),
+  })
+
+  const [cancelling, setCancelling] = useState<string | null>(null)
+  const [cancelReason, setCancelReason] = useState('')
+
+  const cancel = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      post<GateEntry>(`/gate/entries/${id}/cancel`, { reason }),
+    onSuccess: () => {
+      setCancelling(null)
+      setCancelReason('')
+      void queryClient.invalidateQueries({ queryKey: ['entries'] })
+    },
   })
 
   if (entries.isLoading) return <Spinner label={t('entries.loading')} />
@@ -128,7 +142,56 @@ export function EntriesPage() {
                 {t('entries.stickers')}
               </Link>
             )}
+
+            {isOps &&
+              ['approved', 'inside', 'counting', 'box_verified', 'offloading'].includes(
+                entry.status,
+              ) &&
+              cancelling !== entry.id && (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => {
+                    setCancelling(entry.id)
+                    setCancelReason('')
+                  }}
+                >
+                  {t('entries.cancel')}
+                </button>
+              )}
           </div>
+
+          {cancelling === entry.id && (
+            <div
+              className="mt-3 space-y-3 rounded-xl border-2 border-dashed border-slate-300 p-3 dark:border-slate-700"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <textarea
+                className="input"
+                rows={2}
+                value={cancelReason}
+                onChange={(event) => setCancelReason(event.target.value)}
+                placeholder={t('entries.cancel_reason')}
+              />
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  className="btn-ghost flex-1"
+                  onClick={() => setCancelling(null)}
+                >
+                  {t('common.cancel')}
+                </button>
+                <button
+                  type="button"
+                  className="btn-danger flex-1"
+                  disabled={cancelReason.trim().length < 3 || cancel.isPending}
+                  onClick={() => cancel.mutate({ id: entry.id, reason: cancelReason.trim() })}
+                >
+                  {t('entries.confirm_cancel')}
+                </button>
+              </div>
+            </div>
+          )}
         </Card>
       ))}
     </div>

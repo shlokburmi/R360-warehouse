@@ -353,6 +353,60 @@ async def decide_entry(
     return entry
 
 
+async def cancel_entry(
+    conn: AsyncConnection, entry_id: UUID, reason: str
+) -> Dict[str, Any]:
+    """Ops abandons a truck's process mid-flow (0028_cancel_inflight_gate_entry).
+
+    Legal from any in-progress status up to 'offloading' — the transition
+    trigger (0004/0028) is what actually enforces that; this only supplies the
+    human-facing 404/409 the way decide_entry does for the decision endpoint.
+    """
+    current = (
+        await conn.execute(
+            text("select status::text as status, requested_by from gate_entries where id = :id"),
+            {"id": str(entry_id)},
+        )
+    ).mappings().first()
+
+    if current is None:
+        raise AppError("Gate entry not found.", code="not_found", http_status=404)
+
+    if current["status"] in ("rejected", "cancelled", "offloaded", "reconciled", "departed"):
+        raise AppError(
+            f"This entry is already {current['status'].replace('_', ' ')}.",
+            code="already_decided",
+            http_status=409,
+        )
+
+    await conn.execute(
+        text(
+            """
+            update gate_entries
+               set status = 'cancelled'::gate_entry_status,
+                   decided_by = auth.uid(),
+                   decided_at = now(),
+                   decision_note = :reason
+             where id = :id
+            """
+        ),
+        {"reason": reason, "id": str(entry_id)},
+    )
+
+    entry = await get_entry(conn, entry_id)
+
+    await notifications.notify(
+        conn,
+        title="Entry cancelled",
+        body=f"{entry['entry_code']} · {entry['vehicle_number']}\nReason: {reason}",
+        recipient_id=entry["requested_by"],
+        payload={"cancelled": True},
+        gate_entry_id=entry_id,
+    )
+
+    return entry
+
+
 async def admit_vehicle(conn: AsyncConnection, entry_id: UUID) -> Dict[str, Any]:
     """Guard opens the gate. Stamps time_in. Refused unless status is 'approved'.
 
