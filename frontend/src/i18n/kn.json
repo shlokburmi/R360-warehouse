@@ -208,7 +208,8 @@
     "gate_register_out": "ಗೇಟ್ ದಾಖಲೆ (ಹೊರಗೆ)",
     "packer_productivity": "ಪ್ಯಾಕರ್ ಉತ್ಪಾದಕತೆ",
     "daily_activity": "ದಿನದ ಚಟುವಟಿಕೆ",
-    "operator_productivity": "ನಿರ್ವಾಹಕರ ಉತ್ಪಾದಕತೆ"
+    "operator_productivity": "ನಿರ್ವಾಹಕರ ಉತ್ಪಾದಕತೆ",
+    "activity_log": "ಚಟುವಟಿಕೆ ದಾಖಲೆ"
   },
   "stock": {
     "title": "ಸ್ಥಳದ ಪ್ರಕಾರ ದಾಸ್ತಾನು",

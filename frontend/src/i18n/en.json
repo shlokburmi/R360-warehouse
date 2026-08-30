@@ -208,7 +208,8 @@
     "gate_register_out": "Gate register (out)",
     "packer_productivity": "Packer productivity",
     "daily_activity": "Daily activity",
-    "operator_productivity": "Operator productivity"
+    "operator_productivity": "Operator productivity",
+    "activity_log": "Activity log"
   },
   "stock": {
     "title": "Stock by Location",

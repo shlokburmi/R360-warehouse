@@ -31,6 +31,7 @@ const REPORTS = [
     labelKey: 'reports.operator_productivity',
     path: '/reports/operator-productivity',
   },
+  { key: 'activity-log', labelKey: 'reports.activity_log', path: '/reports/audit-trail' },
 ] as const
 
 type ReportKey = (typeof REPORTS)[number]['key']
