@@ -10,7 +10,7 @@ import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate'
 import { Scanner } from '@/components/Scanner'
 import { StickerSheetPrint } from '@/components/StickerSheetPrint'
 import { Banner, Card, Field, ProgressCounter, Spinner, StatusChip } from '@/components/ui'
-import type { Box, GateEntry, Progress, StickerSheet } from '@/types'
+import type { Box, GateEntry, Progress, PurchaseOrder, StickerSheet } from '@/types'
 
 type VerifyResult = {
   verified: boolean
@@ -46,6 +46,16 @@ export function BoxCountingPage() {
   const [error, setError] = useState<ApiError | null>(null)
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
   const [issueResult, setIssueResult] = useState<StickerIssueResult | null>(null)
+
+  const [selectedPoId, setSelectedPoId] = useState('')
+  const [creatingPo, setCreatingPo] = useState(false)
+  const [newPoNumber, setNewPoNumber] = useState('')
+  const [newExpectedOn, setNewExpectedOn] = useState('')
+  const [newSku, setNewSku] = useState('')
+  const [newDescription, setNewDescription] = useState('')
+  const [newExpectedUnits, setNewExpectedUnits] = useState('')
+  const [newUnitsPerBox, setNewUnitsPerBox] = useState('')
+  const [poError, setPoError] = useState<ApiError | null>(null)
 
   const entry = useQuery({
     queryKey: ['entry', entryId],
@@ -129,6 +139,49 @@ export function BoxCountingPage() {
     onError: (err) => setError(err as ApiError),
   })
 
+  const vendorId = entry.data?.vendor_id
+
+  const vendorPOs = useQuery({
+    queryKey: ['vendor-purchase-orders', vendorId],
+    queryFn: () => get<PurchaseOrder[]>(`/purchase-orders?vendor_id=${vendorId}&open_only=false`),
+    enabled: Boolean(vendorId) && !entry.data?.purchase_order_id,
+  })
+
+  const linkPO = useMutation({
+    mutationFn: (purchase_order_id: string) =>
+      post<GateEntry>(`/gate/entries/${entryId}/link-po`, { purchase_order_id }),
+    onSuccess: () => {
+      setPoError(null)
+      void queryClient.invalidateQueries({ queryKey: ['entry', entryId] })
+    },
+    onError: (err) => setPoError(err as ApiError),
+  })
+
+  const createAndLinkPO = useMutation({
+    mutationFn: async () => {
+      const po = await post<{ id: string }>('/purchase-orders', {
+        po_number: newPoNumber.trim(),
+        vendor_id: vendorId,
+        expected_on: newExpectedOn || null,
+        lines: [
+          {
+            sku: newSku.trim(),
+            description: newDescription.trim(),
+            expected_units: Number(newExpectedUnits),
+            units_per_box: Number(newUnitsPerBox),
+          },
+        ],
+      })
+      return post<GateEntry>(`/gate/entries/${entryId}/link-po`, { purchase_order_id: po.id })
+    },
+    onSuccess: () => {
+      setPoError(null)
+      setCreatingPo(false)
+      void queryClient.invalidateQueries({ queryKey: ['entry', entryId] })
+    },
+    onError: (err) => setPoError(err as ApiError),
+  })
+
   if (entry.isLoading) return <Spinner />
   if (!entry.data) return <Banner tone="bad" title={t('boxcount.truck_not_found')} />
 
@@ -151,6 +204,137 @@ export function BoxCountingPage() {
         </div>
         <StatusChip status={entry.data.status} />
       </div>
+
+      {!entry.data.purchase_order_id && isOps && (
+        <Card title="No purchase order linked" solid>
+          {poError && (
+            <div className="mb-4">
+              <Banner tone="bad" title={errorText(poError).title}>
+                {poError.hint}
+              </Banner>
+            </div>
+          )}
+
+          {entry.data.po_reference_note && (
+            <p className="mb-4 text-base text-slate-600 dark:text-slate-400">
+              Guard's note: <span className="font-mono font-bold">{entry.data.po_reference_note}</span>
+            </p>
+          )}
+
+          {!creatingPo ? (
+            <>
+              <Field label="Pick an existing PO for this vendor">
+                <select
+                  className="input"
+                  value={selectedPoId}
+                  onChange={(event) => setSelectedPoId(event.target.value)}
+                >
+                  <option value="">
+                    {vendorPOs.data?.length ? 'Select PO…' : 'No POs for this vendor yet'}
+                  </option>
+                  {vendorPOs.data?.map((po) => (
+                    <option key={po.id} value={po.id}>
+                      {po.po_number} · {po.expected_units} units
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <div className="mt-3 flex gap-3">
+                <button
+                  type="button"
+                  className="btn-primary flex-1"
+                  disabled={!selectedPoId || linkPO.isPending}
+                  onClick={() => linkPO.mutate(selectedPoId)}
+                >
+                  {linkPO.isPending ? 'Linking…' : 'Link this PO'}
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost flex-1"
+                  onClick={() => setCreatingPo(true)}
+                >
+                  + Create new PO
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="space-y-3">
+              <Field label="PO number" required>
+                <input
+                  className="input font-mono uppercase"
+                  value={newPoNumber}
+                  onChange={(event) => setNewPoNumber(event.target.value.toUpperCase())}
+                  placeholder="PO-2026-0001"
+                />
+              </Field>
+              <Field label="Expected on">
+                <input
+                  className="input"
+                  type="date"
+                  value={newExpectedOn}
+                  onChange={(event) => setNewExpectedOn(event.target.value)}
+                />
+              </Field>
+              <Field label="SKU" required>
+                <input
+                  className="input"
+                  value={newSku}
+                  onChange={(event) => setNewSku(event.target.value)}
+                />
+              </Field>
+              <Field label="Description" required>
+                <input
+                  className="input"
+                  value={newDescription}
+                  onChange={(event) => setNewDescription(event.target.value)}
+                />
+              </Field>
+              <Field label="Expected units (total)" required>
+                <input
+                  className="input"
+                  type="number"
+                  min={1}
+                  value={newExpectedUnits}
+                  onChange={(event) => setNewExpectedUnits(event.target.value)}
+                />
+              </Field>
+              <Field label="Units per box" required>
+                <input
+                  className="input"
+                  type="number"
+                  min={1}
+                  value={newUnitsPerBox}
+                  onChange={(event) => setNewUnitsPerBox(event.target.value)}
+                />
+              </Field>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  className="btn-ghost flex-1"
+                  onClick={() => setCreatingPo(false)}
+                >
+                  {t('common.cancel')}
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary flex-1"
+                  disabled={
+                    !newPoNumber.trim() ||
+                    !newSku.trim() ||
+                    !newDescription.trim() ||
+                    Number(newExpectedUnits) < 1 ||
+                    Number(newUnitsPerBox) < 1 ||
+                    createAndLinkPO.isPending
+                  }
+                  onClick={() => createAndLinkPO.mutate()}
+                >
+                  {createAndLinkPO.isPending ? 'Creating…' : 'Create & link'}
+                </button>
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
 
       {error && (
         <Banner tone={error.isControlPoint ? 'bad' : 'warn'} title={errorText(error).title}>

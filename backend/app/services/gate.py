@@ -407,6 +407,65 @@ async def cancel_entry(
     return entry
 
 
+async def link_purchase_order(
+    conn: AsyncConnection, entry_id: UUID, purchase_order_id: UUID
+) -> Dict[str, Any]:
+    """Ops attaches a real PO to an entry that only has a guard's manual PO
+    note (0025) — the "Ops attaches it later" half that note was always meant
+    to have. A plain field update, not a status transition, so it's legal at
+    any in-progress stage, not just at approval time.
+    """
+    current = (
+        await conn.execute(
+            text(
+                "select status::text as status, vendor_id, purchase_order_id"
+                "  from gate_entries where id = :id"
+            ),
+            {"id": str(entry_id)},
+        )
+    ).mappings().first()
+
+    if current is None:
+        raise AppError("Gate entry not found.", code="not_found", http_status=404)
+
+    if current["purchase_order_id"] is not None:
+        raise AppError(
+            "This entry already has a purchase order linked.",
+            code="already_linked",
+            http_status=409,
+        )
+
+    if current["status"] in ("rejected", "cancelled", "departed"):
+        raise AppError(
+            f"This entry is already {current['status']} — a PO cannot be linked now.",
+            code="already_decided",
+            http_status=409,
+        )
+
+    po = (
+        await conn.execute(
+            text("select vendor_id from purchase_orders where id = :id"),
+            {"id": str(purchase_order_id)},
+        )
+    ).mappings().first()
+
+    if po is None:
+        raise AppError("Purchase order not found.", code="not_found", http_status=404)
+
+    if str(po["vendor_id"]) != str(current["vendor_id"]):
+        raise ControlPointError(
+            "That purchase order belongs to a different vendor.",
+            hint="Pick a PO for the same vendor as this gate entry.",
+        )
+
+    await conn.execute(
+        text("update gate_entries set purchase_order_id = :po_id where id = :id"),
+        {"po_id": str(purchase_order_id), "id": str(entry_id)},
+    )
+
+    return await get_entry(conn, entry_id)
+
+
 async def admit_vehicle(conn: AsyncConnection, entry_id: UUID) -> Dict[str, Any]:
     """Guard opens the gate. Stamps time_in. Refused unless status is 'approved'.
 

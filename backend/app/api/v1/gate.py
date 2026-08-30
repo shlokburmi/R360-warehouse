@@ -19,6 +19,7 @@ from app.schemas.gate import (
     GateDecision,
     GateEntryCancel,
     GateEntryCreate,
+    GateEntryLinkPO,
     GateEntryOut,
     VendorProposeIn,
     VendorProposeOut,
@@ -135,6 +136,19 @@ async def cancel_entry(
     """Ops abandons a truck's process mid-flow (0028) — e.g. a stuck entry
     with no PO linked that can never reach CONTROL POINT 2."""
     return await gate_service.cancel_entry(conn, entry_id, payload.reason)
+
+
+@router.post("/entries/{entry_id}/link-po", response_model=GateEntryOut)
+async def link_purchase_order(
+    entry_id: UUID,
+    payload: GateEntryLinkPO,
+    conn: AsyncConnection = Depends(get_db),
+    user: CurrentUser = Depends(require_ops_manager),
+):
+    """Ops attaches a real PO to an entry that only has a guard's manual PO
+    note — the counterpart 0025_vendor_proposal_and_po_note.sql always
+    intended but never got a way to actually do."""
+    return await gate_service.link_purchase_order(conn, entry_id, payload.purchase_order_id)
 
 
 @router.post("/entries/{entry_id}/admit", response_model=GateEntryOut)

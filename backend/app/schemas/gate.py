@@ -174,6 +174,13 @@ class GateEntryCancel(BaseModel):
         return v.strip()
 
 
+class GateEntryLinkPO(BaseModel):
+    """Ops attaching a real PO to an entry that only has a guard's manual PO
+    note (the counterpart to 0025_vendor_proposal_and_po_note.sql)."""
+
+    purchase_order_id: UUID
+
+
 class BoxCountDeclare(BaseModel):
     """Guard's physical count of boxes on the truck (PRD Step 2)."""
 

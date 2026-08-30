@@ -1,13 +1,13 @@
 """Session, master data, notifications and photo uploads."""
 
 import secrets
-from datetime import datetime
+from datetime import date, datetime
 from typing import Dict, List, Optional
 from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Body, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -151,6 +151,78 @@ async def list_purchase_orders(
         {"vendor_id": str(vendor_id) if vendor_id else None, "open_only": open_only},
     )
     return [dict(r) for r in rows.mappings()]
+
+
+class POLineIn(BaseModel):
+    sku: str = Field(min_length=1, max_length=64)
+    description: str = Field(min_length=1, max_length=200)
+    expected_units: int = Field(gt=0)
+    units_per_box: int = Field(gt=0)
+
+    @field_validator("sku", "description")
+    @classmethod
+    def _strip(cls, v):
+        return v.strip()
+
+
+class PurchaseOrderCreate(BaseModel):
+    po_number: str = Field(min_length=1, max_length=64)
+    vendor_id: UUID
+    expected_on: Optional[date] = None
+    lines: List[POLineIn] = Field(min_length=1)
+
+    @field_validator("po_number")
+    @classmethod
+    def _strip_po(cls, v):
+        return v.strip()
+
+
+@router.post("/purchase-orders", status_code=201)
+async def create_purchase_order(
+    payload: PurchaseOrderCreate,
+    conn: AsyncConnection = Depends(get_db),
+    user: CurrentUser = Depends(require_ops_manager),
+):
+    """Ops enters a PO by hand — the counterpart to a guard's manual PO note
+    (0025_vendor_proposal_and_po_note.sql): the note says a PO exists on paper
+    but isn't in the system yet, and this is how it actually gets in."""
+    po_id = (
+        await conn.execute(
+            text(
+                """
+                insert into purchase_orders (po_number, vendor_id, expected_on, created_by)
+                values (:po_number, :vendor_id, :expected_on, auth.uid())
+                returning id
+                """
+            ),
+            {
+                "po_number": payload.po_number,
+                "vendor_id": str(payload.vendor_id),
+                "expected_on": payload.expected_on,
+            },
+        )
+    ).scalar_one()
+
+    for line_no, line in enumerate(payload.lines, start=1):
+        await conn.execute(
+            text(
+                """
+                insert into purchase_order_lines
+                  (purchase_order_id, line_no, sku, description, expected_units, units_per_box)
+                values (:po_id, :line_no, :sku, :description, :expected_units, :units_per_box)
+                """
+            ),
+            {
+                "po_id": str(po_id),
+                "line_no": line_no,
+                "sku": line.sku,
+                "description": line.description,
+                "expected_units": line.expected_units,
+                "units_per_box": line.units_per_box,
+            },
+        )
+
+    return {"id": str(po_id), "po_number": payload.po_number}
 
 
 @router.get("/purchase-orders/{po_id}/lines")
