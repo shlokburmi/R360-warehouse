@@ -91,7 +91,7 @@ export function UnitScanningPage() {
   if (entry.isLoading) return <Spinner />
   if (!entry.data) return <Banner tone="bad" title={t('units.truck_not_found')} />
 
-  const isOps = me?.role === 'admin'
+  const isOps = me?.role === 'admin' || me?.role === 'ops_manager'
   const activeBox = boxes.data?.find((b) => b.id === activeBoxId) ?? null
   const openBoxes = boxes.data?.filter((b) => ['verified', 'scanning'].includes(b.status)) ?? []
   const heldBoxes = boxes.data?.filter((b) => b.status === 'held') ?? []

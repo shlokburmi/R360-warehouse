@@ -55,6 +55,10 @@ PAGE_ACCESS: Dict[str, List[str]] = {
     "ops_manager": [
         "dashboard", "approvals", "stickers", "exceptions", "reports",
         "gate-entry", "pickup", "invoices", "batches", "loading",
+        # Issuing box/unit sticker sheets is require_ops_manager-gated
+        # (warehouse.py generate_box_stickers/generate_unit_stickers) — the
+        # nav needs to actually reach the page that action lives on.
+        "box-counting", "unit-scanning",
     ],
     # Offloading no longer scans goods in — packers do (see scans_insert in
     # 0019) — and no longer shelves goods either, now that warehouse_staff is

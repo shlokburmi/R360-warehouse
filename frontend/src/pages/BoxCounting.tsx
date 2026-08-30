@@ -132,7 +132,7 @@ export function BoxCountingPage() {
   if (entry.isLoading) return <Spinner />
   if (!entry.data) return <Banner tone="bad" title={t('boxcount.truck_not_found')} />
 
-  const isOps = me?.role === 'admin'
+  const isOps = me?.role === 'admin' || me?.role === 'ops_manager'
   const isGuard = me?.role === 'security_guard'
   const hasCount = entry.data.declared_box_count !== null
   const hasStickers = entry.data.issued_box_sticker_count > 0
@@ -194,7 +194,7 @@ export function BoxCountingPage() {
       {hasCount && (
         <Card
           title={t('boxcount.step2')}
-          subtitle={`Admin issues exactly ${entry.data.declared_box_count} stickers`}
+          subtitle={`Ops issues exactly ${entry.data.declared_box_count} stickers`}
         >
           {hasStickers && sheet.data ? (
             <StickerSheetPrint sheet={sheet.data} />
