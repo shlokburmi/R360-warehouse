@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -41,6 +41,16 @@ export function UnitScanningPage() {
     queryFn: () => get<Box[]>(`/entries/${entryId}/boxes`),
     refetchInterval: 15_000,
   })
+
+  // Only one box may be mid-scan at a time (0031_single_box_scan_lock.sql
+  // enforces this server-side too) — once a box has its first unit scanned,
+  // it moves to 'scanning' and stays the only selectable box until it's
+  // damage-checked and closed.
+  const boxInProgress = boxes.data?.find((b) => b.status === 'scanning') ?? null
+
+  useEffect(() => {
+    if (boxInProgress) setActiveBoxId(boxInProgress.id)
+  }, [boxInProgress?.id])
 
   const progress = useQuery({
     queryKey: ['unit-progress', entryId],
@@ -171,25 +181,36 @@ export function UnitScanningPage() {
           {isPacker && (
             <>
               <Card title={t('units.choose_box')}>
+                {boxInProgress && (
+                  <p className="mb-3 text-base text-slate-500 dark:text-slate-400">
+                    Box {boxInProgress.box_number} is open — close it before scanning another box.
+                  </p>
+                )}
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {openBoxes.map((box) => (
-                    <button
-                      key={box.id}
-                      type="button"
-                      onClick={() => setActiveBoxId(box.id)}
-                      className={`rounded-xl border-2 p-3 text-left ${
-                        activeBoxId === box.id
-                          ? 'border-blue-600 bg-blue-600 text-white'
-                          : 'border-slate-300 dark:border-slate-700'
-                      }`}
-                    >
-                      <p className="text-lg font-black">Box {box.box_number}</p>
-                      <p className="text-sm">
-                        {box.scanned_units} / {box.expected_units}
-                      </p>
-                      <p className="truncate text-xs opacity-75">{box.sku}</p>
-                    </button>
-                  ))}
+                  {openBoxes.map((box) => {
+                    const locked = Boolean(boxInProgress) && boxInProgress?.id !== box.id
+                    return (
+                      <button
+                        key={box.id}
+                        type="button"
+                        disabled={locked}
+                        onClick={() => setActiveBoxId(box.id)}
+                        className={`rounded-xl border-2 p-3 text-left ${
+                          locked ? 'cursor-not-allowed opacity-40' : ''
+                        } ${
+                          activeBoxId === box.id
+                            ? 'border-blue-600 bg-blue-600 text-white'
+                            : 'border-slate-300 dark:border-slate-700'
+                        }`}
+                      >
+                        <p className="text-lg font-black">Box {box.box_number}</p>
+                        <p className="text-sm">
+                          {box.scanned_units} / {box.expected_units}
+                        </p>
+                        <p className="truncate text-xs opacity-75">{box.sku}</p>
+                      </button>
+                    )
+                  })}
                 </div>
                 {openBoxes.length === 0 && (
                   <p className="text-base text-slate-500">{t('units.none_open')}</p>

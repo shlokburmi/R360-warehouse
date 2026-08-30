@@ -29,6 +29,7 @@ REJECT_MESSAGES = {
     "box_not_open": "This box is not open for scanning right now.",
     "over_expected_quantity": "This box is already full. Extra unit — set it aside and call Admin.",
     "sticker_void": "This sticker was voided. Use the reissued sheet.",
+    "other_box_open": "A different box is still open. Close it before scanning this one.",
     # Out-scan (Phase 3)
     "not_packed": "This carton has not been packed yet. It cannot be released.",
     "not_in_batch": "This carton is not in a batch. Add it to a batch first.",
