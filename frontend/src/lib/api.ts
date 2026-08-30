@@ -115,6 +115,8 @@ export async function api<T>(path: string, options: Options = {}): Promise<T> {
 export const get = <T,>(path: string, signal?: AbortSignal) => api<T>(path, { signal })
 export const post = <T,>(path: string, body?: unknown) =>
   api<T>(path, { method: 'POST', body })
+export const patch = <T,>(path: string, body?: unknown) =>
+  api<T>(path, { method: 'PATCH', body })
 
 /** POST against a control point: a 409 comes back as data, not an exception. */
 export const postControlPoint = <T,>(path: string, body?: unknown) =>

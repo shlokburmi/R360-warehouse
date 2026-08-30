@@ -165,6 +165,20 @@ class POLineIn(BaseModel):
         return v.strip()
 
 
+class POLineUpdate(BaseModel):
+    """Partial update — only fields actually sent get changed."""
+
+    sku: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    description: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    expected_units: Optional[int] = Field(default=None, gt=0)
+    units_per_box: Optional[int] = Field(default=None, gt=0)
+
+    @field_validator("sku", "description")
+    @classmethod
+    def _strip(cls, v):
+        return v.strip() if v else v
+
+
 class PurchaseOrderCreate(BaseModel):
     po_number: str = Field(min_length=1, max_length=64)
     vendor_id: UUID
@@ -245,6 +259,105 @@ async def po_lines(
         {"po_id": str(po_id)},
     )
     return [dict(r) for r in rows.mappings()]
+
+
+@router.post("/purchase-orders/{po_id}/lines", status_code=201)
+async def add_purchase_order_line(
+    po_id: UUID,
+    payload: POLineIn,
+    conn: AsyncConnection = Depends(get_db),
+    user: CurrentUser = Depends(require_ops_manager),
+):
+    """A line Ops missed when first entering the PO by hand."""
+    next_line_no = (
+        await conn.execute(
+            text(
+                "select coalesce(max(line_no), 0) + 1"
+                "  from purchase_order_lines where purchase_order_id = :po_id"
+            ),
+            {"po_id": str(po_id)},
+        )
+    ).scalar_one()
+
+    line_id = (
+        await conn.execute(
+            text(
+                """
+                insert into purchase_order_lines
+                  (purchase_order_id, line_no, sku, description, expected_units, units_per_box)
+                values (:po_id, :line_no, :sku, :description, :expected_units, :units_per_box)
+                returning id
+                """
+            ),
+            {
+                "po_id": str(po_id),
+                "line_no": next_line_no,
+                "sku": payload.sku,
+                "description": payload.description,
+                "expected_units": payload.expected_units,
+                "units_per_box": payload.units_per_box,
+            },
+        )
+    ).scalar_one()
+
+    return {"id": str(line_id), "line_no": next_line_no}
+
+
+@router.patch("/purchase-order-lines/{line_id}")
+async def update_purchase_order_line(
+    line_id: UUID,
+    payload: POLineUpdate,
+    conn: AsyncConnection = Depends(get_db),
+    user: CurrentUser = Depends(require_ops_manager),
+):
+    """Ops corrects a mistyped line — e.g. units_per_box entered wrong when the
+    PO was first keyed in by hand. Refused once any box already references
+    this line: at that point boxes/stickers already exist against the old
+    numbers, and silently changing what they meant would be worse than the
+    original typo (0025/0028's manual-PO-entry gap made this a real need)."""
+    in_use = (
+        await conn.execute(
+            text("select 1 from boxes where purchase_order_line_id = :id limit 1"),
+            {"id": str(line_id)},
+        )
+    ).first()
+
+    if in_use is not None:
+        raise AppError(
+            "This line already has boxes counted against it and can no longer be edited.",
+            code="line_in_use",
+            http_status=409,
+            hint="Create a new PO line instead, or contact an Admin.",
+        )
+
+    fields = payload.model_dump(exclude_unset=True)
+    if not fields:
+        raise AppError("Nothing to update.", code="no_fields", http_status=422)
+
+    set_clause = ", ".join(f"{col} = :{col}" for col in fields)
+    result = await conn.execute(
+        text(f"update purchase_order_lines set {set_clause} where id = :id"),
+        {**fields, "id": str(line_id)},
+    )
+
+    if result.rowcount == 0:
+        raise AppError("Purchase order line not found.", code="not_found", http_status=404)
+
+    row = (
+        await conn.execute(
+            text(
+                """
+                select id, line_no, sku, description, expected_units, units_per_box,
+                       received_units, rejected_units,
+                       ceil(expected_units::numeric / units_per_box)::int as expected_boxes
+                  from purchase_order_lines where id = :id
+                """
+            ),
+            {"id": str(line_id)},
+        )
+    ).mappings().one()
+
+    return dict(row)
 
 
 # ===========================================================================

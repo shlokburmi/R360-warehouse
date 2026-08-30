@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ApiError, get, post, postControlPoint } from '@/lib/api'
+import { ApiError, get, patch, post, postControlPoint } from '@/lib/api'
 import { useErrorText } from '@/hooks/useErrorText'
 import { useAuth } from '@/hooks/useAuth'
 import { useScanning } from '@/hooks/useScanning'
@@ -10,7 +10,7 @@ import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate'
 import { Scanner } from '@/components/Scanner'
 import { StickerSheetPrint } from '@/components/StickerSheetPrint'
 import { Banner, Card, Field, ProgressCounter, Spinner, StatusChip } from '@/components/ui'
-import type { Box, GateEntry, Progress, PurchaseOrder, StickerSheet } from '@/types'
+import type { Box, GateEntry, Progress, PurchaseOrder, PurchaseOrderLine, StickerSheet } from '@/types'
 
 type VerifyResult = {
   verified: boolean
@@ -56,6 +56,19 @@ export function BoxCountingPage() {
   const [newExpectedUnits, setNewExpectedUnits] = useState('')
   const [newUnitsPerBox, setNewUnitsPerBox] = useState('')
   const [poError, setPoError] = useState<ApiError | null>(null)
+
+  const [editingLineId, setEditingLineId] = useState<string | null>(null)
+  const [editSku, setEditSku] = useState('')
+  const [editDescription, setEditDescription] = useState('')
+  const [editExpectedUnits, setEditExpectedUnits] = useState('')
+  const [editUnitsPerBox, setEditUnitsPerBox] = useState('')
+  const [lineError, setLineError] = useState<ApiError | null>(null)
+
+  const [addingLine, setAddingLine] = useState(false)
+  const [addSku, setAddSku] = useState('')
+  const [addDescription, setAddDescription] = useState('')
+  const [addExpectedUnits, setAddExpectedUnits] = useState('')
+  const [addUnitsPerBox, setAddUnitsPerBox] = useState('')
 
   const entry = useQuery({
     queryKey: ['entry', entryId],
@@ -180,6 +193,55 @@ export function BoxCountingPage() {
       void queryClient.invalidateQueries({ queryKey: ['entry', entryId] })
     },
     onError: (err) => setPoError(err as ApiError),
+  })
+
+  const purchaseOrderId = entry.data?.purchase_order_id
+
+  const poLines = useQuery({
+    queryKey: ['po-lines', purchaseOrderId],
+    queryFn: () => get<PurchaseOrderLine[]>(`/purchase-orders/${purchaseOrderId}/lines`),
+    enabled: Boolean(purchaseOrderId),
+  })
+
+  const updateLine = useMutation({
+    mutationFn: ({
+      lineId,
+      fields,
+    }: {
+      lineId: string
+      fields: Partial<{
+        sku: string
+        description: string
+        expected_units: number
+        units_per_box: number
+      }>
+    }) => patch<PurchaseOrderLine>(`/purchase-order-lines/${lineId}`, fields),
+    onSuccess: () => {
+      setLineError(null)
+      setEditingLineId(null)
+      void queryClient.invalidateQueries({ queryKey: ['po-lines', purchaseOrderId] })
+    },
+    onError: (err) => setLineError(err as ApiError),
+  })
+
+  const addLine = useMutation({
+    mutationFn: () =>
+      post(`/purchase-orders/${purchaseOrderId}/lines`, {
+        sku: addSku.trim(),
+        description: addDescription.trim(),
+        expected_units: Number(addExpectedUnits),
+        units_per_box: Number(addUnitsPerBox),
+      }),
+    onSuccess: () => {
+      setLineError(null)
+      setAddingLine(false)
+      setAddSku('')
+      setAddDescription('')
+      setAddExpectedUnits('')
+      setAddUnitsPerBox('')
+      void queryClient.invalidateQueries({ queryKey: ['po-lines', purchaseOrderId] })
+    },
+    onError: (err) => setLineError(err as ApiError),
   })
 
   if (entry.isLoading) return <Spinner />
@@ -332,6 +394,184 @@ export function BoxCountingPage() {
                 </button>
               </div>
             </div>
+          )}
+        </Card>
+      )}
+
+      {purchaseOrderId && isOps && (
+        <Card title="Purchase order lines">
+          {lineError && (
+            <div className="mb-4">
+              <Banner tone="bad" title={errorText(lineError).title}>
+                {lineError.hint}
+              </Banner>
+            </div>
+          )}
+
+          <ul className="divide-y divide-slate-200 dark:divide-slate-800">
+            {poLines.data?.map((line) =>
+              editingLineId === line.id ? (
+                <li key={line.id} className="space-y-3 py-3">
+                  <Field label="SKU" required>
+                    <input
+                      className="input"
+                      value={editSku}
+                      onChange={(event) => setEditSku(event.target.value)}
+                    />
+                  </Field>
+                  <Field label="Description" required>
+                    <input
+                      className="input"
+                      value={editDescription}
+                      onChange={(event) => setEditDescription(event.target.value)}
+                    />
+                  </Field>
+                  <Field label="Expected units (total)" required>
+                    <input
+                      className="input"
+                      type="number"
+                      min={1}
+                      value={editExpectedUnits}
+                      onChange={(event) => setEditExpectedUnits(event.target.value)}
+                    />
+                  </Field>
+                  <Field label="Units per box" required>
+                    <input
+                      className="input"
+                      type="number"
+                      min={1}
+                      value={editUnitsPerBox}
+                      onChange={(event) => setEditUnitsPerBox(event.target.value)}
+                    />
+                  </Field>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      className="btn-ghost flex-1"
+                      onClick={() => setEditingLineId(null)}
+                    >
+                      {t('common.cancel')}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-primary flex-1"
+                      disabled={
+                        !editSku.trim() ||
+                        !editDescription.trim() ||
+                        Number(editExpectedUnits) < 1 ||
+                        Number(editUnitsPerBox) < 1 ||
+                        updateLine.isPending
+                      }
+                      onClick={() =>
+                        updateLine.mutate({
+                          lineId: line.id,
+                          fields: {
+                            sku: editSku.trim(),
+                            description: editDescription.trim(),
+                            expected_units: Number(editExpectedUnits),
+                            units_per_box: Number(editUnitsPerBox),
+                          },
+                        })
+                      }
+                    >
+                      {updateLine.isPending ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                </li>
+              ) : (
+                <li key={line.id} className="flex items-center justify-between gap-3 py-3">
+                  <div className="min-w-0">
+                    <p className="font-bold">{line.sku}</p>
+                    <p className="truncate text-sm text-slate-500 dark:text-slate-400">
+                      {line.description} · {line.expected_units} units · {line.units_per_box}/box
+                      · {line.expected_boxes} boxes expected
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-ghost shrink-0"
+                    onClick={() => {
+                      setEditingLineId(line.id)
+                      setEditSku(line.sku)
+                      setEditDescription(line.description ?? '')
+                      setEditExpectedUnits(String(line.expected_units))
+                      setEditUnitsPerBox(String(line.units_per_box))
+                      setLineError(null)
+                    }}
+                  >
+                    Edit
+                  </button>
+                </li>
+              ),
+            )}
+          </ul>
+
+          {addingLine ? (
+            <div className="mt-4 space-y-3 rounded-xl border-2 border-dashed border-slate-300 p-3 dark:border-slate-700">
+              <Field label="SKU" required>
+                <input
+                  className="input"
+                  value={addSku}
+                  onChange={(event) => setAddSku(event.target.value)}
+                />
+              </Field>
+              <Field label="Description" required>
+                <input
+                  className="input"
+                  value={addDescription}
+                  onChange={(event) => setAddDescription(event.target.value)}
+                />
+              </Field>
+              <Field label="Expected units (total)" required>
+                <input
+                  className="input"
+                  type="number"
+                  min={1}
+                  value={addExpectedUnits}
+                  onChange={(event) => setAddExpectedUnits(event.target.value)}
+                />
+              </Field>
+              <Field label="Units per box" required>
+                <input
+                  className="input"
+                  type="number"
+                  min={1}
+                  value={addUnitsPerBox}
+                  onChange={(event) => setAddUnitsPerBox(event.target.value)}
+                />
+              </Field>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  className="btn-ghost flex-1"
+                  onClick={() => setAddingLine(false)}
+                >
+                  {t('common.cancel')}
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary flex-1"
+                  disabled={
+                    !addSku.trim() ||
+                    !addDescription.trim() ||
+                    Number(addExpectedUnits) < 1 ||
+                    Number(addUnitsPerBox) < 1 ||
+                    addLine.isPending
+                  }
+                  onClick={() => addLine.mutate()}
+                >
+                  {addLine.isPending ? 'Adding…' : 'Add line'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="btn-ghost mt-4 w-full"
+              onClick={() => setAddingLine(true)}
+            >
+              + Add a line
+            </button>
           )}
         </Card>
       )}
