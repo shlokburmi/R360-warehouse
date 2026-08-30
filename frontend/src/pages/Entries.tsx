@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { ApiError, get, post } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
+import { useErrorText } from '@/hooks/useErrorText'
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate'
 import { Banner, Card, EmptyState, Spinner, StatusChip } from '@/components/ui'
 import type { GateEntry } from '@/types'
@@ -18,6 +19,7 @@ import type { GateEntry } from '@/types'
 export function EntriesPage() {
   const { t } = useTranslation()
   const { me } = useAuth()
+  const errorText = useErrorText()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
 
@@ -166,6 +168,11 @@ export function EntriesPage() {
               className="mt-3 space-y-3 rounded-xl border-2 border-dashed border-slate-300 p-3 dark:border-slate-700"
               onClick={(event) => event.stopPropagation()}
             >
+              {cancel.isError && (
+                <Banner tone="bad" title={errorText(cancel.error as ApiError).title}>
+                  {(cancel.error as ApiError).hint}
+                </Banner>
+              )}
               <textarea
                 className="input"
                 rows={2}
