@@ -249,6 +249,12 @@ export function BoxCountingPage() {
 
   const isOps = me?.role === 'admin' || me?.role === 'ops_manager'
   const isGuard = me?.role === 'security_guard'
+  // Scanning box stickers back in and confirming them inside are both
+  // packer_or_ops-gated on the backend (warehouse.py scan_box, gate.py
+  // verify_boxes) -- but that variable name is stale from before the role
+  // split; it only ever meant "packer or admin", never ops_manager. Showing
+  // these controls to Ops looked like it should work and silently failed.
+  const isPacker = me?.role === 'packer' || me?.role === 'admin'
   const hasCount = entry.data.declared_box_count !== null
   const hasStickers = entry.data.issued_box_sticker_count > 0
   const verified = ['box_verified', 'offloading', 'offloaded', 'reconciled', 'departed'].includes(
@@ -661,7 +667,13 @@ export function BoxCountingPage() {
           />
 
           <Card title={t('boxcount.step3')}>
-            <Scanner onScan={(code) => void submit(code)} />
+            {isPacker ? (
+              <Scanner onScan={(code) => void submit(code)} />
+            ) : (
+              <p className="text-base text-slate-500 dark:text-slate-400">
+                Waiting for a Packer to scan these boxes back in.
+              </p>
+            )}
 
             {feedback.length > 0 && (
               <ul className="mt-4 space-y-2">
@@ -694,14 +706,16 @@ export function BoxCountingPage() {
           {progress.data?.complete ? (
             <>
               <Banner tone="ok" title={t('boxcount.all_verified')} />
-              <button
-                type="button"
-                className="btn-success w-full"
-                disabled={verify.isPending}
-                onClick={() => verify.mutate()}
-              >
-                {t('boxcount.confirm_inside')}
-              </button>
+              {isPacker && (
+                <button
+                  type="button"
+                  className="btn-success w-full"
+                  disabled={verify.isPending}
+                  onClick={() => verify.mutate()}
+                >
+                  {t('boxcount.confirm_inside')}
+                </button>
+              )}
             </>
           ) : (
             <Banner tone="warn" title={progress.data?.message ?? 'Scanning in progress'}>
