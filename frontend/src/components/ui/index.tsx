@@ -82,6 +82,7 @@ export function Card({
   /** Opt out of the frosted surface — used by anything that gets printed. */
   solid,
   className,
+  onClick,
 }: {
   title?: string
   subtitle?: string
@@ -89,9 +90,10 @@ export function Card({
   action?: ReactNode
   solid?: boolean
   className?: string
+  onClick?: () => void
 }) {
   return (
-    <section className={cn(solid ? 'card-solid' : 'card', className)}>
+    <section className={cn(solid ? 'card-solid' : 'card', className)} onClick={onClick}>
       {(title || action) && (
         <header className="mb-4 flex items-start justify-between gap-3">
           <div>

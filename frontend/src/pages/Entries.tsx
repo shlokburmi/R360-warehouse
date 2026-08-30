@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ApiError, get, post } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate'
@@ -18,6 +18,7 @@ export function EntriesPage() {
   const { t } = useTranslation()
   const { me } = useAuth()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
 
   const entries = useQuery({
     queryKey: ['entries'],
@@ -32,6 +33,10 @@ export function EntriesPage() {
   // This is what makes an Ops decision appear here without the guard waiting
   // out the 20s timer.
   useRealtimeInvalidate('gate_entries', [['entries']])
+  // "X of Y boxes scanned" changes as boxes are scanned in, which updates
+  // `boxes`/`stickers`, not `gate_entries` — needs its own subscription to
+  // move live instead of waiting on the 20s poll.
+  useRealtimeInvalidate('boxes', [['entries']])
 
   const admit = useMutation({
     mutationFn: (id: string) => post<GateEntry>(`/gate/entries/${id}/admit`),
@@ -41,8 +46,11 @@ export function EntriesPage() {
   if (entries.isLoading) return <Spinner label={t('entries.loading')} />
 
   const isGuard = me?.role === 'security_guard'
-  const isOps = me?.role === 'admin'
+  const isOps = me?.role === 'admin' || me?.role === 'ops_manager'
   const isOffloader = me?.role === 'offloading'
+  // Box/unit sticker scanning moved to packer in the role split — offloading
+  // now only does reconciliation (CONTROL POINT 4).
+  const isPacker = me?.role === 'packer'
 
   return (
     <div className="space-y-4">
@@ -66,6 +74,11 @@ export function EntriesPage() {
             entry.po_number ? ` · ${entry.po_number}` : ''
           }`}
           action={<StatusChip status={entry.status} />}
+          // The whole card is a "view details" target — the specific action
+          // links/buttons inside stop propagation so their own destination
+          // wins instead of this one.
+          className="cursor-pointer"
+          onClick={() => navigate(`/entries/${entry.id}/boxes`)}
         >
           {entry.declared_box_count !== null && (
             <p className="mb-3 text-base text-slate-600 dark:text-slate-400">
@@ -73,7 +86,7 @@ export function EntriesPage() {
             </p>
           )}
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-3" onClick={(event) => event.stopPropagation()}>
             {entry.status === 'pending_approval' && (
               <span className="text-base text-slate-500 dark:text-slate-400">
                 {t('entries.awaiting_ops')}
@@ -91,14 +104,14 @@ export function EntriesPage() {
               </button>
             )}
 
-            {['inside', 'counting'].includes(entry.status) && (isGuard || isOps) && (
+            {['inside', 'counting'].includes(entry.status) && (isGuard || isOps || isPacker) && (
               <Link to={`/entries/${entry.id}/boxes`} className="btn-primary flex-1">
                 {t('entries.count_boxes')}
               </Link>
             )}
 
             {['box_verified', 'offloading'].includes(entry.status) &&
-              (isOffloader || isOps) && (
+              (isPacker || isOps) && (
                 <Link to={`/entries/${entry.id}/units`} className="btn-primary flex-1">
                   {t('entries.scan_units')}
                 </Link>

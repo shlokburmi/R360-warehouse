@@ -74,14 +74,13 @@ PAGE_ACCESS: Dict[str, List[str]] = {
     # Packers apply and scan both box and unit stickers at intake, in addition
     # to their outbound packing job.
     "packer": ["box-counting", "unit-scanning", "exceptions", "packing"],
-    # Admin keeps everything, including what's now split out to the roles
-    # above (require_roles always unions with admin) plus its own screen.
-    "admin": [
-        "dashboard", "approvals", "stickers", "box-counting", "unit-scanning",
-        "exceptions", "reports", "gate-entry", "reconciliation", "pickup",
-        "putaway", "stock", "invoices", "invoice-matching", "packing", "batches",
-        "admin", "loading",
-    ],
+    # Admin's actual real-world use here is oversight — approve/decline and
+    # track activity/logs — not hands-on station work. The backend still
+    # accepts admin on every operational endpoint (require_roles always
+    # unions with admin) as an emergency fallback if a role's own account is
+    # unavailable; this list only controls what shows up in the nav day to
+    # day, not what's actually permitted.
+    "admin": ["dashboard", "approvals", "exceptions", "reports", "admin"],
 }
 
 
