@@ -555,7 +555,7 @@ async def declare_box_count(
             hint="Ask Admin to void the sheet and reissue before changing the count.",
         )
 
-    await conn.execute(
+    result = await conn.execute(
         text(
             """
             update gate_entries
@@ -568,6 +568,14 @@ async def declare_box_count(
         ),
         {"count": box_count, "id": str(entry_id)},
     )
+
+    if result.rowcount == 0:
+        # Same belt-and-braces as admit_vehicle: RLS can turn a forbidden
+        # update into a silent no-op rather than an error.
+        raise ControlPointError(
+            "Your role is not allowed to declare the box count for this entry.",
+            hint="Ask an Ops Manager or Admin to check your role assignment.",
+        )
 
     return await get_entry(conn, entry_id)
 
@@ -606,10 +614,20 @@ async def verify_box_count(conn: AsyncConnection, entry_id: UUID) -> Dict[str, A
             ),
         }
 
-    await conn.execute(
+    result = await conn.execute(
         text("update gate_entries set status = 'box_verified' where id = :id"),
         {"id": str(entry_id)},
     )
+
+    # RLS turns a forbidden update into a no-op (0 rows), not an error — so
+    # this must be checked explicitly, or a blocked update looks exactly like
+    # success: 200, `verified: true`, and a status that silently never moved.
+    if result.rowcount == 0:
+        raise AppError(
+            "Your role is not allowed to confirm boxes for this entry.",
+            code="not_permitted",
+            http_status=403,
+        )
 
     return {
         "verified": True,
