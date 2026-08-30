@@ -5,8 +5,6 @@ import { DecodeHintType, BarcodeFormat } from '@zxing/library'
 
 type Props = {
   onScan: (code: string) => void
-  /** Ignore a repeat of the same code within this window (ms). */
-  debounceMs?: number
   paused?: boolean
 }
 
@@ -15,20 +13,24 @@ type Props = {
  *
  * Two behaviours here are worth knowing about:
  *
- * 1. The same sticker sitting in frame decodes many times a second. Without the
- *    repeat guard the operator would fire dozens of identical scans by holding
- *    the camera still, so an identical code is ignored for `debounceMs`.
+ * 1. The same sticker sitting in frame decodes many times a second. A
+ *    time-window debounce isn't enough — a phone held even slightly unsteady
+ *    keeps a code in frame past any short window, so it fires again and
+ *    again, each one a fresh duplicate submission to the server. Instead,
+ *    once a code has been handled it is never re-submitted for the rest of
+ *    this scanning session (this component's lifetime) — exactly how a
+ *    physical barcode gun behaves: one trigger pull, one read, done.
  *
  * 2. There is always a manual entry fallback. Cameras fail — cracked lenses,
  *    denied permissions, a sticker scuffed in transit — and a warehouse cannot
  *    stop because of it. The typed path produces exactly the same scan record,
  *    and the server judges it by exactly the same rules.
  */
-export function QrScanner({ onScan, debounceMs = 2000, paused = false }: Props) {
+export function QrScanner({ onScan, paused = false }: Props) {
   const { t } = useTranslation()
   const videoRef = useRef<HTMLVideoElement>(null)
   const controlsRef = useRef<{ stop: () => void } | null>(null)
-  const lastScan = useRef<{ code: string; at: number }>({ code: '', at: 0 })
+  const seenCodes = useRef<Set<string>>(new Set())
 
   const [status, setStatus] = useState<'starting' | 'running' | 'denied' | 'unavailable'>(
     'starting',
@@ -41,9 +43,8 @@ export function QrScanner({ onScan, debounceMs = 2000, paused = false }: Props) 
       const clean = code.trim().toUpperCase()
       if (!clean) return
 
-      const now = Date.now()
-      if (lastScan.current.code === clean && now - lastScan.current.at < debounceMs) return
-      lastScan.current = { code: clean, at: now }
+      if (seenCodes.current.has(clean)) return
+      seenCodes.current.add(clean)
 
       // Short haptic confirmation. On a noisy warehouse floor this is the only
       // feedback the operator reliably notices without looking at the screen.
@@ -51,7 +52,7 @@ export function QrScanner({ onScan, debounceMs = 2000, paused = false }: Props) 
 
       onScan(clean)
     },
-    [onScan, debounceMs],
+    [onScan],
   )
 
   useEffect(() => {

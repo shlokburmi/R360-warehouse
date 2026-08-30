@@ -21,7 +21,6 @@ const QrScannerImpl = lazy(() =>
 
 type Props = {
   onScan: (code: string) => void
-  debounceMs?: number
   paused?: boolean
 }
 
