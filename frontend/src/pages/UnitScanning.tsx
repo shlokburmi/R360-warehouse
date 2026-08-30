@@ -92,6 +92,11 @@ export function UnitScanningPage() {
   if (!entry.data) return <Banner tone="bad" title={t('units.truck_not_found')} />
 
   const isOps = me?.role === 'admin' || me?.role === 'ops_manager'
+  // scan/unit, boxes/{id}/close and finish-offloading are all packer_or_ops
+  // (require_roles("packer")) on the backend -- that stale name from before
+  // the role split only ever meant packer or admin, never ops_manager (same
+  // bug as BoxCounting.tsx's box-scanning step).
+  const isPacker = me?.role === 'packer' || me?.role === 'admin'
   const activeBox = boxes.data?.find((b) => b.id === activeBoxId) ?? null
   const openBoxes = boxes.data?.filter((b) => ['verified', 'scanning'].includes(b.status)) ?? []
   const heldBoxes = boxes.data?.filter((b) => b.status === 'held') ?? []
@@ -157,91 +162,101 @@ export function UnitScanningPage() {
             total={progress.data?.total ?? 0}
           />
 
-          <Card title={t('units.choose_box')}>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {openBoxes.map((box) => (
-                <button
-                  key={box.id}
-                  type="button"
-                  onClick={() => setActiveBoxId(box.id)}
-                  className={`rounded-xl border-2 p-3 text-left ${
-                    activeBoxId === box.id
-                      ? 'border-blue-600 bg-blue-600 text-white'
-                      : 'border-slate-300 dark:border-slate-700'
-                  }`}
-                >
-                  <p className="text-lg font-black">Box {box.box_number}</p>
-                  <p className="text-sm">
-                    {box.scanned_units} / {box.expected_units}
-                  </p>
-                  <p className="truncate text-xs opacity-75">{box.sku}</p>
-                </button>
-              ))}
-            </div>
-            {openBoxes.length === 0 && (
-              <p className="text-base text-slate-500">{t('units.none_open')}</p>
-            )}
-          </Card>
+          {!isPacker && (
+            <Banner tone="warn" title="Waiting for a Packer">
+              Scanning units and closing boxes is done by Packer.
+            </Banner>
+          )}
 
-          {activeBox && (
+          {isPacker && (
             <>
-              <ProgressCounter
-                label={`Box ${activeBox.box_number} · ${activeBox.sku ?? ''}`}
-                scanned={activeBox.scanned_units}
-                total={activeBox.expected_units}
-              />
-
-              <Card title={t('units.title')}>
-                <label className="mb-3 flex items-center gap-3 rounded-xl border-2 border-slate-300 p-3 dark:border-slate-700">
-                  <input
-                    type="checkbox"
-                    className="h-6 w-6"
-                    checked={quarantine}
-                    onChange={(event) => setQuarantine(event.target.checked)}
-                  />
-                  <span className="text-base font-semibold">
-                    {t('units.quarantine_scan')}
-                  </span>
-                </label>
-
-                <Scanner
-                  onScan={(code) => void submit(code, quarantine ? 'quarantine' : 'stock')}
-                />
-
-                {feedback.length > 0 && (
-                  <ul className="mt-4 space-y-2">
-                    {feedback.map((item) => (
-                      <li
-                        key={item.id}
-                        className={`flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2 text-base ${
-                          item.tone === 'ok'
-                            ? 'bg-ok-bg text-ok dark:bg-ok-darkbg dark:text-ok-dark'
-                            : item.tone === 'warn'
-                              ? 'bg-warn-bg text-warn dark:bg-warn-darkbg dark:text-warn-dark'
-                              : 'bg-bad-bg text-bad dark:bg-bad-darkbg dark:text-bad-dark'
-                        }`}
-                      >
-                        <span className="font-mono text-sm">{item.code}</span>
-                        <span className="font-bold">{item.message}</span>
-                      </li>
-                    ))}
-                  </ul>
+              <Card title={t('units.choose_box')}>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {openBoxes.map((box) => (
+                    <button
+                      key={box.id}
+                      type="button"
+                      onClick={() => setActiveBoxId(box.id)}
+                      className={`rounded-xl border-2 p-3 text-left ${
+                        activeBoxId === box.id
+                          ? 'border-blue-600 bg-blue-600 text-white'
+                          : 'border-slate-300 dark:border-slate-700'
+                      }`}
+                    >
+                      <p className="text-lg font-black">Box {box.box_number}</p>
+                      <p className="text-sm">
+                        {box.scanned_units} / {box.expected_units}
+                      </p>
+                      <p className="truncate text-xs opacity-75">{box.sku}</p>
+                    </button>
+                  ))}
+                </div>
+                {openBoxes.length === 0 && (
+                  <p className="text-base text-slate-500">{t('units.none_open')}</p>
                 )}
               </Card>
 
-              <BoxCloseCard box={activeBox} onDone={() => setActiveBoxId(null)} />
-            </>
-          )}
+              {activeBox && (
+                <>
+                  <ProgressCounter
+                    label={`Box ${activeBox.box_number} · ${activeBox.sku ?? ''}`}
+                    scanned={activeBox.scanned_units}
+                    total={activeBox.expected_units}
+                  />
 
-          {progress.data?.complete && entry.data.status === 'offloading' && (
-            <button
-              type="button"
-              className="btn-success w-full"
-              disabled={finish.isPending}
-              onClick={() => finish.mutate()}
-            >
-              {t('units.finish')}
-            </button>
+                  <Card title={t('units.title')}>
+                    <label className="mb-3 flex items-center gap-3 rounded-xl border-2 border-slate-300 p-3 dark:border-slate-700">
+                      <input
+                        type="checkbox"
+                        className="h-6 w-6"
+                        checked={quarantine}
+                        onChange={(event) => setQuarantine(event.target.checked)}
+                      />
+                      <span className="text-base font-semibold">
+                        {t('units.quarantine_scan')}
+                      </span>
+                    </label>
+
+                    <Scanner
+                      onScan={(code) => void submit(code, quarantine ? 'quarantine' : 'stock')}
+                    />
+
+                    {feedback.length > 0 && (
+                      <ul className="mt-4 space-y-2">
+                        {feedback.map((item) => (
+                          <li
+                            key={item.id}
+                            className={`flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2 text-base ${
+                              item.tone === 'ok'
+                                ? 'bg-ok-bg text-ok dark:bg-ok-darkbg dark:text-ok-dark'
+                                : item.tone === 'warn'
+                                  ? 'bg-warn-bg text-warn dark:bg-warn-darkbg dark:text-warn-dark'
+                                  : 'bg-bad-bg text-bad dark:bg-bad-darkbg dark:text-bad-dark'
+                            }`}
+                          >
+                            <span className="font-mono text-sm">{item.code}</span>
+                            <span className="font-bold">{item.message}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </Card>
+
+                  <BoxCloseCard box={activeBox} onDone={() => setActiveBoxId(null)} />
+                </>
+              )}
+
+              {progress.data?.complete && entry.data.status === 'offloading' && (
+                <button
+                  type="button"
+                  className="btn-success w-full"
+                  disabled={finish.isPending}
+                  onClick={() => finish.mutate()}
+                >
+                  {t('units.finish')}
+                </button>
+              )}
+            </>
           )}
         </>
       )}
