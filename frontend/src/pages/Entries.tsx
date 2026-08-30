@@ -109,7 +109,11 @@ export function EntriesPage() {
               </span>
             )}
 
-            {entry.status === 'approved' && (isGuard || isOps) && (
+            {/* Admitting the vehicle is Guard's physical act at the gate —
+                the backend only accepts security_guard/admin here
+                (guard_or_ops = require_roles("security_guard")), not
+                ops_manager, so showing this to Ops would just fail. */}
+            {entry.status === 'approved' && isGuard && (
               <button
                 type="button"
                 className="btn-success flex-1"
