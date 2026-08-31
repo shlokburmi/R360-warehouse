@@ -365,18 +365,29 @@ async def _delete_auth_user(settings: Settings, profile_id: UUID) -> None:
     """Remove the GoTrue login (0032). Best-effort: the profile row is already
     gone by the time this runs, and get_current_user already refuses anyone
     without one, so a failure here leaves a harmless orphaned login rather
-    than a usable account."""
+    than a usable account.
+
+    "Best-effort" has to mean catching httpx's own exceptions too, not just a
+    non-2xx status — a timeout or connection error here happens *after* the
+    profile row is already deleted, so letting it propagate would roll back a
+    delete that had already succeeded and hand the Admin a 500 for it.
+    """
     if not settings.supabase_service_role_key:
         return
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        response = await client.delete(
-            f"{settings.supabase_url}/auth/v1/admin/users/{profile_id}",
-            headers={
-                "Authorization": f"Bearer {settings.supabase_service_role_key}",
-                "apikey": settings.supabase_service_role_key,
-            },
-        )
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.delete(
+                f"{settings.supabase_url}/auth/v1/admin/users/{profile_id}",
+                headers={
+                    "Authorization": f"Bearer {settings.supabase_service_role_key}",
+                    "apikey": settings.supabase_service_role_key,
+                },
+            )
+    except httpx.HTTPError as exc:
+        log.error("GoTrue admin delete errored for %s: %s", profile_id, exc)
+        return
+
     if response.status_code >= 400 and response.status_code != 404:
         log.error(
             "GoTrue admin delete failed for %s: %s %s",
