@@ -88,14 +88,14 @@ export function NotificationBell() {
             {items.map((item) => (
               <li
                 key={item.id}
-                className="border-b border-slate-100 px-4 py-3 last:border-0 dark:border-white/5"
+                className="flex items-start gap-1 border-b border-slate-100 px-4 py-3 last:border-0 dark:border-white/5"
               >
                 <button
                   type="button"
                   onClick={() => markRead.mutate(item.id)}
                   disabled={markRead.isPending}
                   className={cn(
-                    'w-full text-left transition-opacity',
+                    'min-w-0 flex-1 text-left transition-opacity',
                     markRead.isPending && 'opacity-50',
                   )}
                 >
@@ -110,6 +110,15 @@ export function NotificationBell() {
                     })}{' '}
                     · {t('notifications.tap_to_dismiss')}
                   </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => markRead.mutate(item.id)}
+                  disabled={markRead.isPending}
+                  aria-label={t('notifications.dismiss')}
+                  className="shrink-0 rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-white/10 dark:hover:text-slate-300"
+                >
+                  <span aria-hidden>✕</span>
                 </button>
               </li>
             ))}

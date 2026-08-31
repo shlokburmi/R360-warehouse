@@ -10,7 +10,8 @@
   "notifications": {
     "title": "Notifications",
     "empty": "Nothing new",
-    "tap_to_dismiss": "tap to dismiss"
+    "tap_to_dismiss": "tap to dismiss",
+    "dismiss": "Dismiss"
   },
   "common": {
     "cancel": "Cancel",

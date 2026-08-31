@@ -10,7 +10,8 @@
   "notifications": {
     "title": "ಅಧಿಸೂಚನೆಗಳು",
     "empty": "ಹೊಸದೇನೂ ಇಲ್ಲ",
-    "tap_to_dismiss": "ತೆಗೆದುಹಾಕಲು ಟ್ಯಾಪ್ ಮಾಡಿ"
+    "tap_to_dismiss": "ತೆಗೆದುಹಾಕಲು ಟ್ಯಾಪ್ ಮಾಡಿ",
+    "dismiss": "ತೆಗೆದುಹಾಕಿ"
   },
   "common": {
     "cancel": "ರದ್ದುಮಾಡಿ",
