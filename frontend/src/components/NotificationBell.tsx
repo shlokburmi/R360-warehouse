@@ -33,9 +33,18 @@ export function NotificationBell() {
 
   useRealtimeInvalidate('notifications', [['notifications']])
 
+  const [failedId, setFailedId] = useState<string | null>(null)
+
   const markRead = useMutation({
     mutationFn: (id: string) => post(`/notifications/${id}/read`),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+    onSuccess: () => {
+      setFailedId(null)
+      void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+    },
+    // Previously silent: a failed dismiss (expired session, dropped
+    // connection) looked identical to a dead button — the item just stayed
+    // put with no explanation.
+    onError: (_err, id) => setFailedId(id),
   })
 
   // Close on a click outside the button+panel, same pattern a native <select>
@@ -85,43 +94,58 @@ export function NotificationBell() {
                 {t('notifications.empty')}
               </li>
             )}
-            {items.map((item) => (
-              <li
-                key={item.id}
-                className="flex items-start gap-1 border-b border-slate-100 px-4 py-3 last:border-0 dark:border-white/5"
-              >
-                <button
-                  type="button"
-                  onClick={() => markRead.mutate(item.id)}
-                  disabled={markRead.isPending}
-                  className={cn(
-                    'min-w-0 flex-1 text-left transition-opacity',
-                    markRead.isPending && 'opacity-50',
+            {items.map((item) => {
+              const pending = markRead.isPending && markRead.variables === item.id
+              return (
+                <li
+                  key={item.id}
+                  className="border-b border-slate-100 px-4 py-3 last:border-0 dark:border-white/5"
+                >
+                  <div className="flex items-start gap-1">
+                    <button
+                      type="button"
+                      onClick={() => markRead.mutate(item.id)}
+                      disabled={pending}
+                      className={cn(
+                        'min-w-0 flex-1 text-left transition-opacity',
+                        pending && 'opacity-50',
+                      )}
+                    >
+                      <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                        {item.title}
+                      </p>
+                      <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">
+                        {item.body}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                        {new Date(item.created_at).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}{' '}
+                        · {t('notifications.tap_to_dismiss')}
+                      </p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => markRead.mutate(item.id)}
+                      disabled={pending}
+                      aria-label={t('notifications.dismiss')}
+                      className={cn(
+                        'shrink-0 rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-white/10 dark:hover:text-slate-300',
+                        pending && 'opacity-50',
+                      )}
+                    >
+                      <span aria-hidden>✕</span>
+                    </button>
+                  </div>
+                  {failedId === item.id && (
+                    <p className="mt-1 text-xs font-semibold text-bad dark:text-bad-dark">
+                      {t('notifications.dismiss_failed')}
+                    </p>
                   )}
-                >
-                  <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                    {item.title}
-                  </p>
-                  <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">{item.body}</p>
-                  <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-                    {new Date(item.created_at).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}{' '}
-                    · {t('notifications.tap_to_dismiss')}
-                  </p>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => markRead.mutate(item.id)}
-                  disabled={markRead.isPending}
-                  aria-label={t('notifications.dismiss')}
-                  className="shrink-0 rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-white/10 dark:hover:text-slate-300"
-                >
-                  <span aria-hidden>✕</span>
-                </button>
-              </li>
-            ))}
+                </li>
+              )
+            })}
           </ul>
         </div>
       )}

@@ -11,7 +11,8 @@
     "title": "Notifications",
     "empty": "Nothing new",
     "tap_to_dismiss": "tap to dismiss",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "dismiss_failed": "Could not dismiss — check your connection and try again."
   },
   "common": {
     "cancel": "Cancel",
