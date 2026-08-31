@@ -50,8 +50,10 @@ PAGE_ACCESS: Dict[str, List[str]] = {
     # steps on it now belong to packers.
     "security_guard": ["gate-entry", "box-counting", "pickup", "my-entries", "loading"],
     # Ops Manager, reintroduced: PRD §8 — "can see everything, approve
-    # exceptions, view reports". The admin screen (provisioning/badges) stays
-    # Admin-only per DECISIONS.md §CE1, which this role split does not reverse.
+    # exceptions, view reports". Staff add/edit/delete on the admin screen was
+    # Admin-only per DECISIONS.md §CE1/§CH1; 0033_ops_manager_staff_admin.sql
+    # reverses that specifically, knowingly reopening the fraud vector those
+    # sections describe. Badge issue/revoke and audit history stay Admin-only.
     "ops_manager": [
         "dashboard", "approvals", "stickers", "exceptions", "reports",
         "gate-entry", "pickup", "invoices", "batches", "loading",
@@ -59,6 +61,7 @@ PAGE_ACCESS: Dict[str, List[str]] = {
         # (warehouse.py generate_box_stickers/generate_unit_stickers) — the
         # nav needs to actually reach the page that action lives on.
         "box-counting", "unit-scanning",
+        "admin",
     ],
     # Offloading no longer scans goods in — packers do (see scans_insert in
     # 0019) — and no longer shelves goods either, now that warehouse_staff is

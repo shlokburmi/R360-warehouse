@@ -1,12 +1,15 @@
 """Admin: staff accounts and attribution badges (PRD §2, §8).
 
-Every route here is Admin-only. The role model was later consolidated to four
-roles (security_guard, offloading, packer, admin), folding the old ops_manager
-and invoice_matcher roles into admin — so this is no longer a narrower
-capability held back from a separate, weaker "Ops" tier. Provisioning and
-badge issue are still gated to Admin alone, but Admin itself can now also
-match invoices and approve gates, which is the tradeoff that consolidation
-accepted. See DECISIONS.md §CE1.
+Staff CRUD (list/create/update/delete, this file's first five routes) is open
+to Ops Manager as well as Admin — a deliberate reversal of DECISIONS.md
+§CE1/§CH1, which kept provisioning Admin-only specifically because an Ops
+Manager who can create accounts could manufacture the second person CONTROL
+POINT 5 requires. That risk is accepted knowingly here; see the migration
+0033_ops_manager_staff_admin.sql for the record of the decision.
+
+Badge issue/revoke and account history stay Admin-only — not asked for, and
+issuing a badge is the sharper edge of the same fraud vector (a working badge
+under a fabricated identity, not just the identity itself).
 """
 
 from typing import List
@@ -15,7 +18,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from app.api.deps import CurrentUser, get_db, require_admin
+from app.api.deps import CurrentUser, get_db, require_admin, require_ops_manager
 from app.core.config import Settings, get_settings
 from app.schemas.admin import (
     AdminMeta,
@@ -32,7 +35,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 @router.get("/meta", response_model=AdminMeta)
-async def meta(user: CurrentUser = Depends(require_admin)):
+async def meta(user: CurrentUser = Depends(require_ops_manager)):
     """The roles that can be assigned, and which of them carry a badge."""
     return admin_service.role_options()
 
@@ -41,7 +44,7 @@ async def meta(user: CurrentUser = Depends(require_admin)):
 async def list_staff(
     include_inactive: bool = Query(default=True),
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_admin),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
     return await admin_service.list_staff(conn, include_inactive=include_inactive)
 
@@ -51,7 +54,7 @@ async def create_staff(
     payload: StaffCreate,
     conn: AsyncConnection = Depends(get_db),
     settings: Settings = Depends(get_settings),
-    user: CurrentUser = Depends(require_admin),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
     """Provision an account. The temporary password comes back once.
 
@@ -66,7 +69,7 @@ async def update_staff(
     profile_id: UUID,
     payload: StaffUpdate,
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_admin),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
     return await admin_service.update_staff(conn, UUID(user.id), profile_id, payload)
 
@@ -76,7 +79,7 @@ async def delete_staff(
     profile_id: UUID,
     conn: AsyncConnection = Depends(get_db),
     settings: Settings = Depends(get_settings),
-    user: CurrentUser = Depends(require_admin),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
     """Permanently remove an account. See admin_service.delete_staff for the
     activity-history guard that makes this fail safe rather than silently."""

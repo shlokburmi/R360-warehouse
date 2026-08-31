@@ -229,6 +229,10 @@ export function AdminPage() {
 
       {rows.map((person) => {
         const isSelf = person.id === me?.id
+        // Badge issue/revoke stays Admin-only on the backend (DECISIONS.md
+        // §CE1) even though staff add/edit/delete does not (§0033) — hide
+        // rather than let an Ops Manager hit a 403 on click.
+        const isAdmin = me?.role === 'admin'
         const open = expanded === person.id
         const busy =
           update.isPending ||
@@ -281,7 +285,7 @@ export function AdminPage() {
             )}
 
             <div className="flex flex-wrap gap-3">
-              {person.can_hold_badge && person.is_active && (
+              {person.can_hold_badge && person.is_active && isAdmin && (
                 <button
                   type="button"
                   className={person.badge_usable ? 'btn-ghost' : 'btn-primary'}
@@ -293,6 +297,7 @@ export function AdminPage() {
               )}
 
               {person.badge_usable &&
+                isAdmin &&
                 (confirmRevoke === person.id ? (
                   <button
                     type="button"

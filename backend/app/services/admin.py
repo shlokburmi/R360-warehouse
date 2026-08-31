@@ -282,10 +282,15 @@ async def update_staff(
     active_after = fields.get("is_active", current.is_active)
     backup_after = fields.get("is_backup_approver", current.is_backup_approver)
 
-    # An Admin removing their own access has no way back in. The block is here
-    # rather than in the database because it is a usability rule, not an
-    # integrity one — a second Admin is entirely allowed to do either thing.
-    if str(profile_id) == str(actor_id):
+    # An Admin removing their own access has no way back in — only another
+    # Admin can restore it. The block is here rather than in the database
+    # because it is a usability rule, not an integrity one — a second Admin is
+    # entirely allowed to do either thing. Scoped to current.role == "admin":
+    # since 0033, a non-Admin (Ops Manager) can also reach this endpoint on
+    # their own row, and losing Ops Manager access is recoverable by any Admin,
+    # not just "a second one of the same kind" — that is not the lockout this
+    # guards against.
+    if str(profile_id) == str(actor_id) and current.role == "admin":
         if not active_after:
             raise AppError(
                 "You cannot deactivate your own account.",
