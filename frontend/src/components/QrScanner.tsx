@@ -43,22 +43,38 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
   const [manual, setManual] = useState('')
   const [showManual, setShowManual] = useState(false)
 
+  // Callers routinely pass an inline `onScan` closure that changes identity on
+  // every render (e.g. `onScan={(code) => submit(code, ...)}`). `handleCode`
+  // must NOT depend on that identity, because it is also the trigger for the
+  // camera-acquisition effect below — if it changed every render, the camera
+  // stream would be torn down and reacquired every render too, and a sticker
+  // presented to the lens during that teardown window decodes to nothing.
+  // Routing through a ref keeps `handleCode` (and the camera) stable while
+  // still always calling the latest `onScan`.
+  const onScanRef = useRef(onScan)
+  useEffect(() => {
+    onScanRef.current = onScan
+  }, [onScan])
+
   const handleCode = useCallback(
     (code: string) => {
       const clean = code.trim().toUpperCase()
       if (!clean) return
 
+      // Short haptic confirmation on every decode, debounced or not. Without
+      // this, a rescan inside `debounceMs` produces literally no signal —
+      // not even a buzz — which reads as "the scanner is dead" rather than
+      // "already counted". On a noisy warehouse floor this is the only
+      // feedback the operator reliably notices without looking at the screen.
+      if ('vibrate' in navigator) navigator.vibrate(40)
+
       const now = Date.now()
       if (lastScan.current.code === clean && now - lastScan.current.at < debounceMs) return
       lastScan.current = { code: clean, at: now }
 
-      // Short haptic confirmation. On a noisy warehouse floor this is the only
-      // feedback the operator reliably notices without looking at the screen.
-      if ('vibrate' in navigator) navigator.vibrate(40)
-
-      onScan(clean)
+      onScanRef.current(clean)
     },
-    [onScan, debounceMs],
+    [debounceMs],
   )
 
   useEffect(() => {
