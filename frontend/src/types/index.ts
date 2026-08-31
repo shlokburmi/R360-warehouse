@@ -166,16 +166,6 @@ export type PurchaseOrderLine = {
   expected_boxes: number
 }
 
-export type CartonSticker = {
-  id: string
-  code: string
-  status: string
-  invoice_id: string
-  invoice_number: string
-  sku: string
-  units: number
-  customer_name: string | null
-}
 
 export type ReconcileLine = {
   purchase_order_line_id: string

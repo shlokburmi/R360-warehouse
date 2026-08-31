@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, get, post, postControlPoint } from '@/lib/api'
 import { useErrorText } from '@/hooks/useErrorText'
-import { Scanner } from '@/components/Scanner'
 import { useScanning } from '@/hooks/useScanning'
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate'
 import {
@@ -213,8 +212,11 @@ function BatchDetail({ batchId, onBack }: { batchId: string; onBack: () => void 
   useRealtimeInvalidate('batches', [['batch', batchId]], `id=eq.${batchId}`)
 
   // Reuses the same scan loop as the gate and offloading pages, so out-scan gets
-  // offline queueing and idempotent replay for free.
-  const { feedback, submit } = useScanning(batchId, 'out_scan')
+  // offline queueing and idempotent replay for free. There is no physical
+  // carton label to scan any more, so each tap submits the carton's own
+  // invoice number as the code — the resolver in fn_scan_resolve already
+  // matches on invoice_number directly.
+  const { feedback, submit, busy } = useScanning(batchId, 'out_scan')
 
   const complete = useMutation({
     mutationFn: () =>
@@ -278,30 +280,24 @@ function BatchDetail({ batchId, onBack }: { batchId: string; onBack: () => void 
         total={b.assigned_cartons}
       />
 
-      {scanning && (
-        <Card title={t('batches.scan_each')}>
-          <Scanner onScan={(code) => void submit(code)} />
-
-          {feedback.length > 0 && (
-            <ul className="mt-4 space-y-2">
-              {feedback.map((item) => (
-                <li
-                  key={item.id}
-                  className={`flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2 text-base ${
-                    item.tone === 'ok'
-                      ? 'bg-ok-bg text-ok dark:bg-ok-darkbg dark:text-ok-dark'
-                      : item.tone === 'warn'
-                        ? 'bg-warn-bg text-warn dark:bg-warn-darkbg dark:text-warn-dark'
-                        : 'bg-bad-bg text-bad dark:bg-bad-darkbg dark:text-bad-dark'
-                  }`}
-                >
-                  <span className="font-mono text-sm">{item.code}</span>
-                  <span className="font-bold">{item.message}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
+      {scanning && feedback.length > 0 && (
+        <ul className="space-y-2">
+          {feedback.map((item) => (
+            <li
+              key={item.id}
+              className={`flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2 text-base ${
+                item.tone === 'ok'
+                  ? 'bg-ok-bg text-ok dark:bg-ok-darkbg dark:text-ok-dark'
+                  : item.tone === 'warn'
+                    ? 'bg-warn-bg text-warn dark:bg-warn-darkbg dark:text-warn-dark'
+                    : 'bg-bad-bg text-bad dark:bg-bad-darkbg dark:text-bad-dark'
+              }`}
+            >
+              <span className="font-mono text-sm">{item.code}</span>
+              <span className="font-bold">{item.message}</span>
+            </li>
+          ))}
+        </ul>
       )}
 
       {scanning && b.remaining_cartons === 0 && (
@@ -337,7 +333,7 @@ function BatchDetail({ batchId, onBack }: { batchId: string; onBack: () => void 
         </Banner>
       )}
 
-      <Card title={t('batches.cartons_in_batch')}>
+      <Card title={t('batches.cartons_in_batch')} subtitle={scanning ? t('batches.scan_each') : undefined}>
         <ul className="divide-y divide-slate-200 dark:divide-slate-800">
           {b.cartons.map((carton) => (
             <li
@@ -355,6 +351,15 @@ function BatchDetail({ batchId, onBack }: { batchId: string; onBack: () => void 
                 <span className="chip bg-ok-bg text-ok dark:bg-ok-darkbg dark:text-ok-dark">
                   scanned
                 </span>
+              ) : scanning ? (
+                <button
+                  type="button"
+                  className="btn-primary shrink-0"
+                  disabled={busy}
+                  onClick={() => void submit(carton.invoice_number)}
+                >
+                  {t('batches.mark_scanned')}
+                </button>
               ) : (
                 <span className="chip bg-warn-bg text-warn dark:bg-warn-darkbg dark:text-warn-dark">
                   waiting

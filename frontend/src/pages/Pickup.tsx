@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, get, post, postControlPoint } from '@/lib/api'
 import { useErrorText } from '@/hooks/useErrorText'
-import { Scanner } from '@/components/Scanner'
 import { useScanning } from '@/hooks/useScanning'
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate'
 import { cleanVehicleNumber, VEHICLE_RE } from '@/lib/validation'
@@ -293,8 +292,11 @@ function PickupDetail({ pickupId, onBack }: { pickupId: string; onBack: () => vo
   useRealtimeInvalidate('pickups', [['pickup', pickupId]], `id=eq.${pickupId}`)
 
   // Same scan loop as every other scanning page, so gate exit gets offline
-  // queueing and idempotent replay without any extra work.
-  const { feedback, submit } = useScanning(pickupId, 'gate_exit')
+  // queueing and idempotent replay without any extra work. There is no
+  // physical carton label to scan any more, so each tap submits the carton's
+  // own invoice number — fn_scan_resolve already falls back to matching it
+  // directly when no sticker exists.
+  const { feedback, submit, busy } = useScanning(pickupId, 'gate_exit')
 
   const verify = useMutation({
     mutationFn: () =>
@@ -370,30 +372,24 @@ function PickupDetail({ pickupId, onBack }: { pickupId: string; onBack: () => vo
         total={p.released_cartons}
       />
 
-      {loading && (
-        <Card title={t('pickup.scan_each')}>
-          <Scanner onScan={(code) => void submit(code)} />
-
-          {feedback.length > 0 && (
-            <ul className="mt-4 space-y-2">
-              {feedback.map((item) => (
-                <li
-                  key={item.id}
-                  className={`flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2 text-base ${
-                    item.tone === 'ok'
-                      ? 'bg-ok-bg text-ok dark:bg-ok-darkbg dark:text-ok-dark'
-                      : item.tone === 'warn'
-                        ? 'bg-warn-bg text-warn dark:bg-warn-darkbg dark:text-warn-dark'
-                        : 'bg-bad-bg text-bad dark:bg-bad-darkbg dark:text-bad-dark'
-                  }`}
-                >
-                  <span className="font-mono text-sm">{item.code}</span>
-                  <span className="font-bold">{item.message}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
+      {loading && feedback.length > 0 && (
+        <ul className="space-y-2">
+          {feedback.map((item) => (
+            <li
+              key={item.id}
+              className={`flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2 text-base ${
+                item.tone === 'ok'
+                  ? 'bg-ok-bg text-ok dark:bg-ok-darkbg dark:text-ok-dark'
+                  : item.tone === 'warn'
+                    ? 'bg-warn-bg text-warn dark:bg-warn-darkbg dark:text-warn-dark'
+                    : 'bg-bad-bg text-bad dark:bg-bad-darkbg dark:text-bad-dark'
+              }`}
+            >
+              <span className="font-mono text-sm">{item.code}</span>
+              <span className="font-bold">{item.message}</span>
+            </li>
+          ))}
+        </ul>
       )}
 
       {loading && (
@@ -488,7 +484,7 @@ function PickupDetail({ pickupId, onBack }: { pickupId: string; onBack: () => vo
         </ul>
       </Card>
 
-      <Card title={t('batches.cartons_in_batch')}>
+      <Card title={t('batches.cartons_in_batch')} subtitle={loading ? t('pickup.scan_each') : undefined}>
         <ul className="divide-y divide-slate-200 dark:divide-slate-800">
           {p.cartons.map((carton) => (
             <li key={carton.invoice_id} className="flex items-center justify-between gap-3 py-3">
@@ -502,6 +498,15 @@ function PickupDetail({ pickupId, onBack }: { pickupId: string; onBack: () => vo
                 <span className="chip bg-ok-bg text-ok dark:bg-ok-darkbg dark:text-ok-dark">
                   loaded
                 </span>
+              ) : loading ? (
+                <button
+                  type="button"
+                  className="btn-primary shrink-0"
+                  disabled={busy}
+                  onClick={() => void submit(carton.invoice_number)}
+                >
+                  {t('pickup.mark_loaded')}
+                </button>
               ) : (
                 <span className="chip bg-warn-bg text-warn dark:bg-warn-darkbg dark:text-warn-dark">
                   not loaded

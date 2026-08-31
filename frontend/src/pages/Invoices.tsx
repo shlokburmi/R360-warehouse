@@ -1,20 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import QRCode from 'qrcode'
 import { ApiError, get, post } from '@/lib/api'
 import { useErrorText } from '@/hooks/useErrorText'
 import { Banner, Card, Field, Spinner } from '@/components/ui'
-import type { CartonSticker, Invoice, PurchaseOrder, PurchaseOrderLine } from '@/types'
+import type { Invoice, PurchaseOrder, PurchaseOrderLine } from '@/types'
 
 /**
- * PRD §5.4 (extended) — Admin books an invoice against a received PO line and
- * prints its carton sticker, from the dashboard.
- *
- * Booking and printing are one screen because they are one act on the floor:
- * an invoice arrives, Admin enters it, and the sticker comes off the printer
- * right there. Splitting them into "create" and later "go find it to print"
- * would just be two trips to the same form.
+ * PRD §5.4 (extended) — Admin books an invoice against a received PO line,
+ * from the dashboard.
  */
 export function InvoicesPage() {
   const { t } = useTranslation()
@@ -27,7 +21,6 @@ export function InvoicesPage() {
   const [units, setUnits] = useState('')
   const [customerName, setCustomerName] = useState('')
   const [error, setError] = useState<ApiError | null>(null)
-  const [sticker, setSticker] = useState<CartonSticker | null>(null)
 
   const purchaseOrders = useQuery({
     queryKey: ['purchase-orders', 'open'],
@@ -63,20 +56,10 @@ export function InvoicesPage() {
         units: Number(units),
         customer_name: customerName || null,
       }),
-    onSuccess: (invoice) => {
+    onSuccess: () => {
       setError(null)
       resetForm()
       void queryClient.invalidateQueries({ queryKey: ['invoices'] })
-      printSticker.mutate(invoice.invoice_id)
-    },
-    onError: (err) => setError(err as ApiError),
-  })
-
-  const printSticker = useMutation({
-    mutationFn: (invoiceId: string) => post<CartonSticker>(`/invoices/${invoiceId}/sticker`),
-    onSuccess: (data) => {
-      setError(null)
-      setSticker(data)
     },
     onError: (err) => setError(err as ApiError),
   })
@@ -188,16 +171,10 @@ export function InvoicesPage() {
               createInvoice.isPending
             }
           >
-            {createInvoice.isPending ? t('invoices.creating') : t('invoices.create_and_print')}
+            {createInvoice.isPending ? t('invoices.creating') : t('invoices.create')}
           </button>
         </form>
       </Card>
-
-      {printSticker.isPending && <Spinner label={t('invoices.printing')} />}
-
-      {sticker && (
-        <CartonStickerPrint sticker={sticker} onReissue={() => printSticker.mutate(sticker.invoice_id)} />
-      )}
 
       <Card title={t('invoices.recent')}>
         {invoices.isLoading ? (
@@ -216,14 +193,6 @@ export function InvoicesPage() {
                     {invoice.customer_name ? ` · ${invoice.customer_name}` : ''}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className="btn-ghost text-sm"
-                  disabled={printSticker.isPending}
-                  onClick={() => printSticker.mutate(invoice.invoice_id)}
-                >
-                  {t('invoices.print_sticker')}
-                </button>
               </li>
             ))}
           </ul>
@@ -231,68 +200,6 @@ export function InvoicesPage() {
           <p className="text-base text-slate-500">{t('invoices.none_yet')}</p>
         )}
       </Card>
-    </div>
-  )
-}
-
-/**
- * The carton sticker, printable. Same shape as StickerSheetPrint's card — QR
- * plus human-readable text, because a scuffed QR still needs to be typeable —
- * but for one sticker at a time rather than a sheet.
- */
-function CartonStickerPrint({
-  sticker,
-  onReissue,
-}: {
-  sticker: CartonSticker
-  onReissue: () => void
-}) {
-  const { t } = useTranslation()
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-
-  useEffect(() => {
-    if (canvasRef.current) {
-      void QRCode.toCanvas(canvasRef.current, sticker.code, {
-        width: 160,
-        margin: 1,
-        errorCorrectionLevel: 'H',
-      })
-    }
-  }, [sticker.code])
-
-  return (
-    <div>
-      <style>{`
-        @media print {
-          body * { visibility: hidden; }
-          #carton-sticker, #carton-sticker * { visibility: visible; }
-          #carton-sticker { position: absolute; left: 0; top: 0; }
-          .no-print { display: none !important; }
-        }
-      `}</style>
-
-      <div className="no-print mb-3 flex items-center justify-between gap-3">
-        <p className="text-lg font-bold">{t('invoices.sticker_ready')}</p>
-        <div className="flex gap-2">
-          <button type="button" className="btn-ghost" onClick={onReissue}>
-            {t('invoices.reissue')}
-          </button>
-          <button type="button" className="btn-primary" onClick={() => window.print()}>
-            {t('stickers.print_sheet')}
-          </button>
-        </div>
-      </div>
-
-      <div
-        id="carton-sticker"
-        className="sticker inline-flex flex-col items-center rounded-lg border-2 border-slate-900 bg-white p-4 text-center text-black"
-      >
-        <canvas ref={canvasRef} />
-        <p className="mt-2 font-mono text-sm font-bold">{sticker.code}</p>
-        <p className="mt-1 text-lg font-black leading-none">{sticker.invoice_number}</p>
-        <p className="text-xs font-semibold">{sticker.sku}</p>
-        {sticker.customer_name && <p className="mt-0.5 text-[10px] leading-tight">{sticker.customer_name}</p>}
-      </div>
     </div>
   )
 }
