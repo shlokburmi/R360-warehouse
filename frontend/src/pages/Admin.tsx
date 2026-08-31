@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ApiError, api, get, post } from '@/lib/api'
+import { ApiError, api, del, get, post } from '@/lib/api'
 import { useErrorText } from '@/hooks/useErrorText'
 import { Banner, Card, EmptyState, Field, Spinner, StatusChip } from '@/components/ui'
 import { BadgeCardPrint } from '@/components/BadgeCardPrint'
@@ -41,6 +41,7 @@ export function AdminPage() {
   const [issued, setIssued] = useState<BadgeIssued | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [showInactive, setShowInactive] = useState(true)
 
   const meta = useQuery({
@@ -95,6 +96,20 @@ export function AdminPage() {
       void refresh()
     },
     onError: (err) => setError(err as ApiError),
+  })
+
+  const deleteStaff = useMutation({
+    mutationFn: (id: string) => del<void>(`/admin/staff/${id}`),
+    onSuccess: () => {
+      setError(null)
+      setConfirmDelete(null)
+      setExpanded(null)
+      void refresh()
+    },
+    onError: (err) => {
+      setConfirmDelete(null)
+      setError(err as ApiError)
+    },
   })
 
   if (staff.isLoading || meta.isLoading) return <Spinner label={t('admin.loading_staff')} />
@@ -216,7 +231,10 @@ export function AdminPage() {
         const isSelf = person.id === me?.id
         const open = expanded === person.id
         const busy =
-          update.isPending || issueBadge.isPending || revokeBadge.isPending
+          update.isPending ||
+          issueBadge.isPending ||
+          revokeBadge.isPending ||
+          deleteStaff.isPending
 
         return (
           <Card
@@ -372,6 +390,26 @@ export function AdminPage() {
                       onClick={() => update.mutate({ id: person.id, is_active: true })}
                     >
                       {t('admin.reactivate')}
+                    </button>
+                  )}
+
+                  {confirmDelete === person.id ? (
+                    <button
+                      type="button"
+                      className="btn-danger"
+                      disabled={busy || isSelf}
+                      onClick={() => deleteStaff.mutate(person.id)}
+                    >
+                      {t('admin.confirm_delete')}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      disabled={busy || isSelf}
+                      onClick={() => setConfirmDelete(person.id)}
+                    >
+                      {t('admin.delete_account')}
                     </button>
                   )}
                 </div>

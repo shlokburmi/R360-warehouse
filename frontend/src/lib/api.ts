@@ -31,7 +31,7 @@ export class ApiError extends Error {
 }
 
 type Options = {
-  method?: 'GET' | 'POST' | 'PATCH'
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'
   body?: unknown
   signal?: AbortSignal
   /**
@@ -117,6 +117,7 @@ export const post = <T,>(path: string, body?: unknown) =>
   api<T>(path, { method: 'POST', body })
 export const patch = <T,>(path: string, body?: unknown) =>
   api<T>(path, { method: 'PATCH', body })
+export const del = <T,>(path: string) => api<T>(path, { method: 'DELETE' })
 
 /** POST against a control point: a 409 comes back as data, not an exception. */
 export const postControlPoint = <T,>(path: string, body?: unknown) =>

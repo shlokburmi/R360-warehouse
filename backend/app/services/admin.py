@@ -26,6 +26,7 @@ from uuid import UUID
 
 import httpx
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.api.deps import ROLE_LABELS
@@ -348,6 +349,92 @@ async def update_staff(
         )
 
     return await _get_staff(conn, profile_id)
+
+
+# ===========================================================================
+# DELETE
+# ===========================================================================
+
+
+async def _delete_auth_user(settings: Settings, profile_id: UUID) -> None:
+    """Remove the GoTrue login (0032). Best-effort: the profile row is already
+    gone by the time this runs, and get_current_user already refuses anyone
+    without one, so a failure here leaves a harmless orphaned login rather
+    than a usable account."""
+    if not settings.supabase_service_role_key:
+        return
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        response = await client.delete(
+            f"{settings.supabase_url}/auth/v1/admin/users/{profile_id}",
+            headers={
+                "Authorization": f"Bearer {settings.supabase_service_role_key}",
+                "apikey": settings.supabase_service_role_key,
+            },
+        )
+    if response.status_code >= 400 and response.status_code != 404:
+        log.error(
+            "GoTrue admin delete failed for %s: %s %s",
+            profile_id,
+            response.status_code,
+            response.text[:400],
+        )
+
+
+async def delete_staff(
+    conn: AsyncConnection, settings: Settings, actor_id: UUID, profile_id: UUID
+) -> None:
+    """Permanently remove an account (0032), as opposed to Deactivate.
+
+    Every other table's FK to profiles(id) is left untouched, so this only
+    succeeds for an account with no attributed activity — anything else
+    surfaces as "deactivate instead" rather than a raw constraint error.
+    """
+    current = await _get_staff(conn, profile_id)
+
+    if str(profile_id) == str(actor_id):
+        raise AppError(
+            "You cannot delete your own account.",
+            code="self_lockout",
+            http_status=409,
+            hint="Ask another Admin to do it after they have taken over.",
+        )
+
+    if current.role == "admin" and current.is_active:
+        if await _active_admin_count(conn, profile_id) == 0:
+            raise AppError(
+                f"{current.full_name} is the only active Admin.",
+                code="last_admin",
+                http_status=409,
+                hint="Promote someone else to Admin first.",
+            )
+
+    try:
+        async with conn.begin_nested():
+            result = await conn.execute(
+                text("delete from profiles where id = :id"),
+                {"id": str(profile_id)},
+            )
+    except IntegrityError as exc:
+        sqlstate = getattr(getattr(exc, "orig", None), "sqlstate", None)
+        if sqlstate == "23503":
+            raise AppError(
+                f"{current.full_name} has activity history and cannot be permanently deleted.",
+                code="has_history",
+                http_status=409,
+                hint="Deactivate the account instead — that removes their access without losing the record.",
+            ) from exc
+        raise
+
+    if result.rowcount == 0:
+        raise AppError(
+            "You are not permitted to delete this account.",
+            code="not_permitted",
+            http_status=403,
+        )
+
+    await _delete_auth_user(settings, profile_id)
+    log.info("Admin deleted %s (%s)", current.full_name, current.employee_code)
 
 
 # ===========================================================================

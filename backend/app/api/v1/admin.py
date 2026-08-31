@@ -71,6 +71,18 @@ async def update_staff(
     return await admin_service.update_staff(conn, UUID(user.id), profile_id, payload)
 
 
+@router.delete("/staff/{profile_id}", status_code=204)
+async def delete_staff(
+    profile_id: UUID,
+    conn: AsyncConnection = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    user: CurrentUser = Depends(require_admin),
+):
+    """Permanently remove an account. See admin_service.delete_staff for the
+    activity-history guard that makes this fail safe rather than silently."""
+    await admin_service.delete_staff(conn, settings, UUID(user.id), profile_id)
+
+
 @router.post("/staff/{profile_id}/badge", response_model=BadgeIssued)
 async def issue_badge(
     profile_id: UUID,

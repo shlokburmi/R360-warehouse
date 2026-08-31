@@ -513,6 +513,8 @@
     "confirm_revoke": "Confirm revoke",
     "deactivate": "Deactivate account",
     "reactivate": "Reactivate account",
+    "delete_account": "Delete account",
+    "confirm_delete": "Confirm delete",
     "show_deactivated": "Show deactivated accounts",
     "own_account": "This is your own account",
     "escalation_note": "Receives gate approvals escalated at 15 minutes",
