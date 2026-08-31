@@ -172,9 +172,15 @@ export function UnitScanningPage() {
             total={progress.data?.total ?? 0}
           />
 
-          {!isPacker && (
+          {!isPacker && !progress.data?.complete && (
             <Banner tone="warn" title="Waiting for a Packer">
               Scanning units and closing boxes is done by Packer.
+            </Banner>
+          )}
+
+          {!isPacker && progress.data?.complete && (
+            <Banner tone="ok" title={t('units.all_scanned_title')}>
+              {t('units.all_scanned_body')}
             </Banner>
           )}
 

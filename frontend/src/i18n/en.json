@@ -330,7 +330,9 @@
     "quarantine_scan": "Scan into quarantine (damaged units)",
     "finish": "Finish offloading",
     "closing_holds": "Closing now will hold the box and raise an exception for Ops.",
-    "held_body": "Held goods do not enter the warehouse. Ops must accept the shortfall, order a recount, or reject the box."
+    "held_body": "Held goods do not enter the warehouse. Ops must accept the shortfall, order a recount, or reject the box.",
+    "all_scanned_title": "All units scanned",
+    "all_scanned_body": "Every box has been scanned and closed."
   },
   "recon": {
     "title": "Inbound Verification",
