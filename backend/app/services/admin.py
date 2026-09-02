@@ -481,7 +481,7 @@ async def issue_badge(conn: AsyncConnection, profile_id: UUID) -> BadgeIssued:
     return BadgeIssued(
         staff=staff,
         badge_code=code,
-        badge_qr=qrcode_util.to_data_uri(code, box_size=8),
+        badge_qr=qrcode_util.to_data_uri(code, scale=8),
     )
 
 
