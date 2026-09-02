@@ -1,6 +1,4 @@
-import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import QRCode from 'qrcode'
 import type { StickerSheet } from '@/types'
 
 /**
@@ -15,25 +13,9 @@ import type { StickerSheet } from '@/types'
  */
 export function StickerSheetPrint({ sheet }: { sheet: StickerSheet }) {
   const { t } = useTranslation()
-  const containerRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const canvases = containerRef.current?.querySelectorAll<HTMLCanvasElement>('canvas[data-code]')
-    canvases?.forEach((canvas) => {
-      const code = canvas.dataset.code
-      if (!code) return
-      void QRCode.toCanvas(canvas, code, {
-        width: 128,
-        margin: 1,
-        // High error correction: these stickers get scuffed in transit, and a
-        // code that survives a torn corner is worth the extra density.
-        errorCorrectionLevel: 'H',
-      })
-    })
-  }, [sheet])
 
   return (
-    <div ref={containerRef}>
+    <div>
       <style>{`
         @media print {
           body * { visibility: hidden; }
@@ -68,7 +50,7 @@ export function StickerSheetPrint({ sheet }: { sheet: StickerSheet }) {
             key={sticker.id}
             className="sticker flex flex-col items-center rounded-lg border-2 border-slate-900 bg-white p-3 text-center text-black"
           >
-            <canvas data-code={sticker.code} />
+            <img src={sticker.qr} alt="" width={128} height={128} />
             <p className="mt-2 font-mono text-sm font-bold">{sticker.code}</p>
 
             {sticker.sticker_type === 'box' ? (

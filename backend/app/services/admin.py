@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from app.api.deps import ROLE_LABELS
 from app.core.config import Settings
 from app.core.errors import AppError
+from app.services import qrcode_util
 from app.schemas.admin import (
     ASSIGNABLE_ROLES,
     BADGE_ROLES,
@@ -477,7 +478,11 @@ async def issue_badge(conn: AsyncConnection, profile_id: UUID) -> BadgeIssued:
     # The code is never logged. A badge code in a log file is a badge in a log
     # file.
     log.info("Admin issued a badge to %s (%s)", staff.full_name, staff.employee_code)
-    return BadgeIssued(staff=staff, badge_code=code)
+    return BadgeIssued(
+        staff=staff,
+        badge_code=code,
+        badge_qr=qrcode_util.to_data_uri(code, box_size=8),
+    )
 
 
 async def revoke_badge(conn: AsyncConnection, profile_id: UUID) -> StaffOut:

@@ -79,6 +79,8 @@ export type Box = {
 export type Sticker = {
   id: string
   code: string
+  /** Server-rendered `data:image/png;base64,...` QR for `code`. */
+  qr: string
   sticker_type: 'box' | 'unit'
   status: string
   sequence_no: number
@@ -460,6 +462,8 @@ export type BadgeIssued = {
    * see docs/DECISIONS.md §CC2.
    */
   badge_code: string
+  /** Server-rendered `data:image/png;base64,...` QR for `badge_code`. */
+  badge_qr: string
 }
 
 export type RoleOption = {

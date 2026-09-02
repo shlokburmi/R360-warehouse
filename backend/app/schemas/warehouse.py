@@ -25,6 +25,9 @@ class StickerOut(BaseModel):
 
     id: UUID
     code: str
+    # Server-rendered QR for `code` (0034) — same data the frontend used to
+    # draw a canvas QR from client-side.
+    qr: str
     sticker_type: str
     status: str
     sequence_no: int

@@ -122,6 +122,9 @@ class BadgeIssued(BaseModel):
     # The one place in the system a badge code is ever returned, and only for a
     # badge minted in this request. See 0013_admin_provisioning.sql §2.
     badge_code: str
+    # Same code, rendered server-side (0034) — the frontend prints this image
+    # directly rather than drawing its own QR from badge_code.
+    badge_qr: str
 
 
 class RoleOption(BaseModel):

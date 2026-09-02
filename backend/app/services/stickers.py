@@ -15,7 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.core.errors import AppError
-from app.services import gate
+from app.services import gate, qrcode_util
 
 
 def _code(prefix: str) -> str:
@@ -370,7 +370,10 @@ async def get_sheet(conn: AsyncConnection, sheet_id: UUID) -> Dict[str, Any]:
     )
 
     out = dict(sheet)
-    out["stickers"] = [dict(r) for r in rows.mappings()]
+    out["stickers"] = [
+        dict(r) | {"qr": qrcode_util.to_data_uri(r["code"], box_size=5)}
+        for r in rows.mappings()
+    ]
     return out
 
 

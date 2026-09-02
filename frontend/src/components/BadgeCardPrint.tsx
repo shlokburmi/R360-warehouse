@@ -1,6 +1,4 @@
-import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import QRCode from 'qrcode'
 import type { BadgeIssued } from '@/types'
 
 /**
@@ -25,18 +23,6 @@ export function BadgeCardPrint({
   onDone: () => void
 }) {
   const { t } = useTranslation()
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-
-  useEffect(() => {
-    if (!canvasRef.current) return
-    void QRCode.toCanvas(canvasRef.current, issued.badge_code, {
-      width: 220,
-      margin: 1,
-      // A badge lives in a pocket for a year. Same reasoning as the stickers,
-      // more so.
-      errorCorrectionLevel: 'H',
-    })
-  }, [issued.badge_code])
 
   return (
     <div>
@@ -58,7 +44,13 @@ export function BadgeCardPrint({
           Attribution badge · not a login
         </p>
 
-        <canvas ref={canvasRef} className="mx-auto mt-3" />
+        <img
+          src={issued.badge_qr}
+          alt=""
+          width={220}
+          height={220}
+          className="mx-auto mt-3"
+        />
 
         <p className="mt-3 text-2xl font-black leading-tight">{issued.staff.full_name}</p>
         <p className="text-base font-bold">{issued.staff.role_label}</p>
