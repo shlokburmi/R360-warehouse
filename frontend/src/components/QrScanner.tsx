@@ -82,6 +82,7 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
 
     let cancelled = false
     let watchdog: number | undefined
+    let cropInterval: number | undefined
     const hints = new Map()
     hints.set(DecodeHintType.POSSIBLE_FORMATS, [
       BarcodeFormat.QR_CODE,
@@ -121,6 +122,72 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
 
     /** Has the element actually painted a frame, rather than merely been handed a stream? */
     const painting = () => (videoRef.current?.videoWidth ?? 0) > 0
+
+    // Second, narrower decode pass, additive to the full-frame one above —
+    // it never replaces it, only runs alongside it, so a single isolated
+    // code (every scan type except a dense unit-sticker sheet) keeps working
+    // exactly as it always has even if this crop math is ever wrong for some
+    // device. Either loop calling handleCode is debounced the same way.
+    //
+    // The crop matches what the viewfinder guide actually highlights (see
+    // .viewfinder / .viewfinder::after in index.css: a 4:3 box, video at
+    // `object-fit: cover`, guide inset 18% top/bottom and 12% left/right) —
+    // cropping to just that region and upscaling it is equivalent to zooming
+    // in on the sticker the operator is actually aiming at, which a full-frame
+    // decode cannot do. A sheet with several small stickers close together can
+    // be too fine-grained for zxing to resolve at full-frame scale at all.
+    const cropCanvas = document.createElement('canvas')
+    const cropCtx = cropCanvas.getContext('2d', { willReadFrequently: true })
+
+    function decodeCroppedFrame() {
+      const video = videoRef.current
+      if (!video || !cropCtx || video.videoWidth === 0 || cancelled) return
+
+      const containerAspect = 4 / 3
+      const videoAspect = video.videoWidth / video.videoHeight
+
+      let visibleW: number
+      let visibleH: number
+      let offsetX: number
+      let offsetY: number
+      if (videoAspect > containerAspect) {
+        // Video wider than the 4:3 box: full height visible, sides cropped.
+        visibleH = video.videoHeight
+        visibleW = video.videoHeight * containerAspect
+        offsetX = (video.videoWidth - visibleW) / 2
+        offsetY = 0
+      } else {
+        // Video narrower/taller than the box: full width visible, top/bottom cropped.
+        visibleW = video.videoWidth
+        visibleH = video.videoWidth / containerAspect
+        offsetX = 0
+        offsetY = (video.videoHeight - visibleH) / 2
+      }
+
+      const cropX = offsetX + 0.12 * visibleW
+      const cropY = offsetY + 0.18 * visibleH
+      const cropW = 0.76 * visibleW
+      const cropH = 0.64 * visibleH
+      if (cropW <= 0 || cropH <= 0) return
+
+      // Upscale so a small crop still hands the decoder a decode-friendly
+      // number of pixels, capped so this stays cheap on a low-end phone.
+      const targetW = Math.min(1000, Math.round(cropW * 2))
+      const targetH = Math.round(targetW * (cropH / cropW))
+      if (cropCanvas.width !== targetW || cropCanvas.height !== targetH) {
+        cropCanvas.width = targetW
+        cropCanvas.height = targetH
+      }
+
+      cropCtx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, targetW, targetH)
+
+      try {
+        const result = reader.decodeFromCanvas(cropCanvas)
+        if (result && !cancelled) handleCode(result.getText())
+      } catch {
+        // No code in this crop this tick — expected on almost every tick.
+      }
+    }
 
     async function start() {
       if (!videoRef.current) return
@@ -168,6 +235,7 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
 
           if (ok) {
             setStatus('running')
+            cropInterval = window.setInterval(decodeCroppedFrame, 150)
             return
           }
 
@@ -194,6 +262,7 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
     return () => {
       cancelled = true
       if (watchdog) window.clearTimeout(watchdog)
+      if (cropInterval) window.clearInterval(cropInterval)
       controlsRef.current?.stop()
       controlsRef.current = null
     }
