@@ -19,7 +19,6 @@ from app.core.errors import AppError
 from app.schemas.warehouse import ScanIn, ScanResult
 from app.services import packing as packing_service
 from app.services import scans as scan_service
-from app.services import stickers as sticker_service
 
 router = APIRouter(tags=["packing"])
 
@@ -43,27 +42,21 @@ class BadgeHolder(BaseModel):
     employee_code: Optional[str] = None
 
 
-class StockHint(BaseModel):
-    location_code: str
-    units: int
-
-
 class InvoiceOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     invoice_id: UUID
     invoice_number: str
     order_no: Optional[str] = None
-    sku: str
-    units: int
     customer_name: Optional[str] = None
-    description: Optional[str] = None
     is_open: bool
     stage: str
 
-    verified_by: Optional[UUID] = None
-    verified_by_name: Optional[str] = None
-    verified_at: Optional[datetime] = None
+    assigned_to: Optional[UUID] = None
+    assigned_to_name: Optional[str] = None
+    assigned_by: Optional[UUID] = None
+    assigned_by_name: Optional[str] = None
+    assigned_at: Optional[datetime] = None
 
     packed_by: Optional[UUID] = None
     packed_by_name: Optional[str] = None
@@ -74,26 +67,21 @@ class InvoiceOut(BaseModel):
     batch_status: Optional[str] = None
     out_scanned_at: Optional[datetime] = None
 
-    suggested_locations: List[StockHint] = Field(default_factory=list)
-
 
 class InvoiceFromOrderNo(BaseModel):
     """A Packer creating an invoice from the Order No she just OCR-scanned off
-    the physical invoice. There is no typed invoice number — `order_no`
-    becomes it, so the rest of the system keys off exactly what the camera
-    read.
+    the physical invoice. There is no typed invoice number and no PO/product/
+    quantity — `order_no` is the whole invoice; what's inside the carton is
+    Admin's separate ERP's concern, not this app's.
 
-    The read-provenance fields mirror `OrderNoIn`: the engine's raw output,
-    confidence and whether the operator corrected it before confirming are
-    kept for the same reason 0015_order_no_ocr.sql keeps them for the
-    attach-to-existing-invoice path — "the OCR misread it" is only a usable
-    answer six months from now if the evidence was recorded at the time.
+    The read-provenance fields mirror the OCR audit trail this system has
+    always kept (0015_order_no_ocr.sql): the engine's raw output, confidence
+    and whether the operator corrected it before confirming — "the OCR
+    misread it" is only a usable answer six months from now if the evidence
+    was recorded at the time.
     """
 
     order_no: str = Field(min_length=3, max_length=40)
-    purchase_order_line_id: UUID
-    units: int = Field(gt=0)
-    customer_name: Optional[str] = Field(default=None, max_length=120)
 
     source: Literal["ocr", "manual"] = "ocr"
     raw_text: Optional[str] = Field(default=None, max_length=2000)
@@ -104,19 +92,6 @@ class InvoiceFromOrderNo(BaseModel):
     @classmethod
     def _upper(cls, v: str) -> str:
         return v.strip().upper()
-
-
-class CartonStickerOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    code: str
-    status: str
-    invoice_id: UUID
-    invoice_number: str
-    sku: str
-    units: int
-    customer_name: Optional[str] = None
 
 
 class BadgeIn(BaseModel):
@@ -130,59 +105,14 @@ class BadgeIn(BaseModel):
         return v.strip()
 
 
-class VerifyIn(BadgeIn):
+class PackIn(BadgeIn):
     invoice_number: str = Field(min_length=3, max_length=60)
+    carton_code: Optional[str] = Field(default=None, max_length=60)
 
     @field_validator("invoice_number")
     @classmethod
     def _upper(cls, v: str) -> str:
         return v.strip().upper()
-
-
-class PackIn(VerifyIn):
-    carton_code: Optional[str] = Field(default=None, max_length=60)
-
-
-class OrderNoIn(BaseModel):
-    """An attempt to read the Order No off a delivery challan.
-
-    `order_no` is optional on purpose — the client posts a null when OCR ran and
-    produced nothing usable, so the miss is recorded rather than discarded. It is
-    the one endpoint here where "I failed" is a legitimate, recorded outcome.
-    """
-
-    invoice_number: str = Field(min_length=3, max_length=60)
-    order_no: Optional[str] = Field(default=None, max_length=40)
-    source: Literal["ocr", "manual"]
-
-    # The engine's unedited output. Capped rather than unbounded: it is evidence,
-    # not a document store, and the challan header block is a few hundred
-    # characters at most.
-    raw_text: Optional[str] = Field(default=None, max_length=2000)
-    confidence: Optional[float] = Field(default=None, ge=0, le=100)
-    was_corrected: bool = False
-
-    @field_validator("invoice_number")
-    @classmethod
-    def _upper_invoice(cls, v: str) -> str:
-        return v.strip().upper()
-
-    @field_validator("order_no")
-    @classmethod
-    def _upper_order(cls, v: Optional[str]) -> Optional[str]:
-        # An empty string from a cleared input field means "no read", not "the
-        # order number is the empty string" — which would fail the regex and
-        # report a validation error for what is really a miss.
-        if v is None:
-            return None
-        cleaned = v.strip().upper()
-        return cleaned or None
-
-
-class OrderNoResult(BaseModel):
-    invoice: InvoiceOut
-    recorded: bool
-    message: str
 
 
 class AttributionResult(BaseModel):
@@ -191,42 +121,11 @@ class AttributionResult(BaseModel):
     message: str
 
 
-class MatchingState(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    invoice_id: UUID
-    invoice_number: str
-    sku: Optional[str] = None
-    required_units: int
-    matched_units: int
-    remaining_units: int
-    ready_to_verify: bool
-    is_open: bool = True
-    verified_by: Optional[UUID] = None
-    verified_by_name: Optional[str] = None
-
-
-class MatchScanResult(ScanResult):
-    """A unit-sticker scan at matching, plus where the invoice now stands.
-
-    Extends ScanResult rather than replacing it, same as PackScanResult below —
-    the frontend's existing scan handling, including the offline queue's
-    idempotent replay, applies unchanged.
-    """
-
-    matched_units: Optional[int] = None
-    required_units: Optional[int] = None
-    remaining_units: Optional[int] = None
-    ready_to_verify: Optional[bool] = None
-
-
 class Carton(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     invoice_id: UUID
     invoice_number: str
-    sku: str
-    units: int
     customer_name: Optional[str] = None
     packed_by_name: Optional[str] = None
     packed_at: Optional[datetime] = None
@@ -268,7 +167,6 @@ class PackerProductivity(BaseModel):
     full_name: str
     employee_code: Optional[str] = None
     cartons_packed: int
-    units_packed: Optional[int] = None
     first_carton: Optional[datetime] = None
     last_carton: Optional[datetime] = None
     avg_minutes_per_carton: Optional[float] = None
@@ -299,10 +197,6 @@ async def resolve_badge(
     if expect == "any":
         expected = ["invoice_matcher", "packer", "admin"]
     elif expect == "matcher":
-        # A Packer verifying her own invoice scan counts as "matcher" here too
-        # (see fn_badge_holder_guard's invoice_verifications allowance) — a
-        # Packer's own badge must resolve the same way an Invoice Matcher's
-        # does for this same step.
         expected = ["invoice_matcher", "packer", "admin"]
     else:
         expected = [expect]
@@ -323,14 +217,11 @@ async def create_invoice_from_order_no(
     user: CurrentUser = Depends(matcher_or_ops),
 ):
     """A Packer books an invoice from the Order No she just scanned off the
-    physical invoice — there is no manual invoice-number entry anywhere in
-    this dashboard."""
+    physical invoice — there is no manual invoice-number entry, and no PO/
+    product/quantity, anywhere in this dashboard."""
     return await packing_service.create_invoice_from_order_no(
         conn,
         order_no=payload.order_no,
-        purchase_order_line_id=payload.purchase_order_line_id,
-        units=payload.units,
-        customer_name=payload.customer_name,
         actor_id=user.id,
         source=payload.source,
         raw_text=payload.raw_text,
@@ -339,24 +230,10 @@ async def create_invoice_from_order_no(
     )
 
 
-@router.post(
-    "/invoices/{invoice_id}/sticker",
-    response_model=CartonStickerOut,
-    status_code=status.HTTP_201_CREATED,
-)
-async def issue_carton_sticker(
-    invoice_id: UUID,
-    conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_ops_manager),
-):
-    """Print the carton sticker for this invoice. Reissuing voids the old one."""
-    return await sticker_service.issue_carton_sticker(conn, invoice_id)
-
-
 @router.get("/invoices", response_model=List[InvoiceOut])
 async def list_invoices(
     stage: Optional[str] = Query(
-        default=None, pattern="^(open|verified|packed|batched|out_scanned|closed)$"
+        default=None, pattern="^(open|assigned|packed|batched|out_scanned|closed)$"
     ),
     conn: AsyncConnection = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
@@ -371,16 +248,15 @@ async def lookup_invoice(
     conn: AsyncConnection = Depends(get_db),
     user: CurrentUser = Depends(matcher_or_ops),
 ):
-    """PRD §5.4: is this a valid open invoice, and where is its stock?
+    """Is this a valid, open invoice?
 
-    Called on the invoice scan, before the matcher walks to a rack — so a trip to
-    the wrong aisle is avoided rather than discovered.
-
-    Two ways to identify it. `invoice_number` is the scanned or typed barcode
-    value. `order_no` is for the case where the matcher has only the challan: OCR
-    reads the Order No off the page and the invoice is found from that. Exactly
-    one is required — accepting both would leave the server deciding which the
-    caller meant, and the two can disagree.
+    Two ways to identify it. `invoice_number` is the scanned or typed value.
+    `order_no` is the same thing by another name (0035: every invoice's
+    number *is* its scanned Order No) — kept as a separate parameter because
+    the two callers (a fresh OCR read vs. a typed/looked-up number) don't
+    know that in advance. Exactly one is required — accepting both would
+    leave the server deciding which the caller meant, and the two can
+    disagree.
     """
     if (invoice_number is None) == (order_no is None):
         raise AppError(
@@ -391,81 +267,17 @@ async def lookup_invoice(
 
     if order_no is not None:
         invoice = await packing_service.get_invoice_by_order_no(conn, order_no)
-        # Routed back through the same gate as a scanned lookup so an invoice found
-        # by Order No is held to identical rules — closed and already-verified are
-        # refused the same way rather than only on the barcode path.
-        return await packing_service.lookup_for_matching(conn, invoice["invoice_number"])
+    else:
+        invoice = await packing_service.get_invoice_by_number(conn, invoice_number)
 
-    return await packing_service.lookup_for_matching(conn, invoice_number)
+    if not invoice["is_open"]:
+        raise AppError(
+            f"Invoice {invoice['invoice_number']} is closed.",
+            code="invoice_closed",
+            http_status=409,
+        )
 
-
-@router.post("/invoices/order-no", response_model=OrderNoResult)
-async def record_order_no(
-    payload: OrderNoIn,
-    conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(matcher_or_ops),
-):
-    """PRD §5.4: attach the challan's Order No to the invoice.
-
-    Not a control point. Nothing is gated on this value, so it takes the session
-    user rather than a badge scan — the matcher's badge is spent on
-    `/invoices/verify`, which is the step that actually attributes handling.
-    Making them scan twice to record a field would buy no accountability.
-    """
-    return await packing_service.record_order_no(
-        conn,
-        invoice_number=payload.invoice_number,
-        order_no=payload.order_no,
-        source=payload.source,
-        actor_id=user.id,
-        raw_text=payload.raw_text,
-        confidence=payload.confidence,
-        was_corrected=payload.was_corrected,
-    )
-
-
-@router.get("/invoices/{invoice_id}/matching", response_model=MatchingState)
-async def invoice_matching_state(
-    invoice_id: UUID,
-    conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
-):
-    return await packing_service.matching_state(conn, invoice_id)
-
-
-@router.post("/invoices/{invoice_id}/match-scan", response_model=MatchScanResult)
-async def scan_matching_unit(
-    invoice_id: UUID,
-    payload: ScanIn,
-    conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(matcher_or_ops),
-):
-    """Scan one unit sticker to confirm product-in-hand before matching.
-
-    Additive to the packing-stage scan (CG3, DECISIONS.md) — this is a second,
-    independent check at the earlier step PRD §5.4/§7 describes: the matcher
-    physically places the product on the invoice before scanning her badge. A
-    rejected scan comes back 200 with `accepted: false`, like every other
-    scanning endpoint.
-    """
-    return await packing_service.scan_matching_unit(conn, invoice_id, payload)
-
-
-@router.post("/invoices/verify", response_model=AttributionResult)
-async def verify_invoice(
-    payload: VerifyIn,
-    conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(matcher_or_ops),
-):
-    """CONTROL POINT 5, first half — matcher confirms product against invoice."""
-    result = await packing_service.verify_invoice(
-        conn, payload.invoice_number, payload.badge_code
-    )
-    return {
-        "invoice": result["invoice"],
-        "who": result["verified_by"],
-        "message": result["message"],
-    }
+    return invoice
 
 
 @router.post("/invoices/pack", response_model=AttributionResult)
@@ -476,8 +288,9 @@ async def pack_invoice(
 ):
     """CONTROL POINT 5, second half — binds the packer's badge to the invoice.
 
-    Refused if the invoice was never verified, or if the packer is the same
-    person who verified it.
+    Refused if the invoice has not been assigned to anyone, or if the packer
+    is the same person who assigned it (0036 — assigning now stands in for
+    the old "verify" step).
     """
     result = await packing_service.pack_invoice(
         conn, payload.invoice_number, payload.badge_code, payload.carton_code
@@ -603,14 +416,7 @@ class PackingState(BaseModel):
 
     invoice_id: UUID
     invoice_number: str
-    sku: Optional[str] = None
-    required_units: int
-    packed_units: int
-    remaining_units: int
-    ready_to_close: bool
     is_open: bool = True
-    verified_by: Optional[UUID] = None
-    verified_by_name: Optional[str] = None
     assigned_to: Optional[UUID] = None
     assigned_to_name: Optional[str] = None
     packed_by: Optional[UUID] = None
@@ -643,35 +449,21 @@ class AssignResult(BaseModel):
     message: str
 
 
-class PackScanResult(ScanResult):
-    """A product-box scan, plus where the carton now stands.
-
-    Extends ScanResult rather than replacing it so the frontend's existing scan
-    handling — including the offline queue's idempotent replay — applies
-    unchanged.
-    """
-
-    packed_units: Optional[int] = None
-    required_units: Optional[int] = None
-    remaining_units: Optional[int] = None
-    ready_to_close: Optional[bool] = None
-
-
 @router.post("/invoices/assign", response_model=AssignResult)
 async def assign_invoice(
     payload: AssignIn,
     conn: AsyncConnection = Depends(get_db),
     user: CurrentUser = Depends(require_roles("packer", "invoice_matcher")),
 ):
-    """Hand a carton to a named packer.
+    """Hand a carton to a named packer — this is the act that stands in for
+    the old "verify" step (0036): there is no product/quantity confirmation
+    left, so assigning is what establishes the second person CONTROL POINT 5
+    requires before packing can happen.
 
-    invoice_matcher as well as packer (and Admin, who covers both stations):
-    the person who matched the invoice is usually the one physically handing
-    the box over, which is why this was already "packer or Admin" before the
-    role split reintroduced invoice_matcher as distinct from Admin.
+    invoice_matcher as well as packer (and Admin, who covers both stations).
     """
     return await packing_service.assign_invoice(
-        conn, payload.invoice_number, payload.badge_code, payload.note
+        conn, payload.invoice_number, payload.badge_code, user.id, payload.note
     )
 
 
@@ -682,24 +474,6 @@ async def invoice_packing_state(
     user: CurrentUser = Depends(get_current_user),
 ):
     return await packing_service.packing_state(conn, invoice_id)
-
-
-@router.post("/invoices/{invoice_id}/pack-scan", response_model=PackScanResult)
-async def scan_product_box(
-    invoice_id: UUID,
-    payload: ScanIn,
-    response: Response,
-    conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(packer_or_ops),
-):
-    """Scan one product box into this carton.
-
-    A rejected scan comes back 200 with `accepted: false`, like every other
-    scanning endpoint — it is a result to render, not an error to catch, and the
-    rejection is recorded either way.
-    """
-    result = await packing_service.scan_product_box(conn, invoice_id, payload)
-    return result
 
 
 @router.get("/packing/assigned-to-me", response_model=List[PackingState])

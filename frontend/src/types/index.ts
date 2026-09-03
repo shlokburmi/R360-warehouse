@@ -259,17 +259,16 @@ export type BadgeHolder = {
 export type Invoice = {
   invoice_id: string
   invoice_number: string
-  /** Order No off the challan header, e.g. CP002458380_0001. Null until read. */
+  /** Order No scanned off the physical invoice — same value as invoice_number. */
   order_no: string | null
-  sku: string
-  units: number
   customer_name: string | null
-  description: string | null
   is_open: boolean
-  stage: 'open' | 'verified' | 'packed' | 'batched' | 'out_scanned' | 'closed'
-  verified_by: string | null
-  verified_by_name: string | null
-  verified_at: string | null
+  stage: 'open' | 'assigned' | 'packed' | 'batched' | 'out_scanned' | 'closed'
+  assigned_to: string | null
+  assigned_to_name: string | null
+  assigned_by: string | null
+  assigned_by_name: string | null
+  assigned_at: string | null
   packed_by: string | null
   packed_by_name: string | null
   packed_at: string | null
@@ -277,14 +276,6 @@ export type Invoice = {
   batch_code: string | null
   batch_status: string | null
   out_scanned_at: string | null
-  suggested_locations: { location_code: string; units: number }[]
-}
-
-export type OrderNoResult = {
-  invoice: Invoice
-  /** False when the read missed — the attempt is logged, the invoice untouched. */
-  recorded: boolean
-  message: string
 }
 
 export type AttributionResult = {
@@ -296,8 +287,6 @@ export type AttributionResult = {
 export type Carton = {
   invoice_id: string
   invoice_number: string
-  sku: string
-  units: number
   customer_name: string | null
   packed_by_name: string | null
   packed_at: string | null
@@ -341,8 +330,6 @@ export type AwaitingPickup = {
 export type PickupCarton = {
   invoice_id: string
   invoice_number: string
-  sku: string
-  units: number
   customer_name: string | null
   packed_by_name: string | null
   out_scanned_at: string | null
@@ -506,17 +493,12 @@ export type PhotoRetention = {
 
 // --- Phase 5 workflow: assignment, load approval, exit approval -------------
 
+/** How far along a carton is: who it's assigned to, packed or not. No
+ * product/quantity tracking — that's Admin's separate ERP's concern. */
 export type PackingState = {
   invoice_id: string
   invoice_number: string
-  sku: string | null
-  required_units: number
-  packed_units: number
-  remaining_units: number
-  ready_to_close: boolean
   is_open: boolean
-  verified_by: string | null
-  verified_by_name: string | null
   assigned_to: string | null
   assigned_to_name: string | null
   packed_by: string | null
@@ -529,36 +511,6 @@ export type AssignResult = {
   packing: PackingState
   assigned_to: BadgeHolder
   message: string
-}
-
-/** A product-box scan, plus where the carton now stands. */
-export type PackScanResult = ScanResult & {
-  packed_units?: number
-  required_units?: number
-  remaining_units?: number
-  ready_to_close?: boolean
-}
-
-/** How many units have been confirmed at matching, before the badge scan. */
-export type MatchingState = {
-  invoice_id: string
-  invoice_number: string
-  sku: string | null
-  required_units: number
-  matched_units: number
-  remaining_units: number
-  ready_to_verify: boolean
-  is_open: boolean
-  verified_by: string | null
-  verified_by_name: string | null
-}
-
-/** A unit-sticker scan at matching, plus where the invoice now stands. */
-export type MatchScanResult = ScanResult & {
-  matched_units?: number
-  required_units?: number
-  remaining_units?: number
-  ready_to_verify?: boolean
 }
 
 export type BatchAwaitingCount = {

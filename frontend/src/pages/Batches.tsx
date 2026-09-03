@@ -141,8 +141,7 @@ export function BatchesPage() {
                     <span className="min-w-0 flex-1">
                       <span className="block font-bold">{invoice.invoice_number}</span>
                       <span className="block truncate text-sm text-slate-500 dark:text-slate-400">
-                        {invoice.sku} × {invoice.units} · {invoice.customer_name} · packed by{' '}
-                        {invoice.packed_by_name}
+                        {invoice.customer_name} · packed by {invoice.packed_by_name}
                       </span>
                     </span>
                   </label>
@@ -343,8 +342,7 @@ function BatchDetail({ batchId, onBack }: { batchId: string; onBack: () => void 
               <div className="min-w-0">
                 <p className="font-bold">{carton.invoice_number}</p>
                 <p className="truncate text-sm text-slate-500 dark:text-slate-400">
-                  {carton.sku} × {carton.units} · {carton.customer_name} · packed by{' '}
-                  {carton.packed_by_name}
+                  {carton.customer_name} · packed by {carton.packed_by_name}
                 </p>
               </div>
               {carton.out_scanned_at ? (

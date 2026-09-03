@@ -1,9 +1,11 @@
-"""The four workflow corrections in migrations 0016-0019.
+"""Workflow corrections in migrations 0016-0018, 0036.
 
 These cover the steps the process has always had on the floor but the software
 did not: who is packing a given invoice, the guard's carton count before
-anything is loaded, Ops signing off on the truck leaving, and the reconciliation
-between product stickers issued at the gate and product boxes actually packed.
+anything is loaded, and Ops signing off on the truck leaving. (The fourth,
+reconciling product stickers issued at the gate against product boxes packed,
+was removed by 0036 — what is inside a carton is Admin's separate ERP's
+concern, not this app's.)
 
 Every one of them is a hard stop in the database rather than a check in a
 service, for the reason in DECISIONS.md §B3. So these tests drive SQL directly —
@@ -18,7 +20,6 @@ from sqlalchemy import text
 from app.core.errors import ControlPointError
 from app.services import pickup as pickup_service
 from tests.conftest import act_as, rejected
-from tests.test_packing import _verify
 
 pytestmark = pytest.mark.asyncio
 
@@ -55,35 +56,20 @@ async def people(db):
     }
 
 
-async def _invoice(db, units=2):
-    line = (
-        await db.execute(
-            text(
-                """
-                select pol.id, pol.sku from purchase_order_lines pol
-                  join purchase_orders po on po.id = pol.purchase_order_id
-                 where po.po_number = 'PO-2026-0001'
-                 order by pol.line_no limit 1
-                """
-            )
-        )
-    ).mappings().one()
-
-    number = f"INV-WF-{uuid.uuid4().hex[:10].upper()}"
+async def _invoice(db):
+    # Must satisfy invoices_order_no_format (CP.........\_....): since 0036 an
+    # invoice's number is the Order No that created it.
+    number = f"CP{uuid.uuid4().int % 10**9:09d}_{uuid.uuid4().int % 10**4:04d}"
     invoice_id = (
         await db.execute(
             text(
-                """
-                insert into invoices
-                  (invoice_number, purchase_order_line_id, sku, units, customer_name)
-                values (:n, :l, :s, :u, 'Test Customer')
-                returning id
-                """
+                "insert into invoices (invoice_number, order_no) values (:n, :n) "
+                "returning id"
             ),
-            {"n": number, "l": line["id"], "s": line["sku"], "u": units},
+            {"n": number},
         )
     ).scalar_one()
-    return {"id": invoice_id, "invoice_number": number, "units": units}
+    return {"id": invoice_id, "invoice_number": number}
 
 
 async def _assign(db, invoice_id, to_whom, by_whom):
@@ -110,7 +96,6 @@ class TestPackingAssignment:
         """
         inv = await _invoice(db)
         await act_as(db, people["matcher"]["id"])
-        await _verify(db, inv["id"], people["matcher"]["id"])
 
         holder = (
             await db.execute(
@@ -136,16 +121,7 @@ class TestPackingAssignment:
         assert str(row["assigned_to"]) == str(people["packer"]["id"])
         assert row["assigned_to_name"] == people["packer"]["full_name"]
 
-    async def test_an_unverified_invoice_cannot_be_assigned(self, db, people):
-        """The small box only reaches a bench because a matcher put it with its
-        invoice, so an unverified invoice has not physically been matched."""
-        inv = await _invoice(db)
-        await act_as(db, people["matcher"]["id"])
-
-        async with rejected(db, containing="not been matched"):
-            await _assign(db, inv["id"], people["packer"]["id"], people["matcher"]["id"])
-
-    async def test_the_verifier_cannot_be_assigned_the_pack(self, db, people):
+    async def test_you_cannot_assign_to_yourself(self, db, people):
         """CONTROL POINT 5, caught while the lead is still holding the badge
         rather than after the carton is packed.
 
@@ -157,7 +133,6 @@ class TestPackingAssignment:
         """
         inv = await _invoice(db)
         await act_as(db, people["admin"]["id"])
-        await _verify(db, inv["id"], people["admin"]["id"])
 
         async with rejected(db, containing="CONTROL POINT 5"):
             await _assign(db, inv["id"], people["admin"]["id"], people["admin"]["id"])
@@ -165,7 +140,6 @@ class TestPackingAssignment:
     async def test_a_guard_cannot_be_assigned_a_pack(self, db, people):
         inv = await _invoice(db)
         await act_as(db, people["matcher"]["id"])
-        await _verify(db, inv["id"], people["matcher"]["id"])
 
         async with rejected(db, containing="not a packer"):
             await _assign(db, inv["id"], people["guard"]["id"], people["matcher"]["id"])
@@ -177,7 +151,6 @@ class TestPackingAssignment:
             text("select admin_revoke_badge(cast(:id as uuid))"),
             {"id": people["packer"]["id"]},
         )
-        await _verify(db, inv["id"], people["matcher"]["id"])
 
         async with rejected(db, containing="withdrawn"):
             await _assign(db, inv["id"], people["packer"]["id"], people["matcher"]["id"])
@@ -190,13 +163,11 @@ class TestPackingAssignment:
         does not cover it. An assignment that contradicts the pack record would
         look like evidence while being the opposite.
         """
-        from tests.test_packing import _pack, _stock_and_pack_scan
+        from tests.test_packing import _pack
 
-        inv = await _invoice(db, units=2)
-        inv["units"] = 2
+        inv = await _invoice(db)
         await act_as(db, people["matcher"]["id"])
-        await _verify(db, inv["id"], people["matcher"]["id"])
-        await _stock_and_pack_scan(db, inv, people)
+        await _assign(db, inv["id"], people["packer"]["id"], people["matcher"]["id"])
         await _pack(db, inv["id"], people["packer"]["id"])
 
         async with rejected(db, containing="already been packed"):
@@ -207,7 +178,6 @@ class TestPackingAssignment:
         has to remain answerable."""
         inv = await _invoice(db)
         await act_as(db, people["matcher"]["id"])
-        await _verify(db, inv["id"], people["matcher"]["id"])
 
         first = await _assign(db, inv["id"], people["packer"]["id"], people["matcher"]["id"])
         second = await _assign(db, inv["id"], people["packer_b"]["id"], people["matcher"]["id"])
@@ -231,313 +201,7 @@ class TestPackingAssignment:
 
 
 # ---------------------------------------------------------------------------
-# 2. Product stickers issued vs product boxes packed
-# ---------------------------------------------------------------------------
-
-
-async def _received_units(db, gate_entry, actors, count=2):
-    """Product stickers that have genuinely been counted in at offloading.
-
-    Built the long way round — box stickers, box scans, unit stickers, unit
-    scans — because the point of the reconciliation is that a product box cannot
-    be packed unless it really arrived, and a shortcut that inserted stickers
-    without the receiving scans would test nothing.
-    """
-    from tests.test_control_points import _issue_boxes, _scan, _sticker_code
-
-    boxes = await _issue_boxes(db, gate_entry["id"], actors)
-
-    await act_as(db, actors["guard"])
-    for box_id in boxes:
-        await _scan(db, await _sticker_code(db, box_id), "box_verify", actors["guard"])
-
-    await db.execute(
-        text("update gate_entries set status = 'box_verified' where id = :id"),
-        {"id": gate_entry["id"]},
-    )
-    await db.execute(
-        text("update gate_entries set status = 'offloading' where id = :id"),
-        {"id": gate_entry["id"]},
-    )
-
-    await act_as(db, actors["ops"])
-    box_id = boxes[0]
-    line = (
-        await db.execute(
-            text(
-                """
-                select pol.id, pol.sku from purchase_order_lines pol
-                  join purchase_orders po on po.id = pol.purchase_order_id
-                 where po.po_number = 'PO-2026-0001'
-                 order by pol.line_no limit 1
-                """
-            )
-        )
-    ).mappings().one()
-
-    sheet_id = (
-        await db.execute(
-            text(
-                """
-                insert into sticker_sheets (gate_entry_id, sticker_type, quantity, generated_by)
-                values (:e, 'unit', :n, :ops) returning id
-                """
-            ),
-            {"e": gate_entry["id"], "n": count, "ops": actors["ops"]},
-        )
-    ).scalar_one()
-
-    codes = []
-    for seq in range(1, count + 1):
-        code = f"UNT-{uuid.uuid4().hex[:8].upper()}"
-        await db.execute(
-            text(
-                """
-                insert into stickers
-                  (code, sticker_type, sheet_id, gate_entry_id, box_id,
-                   purchase_order_line_id, sequence_no, status)
-                values (:c, 'unit', :sh, :e, :b, :pol, :seq, 'applied')
-                """
-            ),
-            {
-                "c": code,
-                "sh": sheet_id,
-                "e": gate_entry["id"],
-                "b": box_id,
-                "pol": line["id"],
-                "seq": seq,
-            },
-        )
-        codes.append(code)
-
-    await act_as(db, actors["offloader"])
-    for code in codes:
-        result = await _scan(db, code, "unit_verify", actors["offloader"])
-        assert result["accepted"], f"setup scan refused: {result['reject_reason']}"
-
-    return {"codes": codes, "sku": line["sku"], "box_id": box_id}
-
-
-async def _pack_scan(db, code, invoice_id, actor):
-    return (
-        await db.execute(
-            text(
-                """
-                insert into scan_events
-                  (client_event_id, scan_type, raw_code, invoice_id,
-                   accepted, scanned_by, scanned_at)
-                values (:cid, 'pack_unit', :code, :inv, false, :actor, now())
-                returning accepted, reject_reason::text as reject_reason
-                """
-            ),
-            {
-                "cid": str(uuid.uuid4()),
-                "code": code,
-                "inv": invoice_id,
-                "actor": actor,
-            },
-        )
-    ).mappings().one()
-
-
-class TestPackUnitReconciliation:
-    async def test_a_carton_cannot_close_until_every_product_box_is_in_it(
-        self, db, gate_entry, actors, people
-    ):
-        """The gap between CONTROL POINT 3 and CONTROL POINT 6: a product box
-        counted into the warehouse that never appears in any carton."""
-        stock = await _received_units(db, gate_entry, actors, count=2)
-
-        await act_as(db, people["matcher"]["id"])
-        inv = await _invoice(db, units=2)
-        await db.execute(
-            text("update invoices set sku = :s where id = :i"),
-            {"s": stock["sku"], "i": inv["id"]},
-        )
-        await _verify(db, inv["id"], people["matcher"]["id"])
-
-        await act_as(db, people["packer"]["id"])
-        first = await _pack_scan(db, stock["codes"][0], inv["id"], people["packer"]["id"])
-        assert first["accepted"], first["reject_reason"]
-
-        # One of two scanned. The carton must not be closeable.
-        async with rejected(db, containing="1 of 2 product boxes"):
-            await db.execute(
-                text("insert into packing_records (invoice_id, packed_by) values (:i, :p)"),
-                {"i": inv["id"], "p": people["packer"]["id"]},
-            )
-
-        second = await _pack_scan(db, stock["codes"][1], inv["id"], people["packer"]["id"])
-        assert second["accepted"], second["reject_reason"]
-
-        await db.execute(
-            text("insert into packing_records (invoice_id, packed_by) values (:i, :p)"),
-            {"i": inv["id"], "p": people["packer"]["id"]},
-        )
-
-        row = (
-            await db.execute(
-                text(
-                    "select packed_units, required_units, ready_to_close "
-                    "from v_invoice_packing where invoice_id = :i"
-                ),
-                {"i": inv["id"]},
-            )
-        ).mappings().one()
-        assert row["packed_units"] == 2
-        assert row["ready_to_close"] is True
-
-    async def test_the_same_product_box_cannot_be_packed_twice(
-        self, db, gate_entry, actors, people
-    ):
-        """Holding the scanner still over one sticker must not fill a carton."""
-        stock = await _received_units(db, gate_entry, actors, count=2)
-
-        await act_as(db, people["matcher"]["id"])
-        inv = await _invoice(db, units=2)
-        await db.execute(
-            text("update invoices set sku = :s where id = :i"),
-            {"s": stock["sku"], "i": inv["id"]},
-        )
-        await _verify(db, inv["id"], people["matcher"]["id"])
-
-        await act_as(db, people["packer"]["id"])
-        assert (await _pack_scan(db, stock["codes"][0], inv["id"], people["packer"]["id"]))["accepted"]
-        again = await _pack_scan(db, stock["codes"][0], inv["id"], people["packer"]["id"])
-
-        assert again["accepted"] is False
-        assert again["reject_reason"] == "already_scanned"
-
-    async def test_over_packing_is_refused(self, db, gate_entry, actors, people):
-        """An eleventh item in a ten-item carton would make it complete and
-        wrong."""
-        stock = await _received_units(db, gate_entry, actors, count=2)
-
-        await act_as(db, people["matcher"]["id"])
-        inv = await _invoice(db, units=1)
-        await db.execute(
-            text("update invoices set sku = :s where id = :i"),
-            {"s": stock["sku"], "i": inv["id"]},
-        )
-        await _verify(db, inv["id"], people["matcher"]["id"])
-
-        await act_as(db, people["packer"]["id"])
-        assert (await _pack_scan(db, stock["codes"][0], inv["id"], people["packer"]["id"]))["accepted"]
-        extra = await _pack_scan(db, stock["codes"][1], inv["id"], people["packer"]["id"])
-
-        assert extra["accepted"] is False
-        assert extra["reject_reason"] == "invoice_already_full"
-
-    async def test_a_product_box_that_never_arrived_cannot_be_packed(
-        self, db, gate_entry, actors, people
-    ):
-        """Otherwise packing is a second, unaudited route to creating stock —
-        the hole DECISIONS.md §C4 closes for putaway."""
-        stock = await _received_units(db, gate_entry, actors, count=2)
-
-        await act_as(db, actors["ops"])
-        ghost = f"UNT-{uuid.uuid4().hex[:8].upper()}"
-        sheet_id = (
-            await db.execute(
-                text(
-                    "select id from sticker_sheets "
-                    "where gate_entry_id = :e and sticker_type = 'unit' limit 1"
-                ),
-                {"e": gate_entry["id"]},
-            )
-        ).scalar_one()
-        await db.execute(
-            text(
-                """
-                insert into stickers
-                  (code, sticker_type, sheet_id, gate_entry_id, box_id, sequence_no, status)
-                values (:c, 'unit', :sh, :e, :b, 99, 'issued')
-                """
-            ),
-            {"c": ghost, "sh": sheet_id, "e": gate_entry["id"], "b": stock["box_id"]},
-        )
-
-        await act_as(db, people["matcher"]["id"])
-        inv = await _invoice(db, units=1)
-        await _verify(db, inv["id"], people["matcher"]["id"])
-
-        await act_as(db, people["packer"]["id"])
-        result = await _pack_scan(db, ghost, inv["id"], people["packer"]["id"])
-
-        assert result["accepted"] is False
-        assert result["reject_reason"] == "unit_not_in_stock"
-
-    async def test_a_big_box_sticker_is_refused_at_the_bench(
-        self, db, gate_entry, actors, people
-    ):
-        """The likeliest mistake at a packing bench: the big box the product came
-        out of is sitting right there."""
-        from tests.test_control_points import _sticker_code
-
-        stock = await _received_units(db, gate_entry, actors, count=2)
-        big_box_code = await _sticker_code(db, stock["box_id"])
-
-        await act_as(db, people["matcher"]["id"])
-        inv = await _invoice(db, units=1)
-        await _verify(db, inv["id"], people["matcher"]["id"])
-
-        await act_as(db, people["packer"]["id"])
-        result = await _pack_scan(db, big_box_code, inv["id"], people["packer"]["id"])
-
-        assert result["accepted"] is False
-        assert result["reject_reason"] == "wrong_sticker_type"
-
-    async def test_an_unverified_invoice_takes_no_product_boxes(
-        self, db, gate_entry, actors, people
-    ):
-        stock = await _received_units(db, gate_entry, actors, count=2)
-
-        await act_as(db, people["matcher"]["id"])
-        inv = await _invoice(db, units=1)
-
-        await act_as(db, people["packer"]["id"])
-        result = await _pack_scan(db, stock["codes"][0], inv["id"], people["packer"]["id"])
-
-        assert result["accepted"] is False
-        assert result["reject_reason"] == "wrong_invoice"
-
-    async def test_reconciliation_view_shows_the_gap(self, db, gate_entry, actors, people):
-        """What an auditor asks: issued, received, packed — and where are the
-        rest."""
-        stock = await _received_units(db, gate_entry, actors, count=2)
-
-        await act_as(db, people["matcher"]["id"])
-        inv = await _invoice(db, units=1)
-        await db.execute(
-            text("update invoices set sku = :s where id = :i"),
-            {"s": stock["sku"], "i": inv["id"]},
-        )
-        await _verify(db, inv["id"], people["matcher"]["id"])
-
-        await act_as(db, people["packer"]["id"])
-        await _pack_scan(db, stock["codes"][0], inv["id"], people["packer"]["id"])
-
-        row = (
-            await db.execute(
-                text(
-                    """
-                    select unit_stickers_issued, received_at_offloading,
-                           packed_into_cartons, received_not_packed
-                      from v_sticker_reconciliation where gate_entry_id = :e
-                    """
-                ),
-                {"e": gate_entry["id"]},
-            )
-        ).mappings().one()
-
-        assert row["unit_stickers_issued"] == 2
-        assert row["received_at_offloading"] == 2
-        assert row["packed_into_cartons"] == 1
-        assert row["received_not_packed"] == 1
-
-
-# ---------------------------------------------------------------------------
-# 3. The guard's carton count, and Ops's decision on it
+# 2. The guard's carton count, and Ops's decision on it
 # ---------------------------------------------------------------------------
 
 
@@ -732,7 +396,7 @@ class TestLoadApproval:
 
 
 # ---------------------------------------------------------------------------
-# 4. Ops approves the vehicle leaving
+# 3. Ops approves the vehicle leaving
 # ---------------------------------------------------------------------------
 
 

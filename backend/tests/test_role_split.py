@@ -15,7 +15,6 @@ import pytest
 from sqlalchemy import text
 
 from tests.conftest import rejected
-from tests.test_packing import _new_invoice, _receive_goods
 from tests.test_rls import as_authenticated, as_postgres
 
 pytestmark = pytest.mark.asyncio
@@ -160,67 +159,6 @@ class TestOpsManager:
             )
         ).mappings().one()
         assert row["status"] == "approved"
-
-
-class TestInvoiceMatcher:
-    """CONTROL POINT 5, first half — the badge that may hold it."""
-
-    async def test_an_invoice_matcher_badge_may_verify(self, db, people):
-        inv = await _new_invoice(db, units=1)
-        inv["units"] = 1
-        codes = await _receive_goods(
-            db, inv, {"guard": {"id": people["guard"]}, "ops": {"id": people["ops_manager"]},
-                      "offloader_id": people["offloading"]},
-        )
-        for code in codes:
-            await db.execute(
-                text(
-                    """
-                    insert into scan_events
-                      (client_event_id, scan_type, raw_code, invoice_id,
-                       accepted, scanned_by, scanned_at)
-                    values (:cid, 'match_unit', :code, :inv, false, :who, now())
-                    """
-                ),
-                {
-                    "cid": str(uuid.uuid4()),
-                    "code": code,
-                    "inv": inv["id"],
-                    "who": people["invoice_matcher"],
-                },
-            )
-
-        await as_authenticated(db, people["invoice_matcher"])
-        await db.execute(
-            text(
-                "insert into invoice_verifications (invoice_id, verified_by) values (:i, :w)"
-            ),
-            {"i": inv["id"], "w": people["invoice_matcher"]},
-        )
-        await as_postgres(db)
-
-        row = (
-            await db.execute(
-                text("select verified_by from invoice_verifications where invoice_id = :i"),
-                {"i": inv["id"]},
-            )
-        ).mappings().one()
-        assert str(row["verified_by"]) == str(people["invoice_matcher"])
-
-    async def test_an_offloading_badge_may_not_verify(self, db, people):
-        """Role-scoped like every other badge (fn_badge_holder_guard) — an
-        Offloading account is not one of the roles CONTROL POINT 5 accepts."""
-        inv = await _new_invoice(db, units=1)
-
-        await as_authenticated(db, people["offloading"])
-        async with rejected(db, containing="not permitted"):
-            await db.execute(
-                text(
-                    "insert into invoice_verifications (invoice_id, verified_by) values (:i, :w)"
-                ),
-                {"i": inv["id"], "w": people["offloading"]},
-            )
-        await as_postgres(db)
 
 
 class TestWarehouseStaff:

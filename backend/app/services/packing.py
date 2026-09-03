@@ -17,8 +17,6 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.core.errors import AppError
-from app.schemas.warehouse import ScanIn
-from app.services import scans
 
 BADGE_HINT = "Hold the badge steady under the scanner, or type the code on it."
 
@@ -97,9 +95,9 @@ async def resolve_badge(
 # ---------------------------------------------------------------------------
 
 _INVOICE_SELECT = """
-    select invoice_id, invoice_number, order_no, sku, units, customer_name, description,
+    select invoice_id, invoice_number, order_no, customer_name,
            is_open, stage,
-           verified_by, verified_by_name, verified_at,
+           assigned_to, assigned_to_name, assigned_by, assigned_by_name, assigned_at,
            packed_by, packed_by_name, packed_at,
            batch_id, batch_code, batch_status, out_scanned_at
       from v_invoice_status
@@ -110,9 +108,6 @@ async def create_invoice_from_order_no(
     conn: AsyncConnection,
     *,
     order_no: str,
-    purchase_order_line_id: UUID,
-    units: int,
-    customer_name: Optional[str],
     actor_id: str,
     source: str = "ocr",
     raw_text: Optional[str] = None,
@@ -120,15 +115,12 @@ async def create_invoice_from_order_no(
     was_corrected: bool = False,
 ) -> Dict[str, Any]:
     """A Packer books an invoice from the Order No she just OCR-scanned off the
-    physical invoice (PRD §5.4). There is no separate typed invoice number —
-    the scanned Order No fills both `invoice_number` and `order_no`, so the
-    rest of the system (matching, packing, out-scan) keys off exactly the
-    value the camera read, unchanged.
-
-    `sku` is deliberately not a caller-supplied field — it is derived from the
-    PO line, the same reasoning as CG3's sticker-knows-its-own-SKU check: a
-    typed SKU can disagree with the line it is booked against, and a derived
-    one cannot.
+    physical invoice (PRD §5.4). There is no separate typed invoice number,
+    and no PO/product/quantity — the scanned Order No is the whole invoice;
+    what's actually inside the carton is Admin's separate ERP's concern, not
+    this app's. The scanned Order No fills both `invoice_number` and
+    `order_no`, so the rest of the system (assign, pack, out-scan) keys off
+    exactly the value the camera read.
 
     `order_no` is not unique in the schema (a re-dispatch can legitimately
     share one — see 0015_order_no_ocr.sql), but `invoice_number` is
@@ -137,10 +129,8 @@ async def create_invoice_from_order_no(
     second row.
 
     The `raw_text`/`confidence`/`was_corrected` provenance is logged into
-    `order_no_scans` the same way `record_order_no` logs it for the
-    attach-to-existing-invoice path — this is the first read of this Order
-    No, not a later one, but the audit reasoning (0015: "the OCR misread it"
-    needs to be a checkable claim) applies identically here.
+    `order_no_scans` the same way this system has always logged an OCR read
+    (0015: "the OCR misread it" needs to be a checkable claim).
     """
     order_no = order_no.strip().upper()
     if not ORDER_NO_RE.match(order_no):
@@ -149,20 +139,6 @@ async def create_invoice_from_order_no(
             code="bad_order_no",
             http_status=422,
             hint=ORDER_NO_HINT,
-        )
-
-    line = (
-        await conn.execute(
-            text("select id, sku from purchase_order_lines where id = :id"),
-            {"id": str(purchase_order_line_id)},
-        )
-    ).mappings().first()
-
-    if line is None:
-        raise AppError(
-            "That purchase order line does not exist.",
-            code="unknown_po_line",
-            http_status=404,
         )
 
     existing = (
@@ -184,19 +160,12 @@ async def create_invoice_from_order_no(
         await conn.execute(
             text(
                 """
-                insert into invoices
-                  (invoice_number, order_no, purchase_order_line_id, sku, units, customer_name)
-                values (:num, :num, :line_id, :sku, :units, :customer)
+                insert into invoices (invoice_number, order_no)
+                values (:num, :num)
                 returning id
                 """
             ),
-            {
-                "num": order_no,
-                "line_id": str(line["id"]),
-                "sku": line["sku"],
-                "units": units,
-                "customer": (customer_name or "").strip() or None,
-            },
+            {"num": order_no},
         )
     ).scalar_one()
 
@@ -314,17 +283,19 @@ async def get_invoice(conn: AsyncConnection, invoice_id: UUID) -> Dict[str, Any]
 
 
 async def get_invoice_by_order_no(conn: AsyncConnection, order_no: str) -> Dict[str, Any]:
-    """Find the invoice already booked against this Order No.
+    """Find the invoice whose Order No this is.
 
-    The reverse of `record_order_no`, for the case where a matcher has the challan
-    but not the invoice: OCR reads the Order No off the page and this says which
-    invoice it belongs to.
+    Every invoice created via `create_invoice_from_order_no` has `order_no ==
+    invoice_number`, so this is effectively a lookup by invoice number under
+    a different name — kept separate because the caller (a fresh OCR read)
+    doesn't know in advance whether the invoice already exists.
 
     Two failure modes are reported separately on purpose, because the operator's
-    next action differs. *No* invoice carries this Order No — the usual case for a
-    challan whose number has not been captured yet — means "scan the invoice
-    instead". *Several* do, which the schema permits deliberately (0015 declined to
-    make order_no unique), means a human has to choose and the machine must not.
+    next action differs. *No* invoice carries this Order No means it hasn't been
+    created yet — the caller should create it. *Several* do — only possible for
+    a legacy invoice from before this Order-No-is-the-number design, since the
+    schema itself does not enforce `order_no` uniqueness (0015) — means a human
+    has to choose and the machine must not.
     """
     order_no = order_no.strip().upper()
     if not ORDER_NO_RE.match(order_no):
@@ -361,184 +332,6 @@ async def get_invoice_by_order_no(conn: AsyncConnection, order_no: str) -> Dict[
     return dict(rows[0])
 
 
-async def lookup_for_matching(conn: AsyncConnection, invoice_number: str) -> Dict[str, Any]:
-    """PRD §5.4 step 1: is this a valid, open invoice waiting to be matched?
-
-    Answers before the matcher fetches the product from the rack, so a wasted
-    trip to the wrong aisle is avoided rather than discovered.
-    """
-    invoice = await get_invoice_by_number(conn, invoice_number)
-
-    if not invoice["is_open"]:
-        raise AppError(
-            f"Invoice {invoice['invoice_number']} is closed.",
-            code="invoice_closed",
-            http_status=409,
-        )
-
-    if invoice["verified_at"] is not None:
-        raise AppError(
-            f"Invoice {invoice['invoice_number']} was already verified by "
-            f"{invoice['verified_by_name']}.",
-            code="already_verified",
-            http_status=409,
-            hint="Pass it to a packer instead.",
-        )
-
-    # Where the stock for this SKU is sitting, so the matcher knows which rack to
-    # walk to. Phase 2 put it there; this is the first thing that reads it back.
-    locations = await conn.execute(
-        text(
-            """
-            select location_code, units
-              from v_stock_by_location
-             where sku = :sku and not is_quarantine and units > 0
-             order by units desc
-             limit 5
-            """
-        ),
-        {"sku": invoice["sku"]},
-    )
-
-    invoice["suggested_locations"] = [dict(r) for r in locations.mappings()]
-    return invoice
-
-
-# ---------------------------------------------------------------------------
-# Order No capture (OCR)
-# ---------------------------------------------------------------------------
-
-
-async def record_order_no(
-    conn: AsyncConnection,
-    invoice_number: str,
-    order_no: Optional[str],
-    source: str,
-    actor_id: str,
-    raw_text: Optional[str] = None,
-    confidence: Optional[float] = None,
-    was_corrected: bool = False,
-) -> Dict[str, Any]:
-    """Attach the challan's Order No to an invoice, and log how it was read.
-
-    Two properties this function is built around:
-
-    **A failed read is still recorded.** `order_no` may be None — the camera saw
-    the challan and could not produce a conforming string. That row is the point:
-    a station whose reads miss all morning has a smeared lens or a bad crop
-    region, and that is only visible if the misses were written down. A miss
-    leaves `invoices.order_no` untouched rather than nulling it, so a good value
-    already captured is never destroyed by a later bad attempt.
-
-    **Re-reading is allowed; silently changing the value is not.** If a different
-    Order No is already attached, this refuses. Two challans disagreeing about
-    which order a shipment belongs to is a discrepancy for a human to resolve,
-    not something to settle by letting the most recent scan win — the same
-    principle as the count-mismatch handling at CONTROL POINT 3.
-    """
-    invoice = await get_invoice_by_number(conn, invoice_number)
-
-    if order_no is not None:
-        order_no = order_no.strip().upper()
-        if not ORDER_NO_RE.match(order_no):
-            raise AppError(
-                f"{order_no} is not a valid Order No.",
-                code="bad_order_no",
-                http_status=422,
-                hint=ORDER_NO_HINT,
-            )
-
-    existing = invoice["order_no"]
-    if order_no is not None and existing is not None and existing != order_no:
-        raise AppError(
-            f"Invoice {invoice['invoice_number']} is already booked against order "
-            f"{existing}.",
-            code="order_no_conflict",
-            http_status=409,
-            hint=(
-                "Raise an exception rather than overwriting — two different order "
-                "numbers on one invoice needs a human decision."
-            ),
-        )
-
-    # The scan log is written whether or not the read succeeded, and before the
-    # invoice is touched. If the update below were to fail, the evidence that
-    # someone pointed a camera at this challan still survives.
-    await conn.execute(
-        text(
-            """
-            insert into order_no_scans
-                (invoice_id, raw_text, parsed_order_no, confidence, source, was_corrected,
-                 scanned_by)
-            values
-                (:invoice_id, :raw_text, :parsed, :confidence, :source, :was_corrected,
-                 :who)
-            """
-        ),
-        {
-            "invoice_id": str(invoice["invoice_id"]),
-            "raw_text": raw_text,
-            "parsed": order_no,
-            "confidence": confidence,
-            "source": source,
-            "was_corrected": was_corrected,
-            "who": actor_id,
-        },
-    )
-
-    if order_no is not None and existing is None:
-        await conn.execute(
-            text("update invoices set order_no = :order_no where id = :id"),
-            {"order_no": order_no, "id": str(invoice["invoice_id"])},
-        )
-
-    after = await get_invoice(conn, invoice["invoice_id"])
-    return {
-        "invoice": after,
-        "recorded": order_no is not None,
-        "message": (
-            f"Order {order_no} attached to invoice {after['invoice_number']}."
-            if order_no is not None
-            else "Could not read an Order No from the challan. Type it instead."
-        ),
-    }
-
-
-async def verify_invoice(
-    conn: AsyncConnection, invoice_number: str, badge_code: str
-) -> Dict[str, Any]:
-    """CONTROL POINT 5, first half: the matcher confirms product against invoice.
-
-    Refused (by `fn_matching_units_complete`, 0024) unless every unit sticker
-    for this invoice has already been scanned via `/invoices/{id}/match-scan` —
-    the database raises a check_violation the global error handler turns into
-    a 409, the same way `pack_invoice` below relies on `fn_packing_units_complete`
-    for its own units-complete check.
-    """
-    invoice = await lookup_for_matching(conn, invoice_number)
-    badge = await resolve_badge(conn, badge_code, ["invoice_matcher", "packer", "admin"])
-
-    await conn.execute(
-        text(
-            """
-            insert into invoice_verifications (invoice_id, verified_by)
-            values (:invoice_id, :who)
-            """
-        ),
-        {"invoice_id": str(invoice["invoice_id"]), "who": str(badge["profile_id"])},
-    )
-
-    after = await get_invoice(conn, invoice["invoice_id"])
-    return {
-        "invoice": after,
-        "verified_by": badge,
-        "message": (
-            f"Invoice {after['invoice_number']} verified by {badge['full_name']} — "
-            "ready for packing"
-        ),
-    }
-
-
 async def pack_invoice(
     conn: AsyncConnection,
     invoice_number: str,
@@ -547,8 +340,11 @@ async def pack_invoice(
 ) -> Dict[str, Any]:
     """CONTROL POINT 5, second half: the packer's badge is bound to the invoice.
 
-    The database refuses if the invoice was never verified, or if the packer is
-    the same person who verified it.
+    The database refuses if the invoice has not been assigned to anyone, or
+    if the packer is the same person who assigned it — assigning now stands
+    in for the "verify" step this used to require (0036: there is no more
+    product/quantity confirmation, so the assignment is the only remaining
+    record of a second person having handled it before packing).
     """
     invoice = await get_invoice_by_number(conn, invoice_number)
 
@@ -567,24 +363,24 @@ async def pack_invoice(
             http_status=409,
         )
 
-    if invoice["verified_at"] is None:
+    if invoice["assigned_by"] is None:
         raise AppError(
-            f"Invoice {invoice['invoice_number']} has not been matched "
-            "(CONTROL POINT 5).",
+            f"Invoice {invoice['invoice_number']} has not been assigned to "
+            "anyone yet (CONTROL POINT 5).",
             code="control_point_failed",
             http_status=409,
-            hint="Admin must scan the invoice and their badge first.",
+            hint="Scan the invoice and assign it to a packer first.",
         )
 
     badge = await resolve_badge(conn, badge_code, ["packer"])
 
-    if str(badge["profile_id"]) == str(invoice["verified_by"]):
+    if str(badge["profile_id"]) == str(invoice["assigned_by"]):
         raise AppError(
-            "The person who matched the invoice and the packer must be "
+            "The person who assigned the invoice and the packer must be "
             "different people (CONTROL POINT 5).",
             code="control_point_failed",
             http_status=409,
-            hint=f"{invoice['verified_by_name']} matched this invoice.",
+            hint=f"{invoice['assigned_by_name']} assigned this invoice.",
         )
 
     await conn.execute(
@@ -735,7 +531,7 @@ async def batch_cartons(conn: AsyncConnection, batch_id: UUID) -> List[Dict[str,
     rows = await conn.execute(
         text(
             """
-            select i.id as invoice_id, i.invoice_number, i.sku, i.units, i.customer_name,
+            select i.id as invoice_id, i.invoice_number, i.customer_name,
                    pp.full_name as packed_by_name, pr.packed_at,
                    pr.out_scanned_at, op.full_name as out_scanned_by_name
               from packing_records pr
@@ -877,14 +673,12 @@ async def packing_productivity(
                    count(pr.id)::int as cartons_packed,
                    min(pr.packed_at) as first_carton,
                    max(pr.packed_at) as last_carton,
-                   sum(i.units)::int as units_packed,
                    round(
                      extract(epoch from (max(pr.packed_at) - min(pr.packed_at)))
                      / 60.0 / nullif(count(pr.id) - 1, 0), 1
                    ) as avg_minutes_per_carton
               from packing_records pr
               join profiles p on p.id = pr.packed_by
-              join invoices i on i.id = pr.invoice_id
              where (cast(:from_date as date) is null
                     or pr.packed_at::date >= cast(:from_date as date))
              group by p.full_name, p.employee_code
@@ -905,6 +699,7 @@ async def assign_invoice(
     conn: AsyncConnection,
     invoice_number: str,
     badge_code: str,
+    actor_id: str,
     note: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Assign a carton to a packer by scanning her badge card.
@@ -913,6 +708,10 @@ async def assign_invoice(
     has always been for — so this needs no relaxation of the rule in
     DECISIONS.md §CC2 that nobody can *look up* a badge code. Physical custody of
     the card is the control, exactly as it is when a packer presents her own.
+
+    Assigning now stands in for the old "verify" step (0036) — there is no
+    product/quantity confirmation left, so this is the one act that
+    establishes a second person before packing can happen.
 
     Every refusal below is also enforced by `fn_packing_assignment_guard`. These
     checks exist to produce the sentence the lead needs to read, not to be the
@@ -935,23 +734,14 @@ async def assign_invoice(
             http_status=409,
         )
 
-    if invoice["verified_at"] is None:
-        raise AppError(
-            f"Invoice {invoice['invoice_number']} has not been matched yet.",
-            code="control_point_failed",
-            http_status=409,
-            hint="Admin must scan the invoice and their badge first.",
-        )
-
     badge = await resolve_badge(conn, badge_code, ["packer"])
 
-    if str(badge["profile_id"]) == str(invoice["verified_by"]):
+    if str(badge["profile_id"]) == str(actor_id):
         raise AppError(
-            f"{badge['full_name']} matched this invoice and cannot also pack it "
-            "(CONTROL POINT 5).",
+            "You cannot assign this invoice to yourself (CONTROL POINT 5).",
             code="control_point_failed",
             http_status=409,
-            hint="Assign it to someone else.",
+            hint="Packing must be a second person. Assign it to someone else.",
         )
 
     await conn.execute(
@@ -969,22 +759,17 @@ async def assign_invoice(
         "invoice": await get_invoice(conn, invoice["invoice_id"]),
         "packing": state,
         "assigned_to": badge,
-        "message": (
-            f"{invoice['invoice_number']} assigned to {badge['full_name']} — "
-            f"{state['required_units']} product boxes to scan."
-        ),
+        "message": f"{invoice['invoice_number']} assigned to {badge['full_name']}.",
     }
 
 
 async def packing_state(conn: AsyncConnection, invoice_id: UUID) -> Dict[str, Any]:
-    """How far along this carton is: assigned to whom, how many boxes are in."""
+    """How far along this carton is: assigned to whom, packed or not."""
     row = (
         await conn.execute(
             text(
                 """
-                select invoice_id, invoice_number, sku, required_units, packed_units,
-                       remaining_units, ready_to_close, is_open,
-                       verified_by, verified_by_name,
+                select invoice_id, invoice_number, is_open,
                        assigned_to, assigned_to_name,
                        packed_by, packed_by_name, packed_at
                   from v_invoice_packing where invoice_id = :id
@@ -999,93 +784,13 @@ async def packing_state(conn: AsyncConnection, invoice_id: UUID) -> Dict[str, An
     return dict(row)
 
 
-async def scan_product_box(
-    conn: AsyncConnection, invoice_id: UUID, scan: ScanIn
-) -> Dict[str, Any]:
-    """Scan one product box into a carton.
-
-    The refusal path is deliberately the same as every other scanning step: the
-    scan is *recorded* with a reason rather than raised, because a rejected scan
-    is evidence and because a packing bench doing 200 of these an hour needs the
-    reject to be a line on the screen, not an exception.
-    """
-    state = await packing_state(conn, invoice_id)
-
-    if state["packed_at"] is not None:
-        raise AppError(
-            f"Invoice {state['invoice_number']} is already packed.",
-            code="already_packed",
-            http_status=409,
-        )
-
-    result = await scans.record_scan(conn, scan, "pack_unit", invoice_id=invoice_id)
-    after = await packing_state(conn, invoice_id)
-
-    result["packed_units"] = after["packed_units"]
-    result["required_units"] = after["required_units"]
-    result["remaining_units"] = after["remaining_units"]
-    result["ready_to_close"] = after["ready_to_close"]
-    return result
-
-
-async def matching_state(conn: AsyncConnection, invoice_id: UUID) -> Dict[str, Any]:
-    """How many units have been scanned to confirm product-in-hand at matching."""
-    row = (
-        await conn.execute(
-            text(
-                """
-                select invoice_id, invoice_number, sku, required_units, matched_units,
-                       remaining_units, ready_to_verify, is_open,
-                       verified_by, verified_by_name
-                  from v_invoice_matching where invoice_id = :id
-                """
-            ),
-            {"id": str(invoice_id)},
-        )
-    ).mappings().first()
-
-    if row is None:
-        raise AppError("That invoice does not exist.", code="not_found", http_status=404)
-    return dict(row)
-
-
-async def scan_matching_unit(
-    conn: AsyncConnection, invoice_id: UUID, scan: ScanIn
-) -> Dict[str, Any]:
-    """Scan one unit sticker to confirm product-in-hand before matching.
-
-    Additive to `scan_product_box` above (CG3) — a second, independent check at
-    an earlier step. Same refusal shape: a rejected scan is recorded with a
-    reason rather than raised.
-    """
-    state = await matching_state(conn, invoice_id)
-
-    if state["verified_by"] is not None:
-        raise AppError(
-            f"Invoice {state['invoice_number']} was already verified by "
-            f"{state['verified_by_name']}.",
-            code="already_verified",
-            http_status=409,
-        )
-
-    result = await scans.record_scan(conn, scan, "match_unit", invoice_id=invoice_id)
-    after = await matching_state(conn, invoice_id)
-
-    result["matched_units"] = after["matched_units"]
-    result["required_units"] = after["required_units"]
-    result["remaining_units"] = after["remaining_units"]
-    result["ready_to_verify"] = after["ready_to_verify"]
-    return result
-
-
 async def assigned_to_me(conn: AsyncConnection) -> List[Dict[str, Any]]:
     """The packer's own queue. Nobody else's work appears here."""
     rows = await conn.execute(
         text(
             """
-            select invoice_id, invoice_number, sku, required_units, packed_units,
-                   remaining_units, ready_to_close,
-                   assigned_to, assigned_to_name, verified_by_name
+            select invoice_id, invoice_number, is_open,
+                   assigned_to, assigned_to_name, packed_by, packed_by_name, packed_at
               from v_invoice_packing
              where assigned_to = auth.uid()
                and packed_at is null

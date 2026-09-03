@@ -14,7 +14,6 @@ import pytest
 from sqlalchemy import text
 
 from app.core.errors import AppError
-from app.services import packing as packing_service
 from app.services import stickers as sticker_service
 from tests.conftest import act_as, rejected
 from tests.test_packing import (  # noqa: F401 (people is a fixture)
@@ -31,71 +30,6 @@ pytestmark = pytest.mark.asyncio
 async def _carton_sticker(db, invoice_id, who):
     await act_as(db, who)
     return await sticker_service.issue_carton_sticker(db, invoice_id)
-
-
-async def _po_line(db):
-    return (
-        await db.execute(
-            text(
-                """
-                select pol.id, pol.sku from purchase_order_lines pol
-                  join purchase_orders po on po.id = pol.purchase_order_id
-                 where po.po_number = 'PO-2026-0001'
-                 order by pol.line_no limit 1
-                """
-            )
-        )
-    ).mappings().one()
-
-
-class TestInvoiceCreation:
-    """Admin books an invoice from the dashboard (`POST /invoices`)."""
-
-    async def test_admin_can_create_an_invoice(self, db, actors):
-        line = await _po_line(db)
-        number = f"INV-TEST-{uuid.uuid4().hex[:10].upper()}"
-
-        invoice = await packing_service.create_invoice(
-            db,
-            invoice_number=number,
-            purchase_order_line_id=line["id"],
-            units=3,
-            customer_name="Test Customer",
-        )
-
-        assert invoice["invoice_number"] == number
-        assert invoice["sku"] == line["sku"], "sku is derived from the PO line, never typed"
-        assert invoice["units"] == 3
-        assert invoice["customer_name"] == "Test Customer"
-
-    async def test_duplicate_invoice_number_is_refused(self, db, actors):
-        line = await _po_line(db)
-        number = f"INV-TEST-{uuid.uuid4().hex[:10].upper()}"
-
-        await packing_service.create_invoice(
-            db, invoice_number=number, purchase_order_line_id=line["id"], units=1, customer_name=None
-        )
-
-        with pytest.raises(AppError) as err:
-            await packing_service.create_invoice(
-                db,
-                invoice_number=number,
-                purchase_order_line_id=line["id"],
-                units=1,
-                customer_name=None,
-            )
-        assert err.value.code == "duplicate_invoice"
-
-    async def test_unknown_po_line_is_refused(self, db, actors):
-        with pytest.raises(AppError) as err:
-            await packing_service.create_invoice(
-                db,
-                invoice_number=f"INV-TEST-{uuid.uuid4().hex[:10].upper()}",
-                purchase_order_line_id=uuid.uuid4(),
-                units=1,
-                customer_name=None,
-            )
-        assert err.value.code == "unknown_po_line"
 
 
 class TestCartonStickerIssue:
@@ -220,53 +154,10 @@ class TestResolution:
         assert result["reject_reason"] == "wrong_sticker_type"
 
     async def test_a_voided_carton_sticker_is_refused(self, db, actors):
-        inv = await _new_invoice(db, units=1)
+        inv = await _new_invoice(db)
         sticker = await _carton_sticker(db, inv["id"], actors["admin"])
         await _carton_sticker(db, inv["id"], actors["admin"])  # reissue voids `sticker`
 
         result = await _out_scan(db, sticker["code"], actors["admin"])
         assert result["accepted"] is False
         assert result["reject_reason"] == "sticker_void"
-
-
-class TestMatchingResolution:
-    """The Python-level lookup Matching uses, which never touches scan_events."""
-
-    async def test_lookup_for_matching_resolves_a_carton_sticker(self, db, actors):
-        inv = await _new_invoice(db, units=1)
-        sticker = await _carton_sticker(db, inv["id"], actors["admin"])
-
-        found = await packing_service.lookup_for_matching(db, sticker["code"])
-        assert str(found["invoice_id"]) == str(inv["id"])
-
-    async def test_lookup_for_matching_still_accepts_the_raw_number(self, db, actors):
-        inv = await _new_invoice(db, units=1)
-        found = await packing_service.lookup_for_matching(db, inv["invoice_number"])
-        assert str(found["invoice_id"]) == str(inv["id"])
-
-    async def test_lookup_refuses_a_unit_sticker_with_a_specific_reason(self, db, actors, gate_entry):
-        from tests.test_control_points import _issue_boxes
-
-        boxes = await _issue_boxes(db, gate_entry["id"], actors)
-        unit_code = (
-            await db.execute(
-                text(
-                    """
-                    insert into stickers
-                      (code, sticker_type, gate_entry_id, sheet_id, box_id, sequence_no, status)
-                    select 'UNT-' || upper(substr(md5(random()::text), 1, 8)),
-                           'unit', b.gate_entry_id,
-                           (select id from sticker_sheets where gate_entry_id = b.gate_entry_id
-                              and sticker_type = 'box' limit 1),
-                           b.id, 999, 'applied'
-                      from boxes b where b.id = :id
-                    returning code
-                    """
-                ),
-                {"id": boxes[0]},
-            )
-        ).scalar_one()
-
-        with pytest.raises(AppError) as err:
-            await packing_service.lookup_for_matching(db, unit_code)
-        assert err.value.code == "wrong_sticker_type"

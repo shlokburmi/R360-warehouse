@@ -491,7 +491,7 @@ function PickupDetail({ pickupId, onBack }: { pickupId: string; onBack: () => vo
               <div className="min-w-0">
                 <p className="font-bold">{carton.invoice_number}</p>
                 <p className="truncate text-sm text-slate-500 dark:text-slate-400">
-                  {carton.sku} × {carton.units} · {carton.customer_name}
+                  {carton.customer_name}
                 </p>
               </div>
               {carton.exit_scanned_at ? (
