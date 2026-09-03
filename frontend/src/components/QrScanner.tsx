@@ -95,10 +95,15 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
     //
     // The first asks for the rear camera at a resolution high enough to read a
     // small code at arm's length without dropping the frame rate — right for
-    // the phone or tablet this is actually used on.
+    // the phone or tablet this is actually used on. `ideal` is a soft
+    // preference, not a requirement, so asking for more than a camera can do
+    // never throws — it just negotiates down to whatever the camera actually
+    // offers, same as it always did at the lower number. A sheet with several
+    // small unit stickers packed close together needs more pixels per code
+    // than a single box sticker at the same distance to resolve at all.
     //
     // The second asks for nothing at all. A laptop has only a front camera and
-    // may not offer 1280x720 on it; depending on the browser that surfaces as
+    // may not offer this on it; depending on the browser that surfaces as
     // an OverconstrainedError, or worse, as a stream that resolves and then
     // never produces a frame. Retrying bare means the desktop case degrades to
     // "the wrong camera, working" instead of "no camera", which matters because
@@ -107,8 +112,8 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
       {
         video: {
           facingMode: { ideal: 'environment' },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
         },
       },
       { video: true },
