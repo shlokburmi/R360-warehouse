@@ -61,13 +61,25 @@ export function useScanning(contextId: string, scanType: ScanContext) {
   const settledCodes = useRef<Set<string>>(new Set())
 
   const push = useCallback((item: Omit<ScanFeedback, 'id' | 'at'>) => {
+    const id = crypto.randomUUID()
     setFeedback((current) => [
-      { ...item, id: crypto.randomUUID(), at: Date.now() },
+      { ...item, id, at: Date.now() },
       // Keep a short visible history. Enough to notice a run of rejects, not so
       // much that the screen becomes a log to read.
       ...current.slice(0, 7),
     ])
+    return id
   }, [])
+
+  // Upgrades a row already on screen in place, rather than pushing a second
+  // one — the operator scanned once, so there should be one row for it, not
+  // a "Scanning…" line immediately followed by its own answer.
+  const settle = useCallback(
+    (id: string, patch: Pick<ScanFeedback, 'tone' | 'message'>) => {
+      setFeedback((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)))
+    },
+    [],
+  )
 
   const submit = useCallback(
     async (code: string, disposition?: 'stock' | 'quarantine') => {
@@ -84,6 +96,12 @@ export function useScanning(contextId: string, scanType: ScanContext) {
       const clientEventId = newScanId()
       const scannedAt = new Date().toISOString()
       setBusy(true)
+
+      // Visible the instant the code is recognised, not after a round trip —
+      // the network is the slow part of this loop, not anything client-side,
+      // and an operator scanning fast needs to see *something* land for each
+      // one immediately or it reads as the scanner having missed it.
+      const pendingId = push({ code, tone: 'warn', message: 'Scanning…' })
 
       try {
         const endpoint =
@@ -108,8 +126,7 @@ export function useScanning(contextId: string, scanType: ScanContext) {
           disposition,
         })
 
-        push({
-          code,
+        settle(pendingId, {
           tone: result.accepted ? 'ok' : result.duplicate ? 'warn' : 'bad',
           message: result.message,
         })
@@ -143,12 +160,11 @@ export function useScanning(contextId: string, scanType: ScanContext) {
             entry_id: entryId,
             attempts: 0,
           })
-          push({ code, tone: 'warn', message: 'Saved on device — will sync when online' })
+          settle(pendingId, { tone: 'warn', message: 'Saved on device — will sync when online' })
           return null
         }
 
-        push({
-          code,
+        settle(pendingId, {
           tone: 'bad',
           message: error instanceof Error ? error.message : 'Scan failed',
         })
@@ -157,7 +173,7 @@ export function useScanning(contextId: string, scanType: ScanContext) {
         setBusy(false)
       }
     },
-    [entryId, scanType, push, queryClient],
+    [entryId, scanType, push, settle, queryClient],
   )
 
   return { feedback, submit, busy }
