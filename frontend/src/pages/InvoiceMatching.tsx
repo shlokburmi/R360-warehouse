@@ -4,28 +4,55 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, get, post } from '@/lib/api'
 import { useErrorText } from '@/hooks/useErrorText'
 import { useScanning } from '@/hooks/useScanning'
-import { CodeCapture } from '@/components/CodeCapture'
 import { BadgeScan } from '@/components/BadgeScan'
 import { Scanner } from '@/components/Scanner'
 import { OrderNoScanner, type OrderNoReading } from '@/components/OrderNoScanner'
-import { Banner, Card, ProgressCounter } from '@/components/ui'
-import type { AttributionResult, Invoice, MatchingState, OrderNoResult } from '@/types'
+import { Banner, Card, Field, ProgressCounter } from '@/components/ui'
+import type {
+  AttributionResult,
+  Invoice,
+  MatchingState,
+  PurchaseOrder,
+  PurchaseOrderLine,
+} from '@/types'
 
 /**
- * PRD §5.4/§7 — Invoice matching (Invoice Matching operators).
+ * PRD §5.4/§7 — Invoice matching, done by whichever Packer physically has the
+ * invoice (0035_packer_invoice_creation.sql — this used to be a separate
+ * Invoice Matcher role's job; a Packer now does both this and the packing
+ * step, on different invoices, since CONTROL POINT 5 is enforced by identity
+ * — verifier != packer — not by which role holds the scanner).
  * CONTROL POINT 5, first half.
  *
- * The physical process is: take an invoice, find the product, put the product
- * on top of the invoice, scan every unit sticker to confirm it, scan your
- * badge. The screen follows exactly that order and shows one step at a time —
- * this is a station where someone is holding a box in one hand.
+ * The physical process is: take the printed invoice, scan it (OCR reads the
+ * Order No — there is no manual invoice-number entry anywhere in this
+ * dashboard, and no barcode to scan; Admin's printing happens entirely
+ * outside this app), find the product, put it on top of the invoice, scan
+ * every unit sticker to confirm it, scan your own badge. The screen follows
+ * exactly that order and shows one step at a time — this is a station where
+ * someone is holding a box in one hand.
  *
  * The unit scan (`scan_units`) is additive to the equivalent check at packing
  * (CG3, DECISIONS.md) — a second, independent product-in-hand confirmation,
  * required before the badge scan can succeed (fn_matching_units_complete,
  * 0024_matching_unit_scan.sql).
  */
-type Step = 'scan_invoice' | 'read_order_no' | 'scan_units' | 'scan_badge' | 'done'
+type Step =
+  | 'scan_invoice'
+  | 'create_from_order_no'
+  | 'read_order_no'
+  | 'scan_units'
+  | 'scan_badge'
+  | 'done'
+
+/** An Order No read that matched no existing invoice — held while the
+ * operator fills in PO/product/units to create one from it. */
+type PendingCreate = {
+  orderNo: string
+  rawText: string
+  confidence: number | null
+  wasCorrected: boolean
+}
 
 export function InvoiceMatchingPage() {
   const { t } = useTranslation()
@@ -36,23 +63,16 @@ export function InvoiceMatchingPage() {
   const [invoice, setInvoice] = useState<Invoice | null>(null)
   const [error, setError] = useState<ApiError | null>(null)
   const [result, setResult] = useState<AttributionResult | null>(null)
-  /**
-   * An Order No read off an uploaded file that has no invoice yet.
-   *
-   * Held rather than discarded: the read succeeded, and throwing it away would
-   * make the operator read the same page twice. As soon as the invoice is
-   * identified by any route, this is written to it and step 2 is skipped.
-   */
-  const [pendingOrderNo, setPendingOrderNo] = useState<string | null>(null)
-  /** Progress the operator should see that is not a failure. */
-  const [notice, setNotice] = useState<string | null>(null)
+  const [pendingCreate, setPendingCreate] = useState<PendingCreate | null>(null)
+  /** Why the last OCR attempt didn't produce anything to look up. */
+  const [scanNotice, setScanNotice] = useState<string | null>(null)
 
   function restart() {
     setStep('scan_invoice')
     setInvoice(null)
     setError(null)
-    setPendingOrderNo(null)
-    setNotice(null)
+    setPendingCreate(null)
+    setScanNotice(null)
   }
 
   const invoiceId = invoice?.invoice_id ?? ''
@@ -76,44 +96,19 @@ export function InvoiceMatchingPage() {
     }
   }, [step, matching.data?.ready_to_verify])
 
-  /**
-   * Resolve an invoice from whichever identifier the operator produced.
-   *
-   * A camera scan gives an invoice number; an uploaded challan gives an Order No.
-   * Both land here so the rest of the flow does not care which route was taken.
-   */
-  async function lookup(value: string, by: 'invoice_number' | 'order_no' = 'invoice_number') {
+  /** Resolve an invoice already on file by its (scanned-Order-No-derived) number. */
+  async function lookupByNumber(invoiceNumber: string) {
     setError(null)
     try {
-      const found = await get<Invoice>(`/invoices/lookup?${by}=${encodeURIComponent(value)}`)
-      setResult(null)
-
-      // A read from an uploaded file that had no invoice yet: now that one is
-      // identified, write it. This is the whole point of holding it — the page was
-      // already read successfully, so asking the operator to read it again on
-      // step 2 would be busywork.
-      if (pendingOrderNo && !found.order_no) {
-        const saved = await post<OrderNoResult>('/invoices/order-no', {
-          invoice_number: found.invoice_number,
-          order_no: pendingOrderNo,
-          source: 'ocr',
-          raw_text: null,
-          confidence: null,
-          was_corrected: false,
-        })
-        setInvoice(saved.invoice)
-        setNotice(t('matching.order_no_saved', { value: pendingOrderNo }))
-        setPendingOrderNo(null)
-        setStep('scan_units')
-        void queryClient.invalidateQueries({ queryKey: ['invoices'] })
-        return
-      }
-
+      const found = await get<Invoice>(
+        `/invoices/lookup?invoice_number=${encodeURIComponent(invoiceNumber)}`,
+      )
       setInvoice(found)
-      setNotice(null)
-      // An Order No already on file is not read again. Re-reading it could only
-      // either agree (no gain) or disagree (a conflict the server refuses), so
-      // the second scan costs the matcher time to buy nothing.
+      setResult(null)
+      setScanNotice(null)
+      // A legacy invoice from before this feature could still lack an
+      // Order No — everything created via the scan-to-create flow always has
+      // one, so this branch only matters for those older rows.
       setStep(found.order_no ? 'scan_units' : 'read_order_no')
     } catch (err) {
       setError(err as ApiError)
@@ -121,31 +116,60 @@ export function InvoiceMatchingPage() {
   }
 
   /**
-   * An Order No came off an uploaded file. Try to resolve the invoice from it.
-   *
-   * If some earlier import already booked an invoice against this order, this
-   * finishes step 1 outright. If not — the ordinary case while `invoices.order_no`
-   * is only ever populated by this feature — the value is held and the operator is
-   * asked for the invoice number, which is a smaller ask than re-reading the page.
+   * The Order No just came off a camera or uploaded photo. Find the invoice
+   * it belongs to, or — the ordinary case, since every invoice starts life
+   * as exactly this scan — start creating one from it.
    */
-  async function orderNoFromFile(orderNo: string) {
+  async function handleOrderNoScan(reading: OrderNoReading) {
     setError(null)
-    setPendingOrderNo(orderNo)
+    if (!reading.order_no) {
+      setScanNotice(t('matching.ocr_miss'))
+      return
+    }
+    setScanNotice(null)
     try {
       const found = await get<Invoice>(
-        `/invoices/lookup?order_no=${encodeURIComponent(orderNo)}`,
+        `/invoices/lookup?order_no=${encodeURIComponent(reading.order_no)}`,
       )
       setInvoice(found)
       setResult(null)
-      setPendingOrderNo(null)
-      setNotice(null)
       setStep('scan_units')
     } catch {
-      // Deliberately not surfaced as an error. Nothing went wrong: the file was
-      // read, and the only missing piece is which invoice it belongs to.
-      setNotice(t('matching.now_identify'))
+      // Not a failure — this Order No simply has no invoice yet, which is the
+      // normal case. Move to creating one from exactly what was just read.
+      setPendingCreate({
+        orderNo: reading.order_no,
+        rawText: reading.raw_text,
+        confidence: reading.confidence,
+        wasCorrected: reading.was_corrected,
+      })
+      setStep('create_from_order_no')
     }
   }
+
+  const createInvoice = useMutation({
+    mutationFn: (body: {
+      purchase_order_line_id: string
+      units: number
+      customer_name: string | null
+    }) =>
+      post<Invoice>('/invoices/from-order-no', {
+        order_no: pendingCreate!.orderNo,
+        raw_text: pendingCreate!.rawText,
+        confidence: pendingCreate!.confidence,
+        was_corrected: pendingCreate!.wasCorrected,
+        source: 'ocr',
+        ...body,
+      }),
+    onSuccess: (created) => {
+      setError(null)
+      setInvoice(created)
+      setPendingCreate(null)
+      setStep('scan_units')
+      void queryClient.invalidateQueries({ queryKey: ['invoices'] })
+    },
+    onError: (err) => setError(err as ApiError),
+  })
 
   /**
    * The Order No is metadata, not a control point, so a failure here must not
@@ -155,7 +179,7 @@ export function InvoiceMatchingPage() {
    */
   const saveOrderNo = useMutation({
     mutationFn: (reading: OrderNoReading) =>
-      post<OrderNoResult>('/invoices/order-no', {
+      post<{ invoice: Invoice }>('/invoices/order-no', {
         invoice_number: invoice?.invoice_number,
         ...reading,
       }),
@@ -195,20 +219,25 @@ export function InvoiceMatchingPage() {
         </Banner>
       )}
 
-      {notice && (
-        <Banner tone="info" title={notice}>
-          {pendingOrderNo && t('matching.order_no_read', { value: pendingOrderNo })}
-        </Banner>
-      )}
-
       {step === 'scan_invoice' && (
         <Card title={t('matching.step1')} subtitle={t('matching.step1_hint')}>
-          <CodeCapture
-            onInvoiceNumber={(code) => void lookup(code)}
-            onOrderNo={(orderNo) => void orderNoFromFile(orderNo)}
-          />
-          <ManualInvoice onSubmit={(value) => void lookup(value)} />
+          <OrderNoScanner busy={false} onConfirm={(reading) => void handleOrderNoScan(reading)} />
+          {scanNotice && (
+            <p className="mt-2 text-sm font-semibold text-warn dark:text-warn-dark">
+              {scanNotice}
+            </p>
+          )}
+          <ManualInvoice onSubmit={(value) => void lookupByNumber(value)} />
         </Card>
+      )}
+
+      {step === 'create_from_order_no' && pendingCreate && (
+        <CreateInvoiceCard
+          orderNo={pendingCreate.orderNo}
+          pending={createInvoice.isPending}
+          onCreate={(body) => createInvoice.mutate(body)}
+          onCancel={restart}
+        />
       )}
 
       {step === 'read_order_no' && invoice && (
@@ -343,7 +372,7 @@ function ManualInvoice({ onSubmit }: { onSubmit: (value: string) => void }) {
     >
       <input
         className="input font-mono uppercase"
-        placeholder="INV-2026-0001"
+        placeholder="CP002458380_0001"
         value={value}
         onChange={(event) => setValue(event.target.value.toUpperCase())}
         autoCapitalize="characters"
@@ -352,8 +381,133 @@ function ManualInvoice({ onSubmit }: { onSubmit: (value: string) => void }) {
         aria-label={t('matching.invoice_number')}
       />
       <button type="submit" className="btn-primary" disabled={value.trim().length < 3}>
-        Find
+        {t('matching.find')}
       </button>
     </form>
+  )
+}
+
+/**
+ * The rest of what an invoice needs, once the Order No has been scanned: the
+ * PO/product it's against and how many units. These stay manually picked —
+ * unlike the Order No, there's no fixed format OCR could lock onto for them.
+ */
+function CreateInvoiceCard({
+  orderNo,
+  pending,
+  onCreate,
+  onCancel,
+}: {
+  orderNo: string
+  pending: boolean
+  onCreate: (body: {
+    purchase_order_line_id: string
+    units: number
+    customer_name: string | null
+  }) => void
+  onCancel: () => void
+}) {
+  const { t } = useTranslation()
+  const [poId, setPoId] = useState('')
+  const [lineId, setLineId] = useState('')
+  const [units, setUnits] = useState('')
+  const [customerName, setCustomerName] = useState('')
+
+  const purchaseOrders = useQuery({
+    queryKey: ['purchase-orders', 'open'],
+    queryFn: () => get<PurchaseOrder[]>('/purchase-orders?open_only=false'),
+  })
+
+  const lines = useQuery({
+    queryKey: ['po-lines', poId],
+    queryFn: () => get<PurchaseOrderLine[]>(`/purchase-orders/${poId}/lines`),
+    enabled: Boolean(poId),
+  })
+
+  const selectedLine = lines.data?.find((l) => l.id === lineId)
+
+  return (
+    <Card title={t('matching.new_invoice_title')} subtitle={t('matching.new_invoice_hint')}>
+      <p className="mb-3 font-mono text-lg font-bold tracking-wide">{orderNo}</p>
+
+      <Field label={t('invoices.po')} required>
+        <select
+          className="input"
+          value={poId}
+          onChange={(event) => {
+            setPoId(event.target.value)
+            setLineId('')
+          }}
+        >
+          <option value="">{t('invoices.choose_po')}</option>
+          {purchaseOrders.data?.map((po) => (
+            <option key={po.id} value={po.id}>
+              {po.po_number} — {po.vendor_name}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      {poId && (
+        <Field label={t('invoices.product')} required>
+          <select className="input" value={lineId} onChange={(event) => setLineId(event.target.value)}>
+            <option value="">{t('invoices.choose_product')}</option>
+            {lines.data?.map((line) => (
+              <option key={line.id} value={line.id}>
+                {line.sku} — {line.description ?? ''}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+
+      <Field label={t('invoices.units')} required>
+        <input
+          className="input"
+          type="number"
+          inputMode="numeric"
+          min={1}
+          value={units}
+          onChange={(event) => setUnits(event.target.value)}
+        />
+      </Field>
+
+      <Field label={t('invoices.customer')}>
+        <input
+          className="input"
+          value={customerName}
+          onChange={(event) => setCustomerName(event.target.value)}
+        />
+      </Field>
+
+      {selectedLine && (
+        <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
+          {t('invoices.received_so_far', {
+            received: selectedLine.received_units,
+            expected: selectedLine.expected_units,
+          })}
+        </p>
+      )}
+
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <button
+          type="button"
+          className="btn-primary flex-1"
+          disabled={!lineId || !units || Number(units) < 1 || pending}
+          onClick={() =>
+            onCreate({
+              purchase_order_line_id: lineId,
+              units: Number(units),
+              customer_name: customerName.trim() || null,
+            })
+          }
+        >
+          {pending ? t('invoices.creating') : t('invoices.create')}
+        </button>
+        <button type="button" className="btn-ghost flex-1" onClick={onCancel} disabled={pending}>
+          {t('common.cancel')}
+        </button>
+      </div>
+    </Card>
   )
 }

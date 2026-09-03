@@ -12,7 +12,6 @@ from app.api.deps import (
     CurrentUser,
     get_current_user,
     get_db,
-    require_invoice_matcher,
     require_ops_manager,
     require_roles,
 )
@@ -24,8 +23,12 @@ from app.services import stickers as sticker_service
 
 router = APIRouter(tags=["packing"])
 
-matcher_or_ops = require_invoice_matcher
 packer_or_ops = require_roles("packer")
+# Invoice creation and matching are done by whichever of these two roles is
+# physically holding the invoice — a Packer creating it from her own OCR scan
+# (this session's change), or an Invoice Matcher doing the same job under the
+# older role split. Both still union with admin via require_roles.
+matcher_or_ops = require_roles("packer", "invoice_matcher")
 
 
 # ---------------------------------------------------------------------------
@@ -74,13 +77,30 @@ class InvoiceOut(BaseModel):
     suggested_locations: List[StockHint] = Field(default_factory=list)
 
 
-class InvoiceCreate(BaseModel):
-    invoice_number: str = Field(min_length=3, max_length=60)
+class InvoiceFromOrderNo(BaseModel):
+    """A Packer creating an invoice from the Order No she just OCR-scanned off
+    the physical invoice. There is no typed invoice number — `order_no`
+    becomes it, so the rest of the system keys off exactly what the camera
+    read.
+
+    The read-provenance fields mirror `OrderNoIn`: the engine's raw output,
+    confidence and whether the operator corrected it before confirming are
+    kept for the same reason 0015_order_no_ocr.sql keeps them for the
+    attach-to-existing-invoice path — "the OCR misread it" is only a usable
+    answer six months from now if the evidence was recorded at the time.
+    """
+
+    order_no: str = Field(min_length=3, max_length=40)
     purchase_order_line_id: UUID
     units: int = Field(gt=0)
     customer_name: Optional[str] = Field(default=None, max_length=120)
 
-    @field_validator("invoice_number")
+    source: Literal["ocr", "manual"] = "ocr"
+    raw_text: Optional[str] = Field(default=None, max_length=2000)
+    confidence: Optional[float] = Field(default=None, ge=0, le=100)
+    was_corrected: bool = False
+
+    @field_validator("order_no")
     @classmethod
     def _upper(cls, v: str) -> str:
         return v.strip().upper()
@@ -279,7 +299,11 @@ async def resolve_badge(
     if expect == "any":
         expected = ["invoice_matcher", "packer", "admin"]
     elif expect == "matcher":
-        expected = ["invoice_matcher", "admin"]
+        # A Packer verifying her own invoice scan counts as "matcher" here too
+        # (see fn_badge_holder_guard's invoice_verifications allowance) — a
+        # Packer's own badge must resolve the same way an Invoice Matcher's
+        # does for this same step.
+        expected = ["invoice_matcher", "packer", "admin"]
     else:
         expected = [expect]
     return await packing_service.resolve_badge(conn, payload.badge_code, expected)
@@ -290,19 +314,28 @@ async def resolve_badge(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/invoices", response_model=InvoiceOut, status_code=status.HTTP_201_CREATED)
-async def create_invoice(
-    payload: InvoiceCreate,
+@router.post(
+    "/invoices/from-order-no", response_model=InvoiceOut, status_code=status.HTTP_201_CREATED
+)
+async def create_invoice_from_order_no(
+    payload: InvoiceFromOrderNo,
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_ops_manager),
+    user: CurrentUser = Depends(matcher_or_ops),
 ):
-    """Ops books an invoice against a received PO line, from the dashboard."""
-    return await packing_service.create_invoice(
+    """A Packer books an invoice from the Order No she just scanned off the
+    physical invoice — there is no manual invoice-number entry anywhere in
+    this dashboard."""
+    return await packing_service.create_invoice_from_order_no(
         conn,
-        invoice_number=payload.invoice_number,
+        order_no=payload.order_no,
         purchase_order_line_id=payload.purchase_order_line_id,
         units=payload.units,
         customer_name=payload.customer_name,
+        actor_id=user.id,
+        source=payload.source,
+        raw_text=payload.raw_text,
+        confidence=payload.confidence,
+        was_corrected=payload.was_corrected,
     )
 
 

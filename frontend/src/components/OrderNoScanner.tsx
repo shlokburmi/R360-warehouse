@@ -67,7 +67,9 @@ export type OrderNoReading = {
 }
 
 type Props = {
-  invoiceNumber: string
+  /** Omitted when this read is creating a brand new invoice rather than being
+   * attached to one that already exists. */
+  invoiceNumber?: string
   onConfirm: (reading: OrderNoReading) => void
   busy?: boolean
 }
@@ -126,7 +128,14 @@ export function OrderNoScanner({ invoiceNumber, onConfirm, busy = false }: Props
       // needs roughly twice the pixels per character that a Code 128 bar needs,
       // and 1280x720 across a full A4 challan leaves the Order No about 11px
       // tall — under what Tesseract reads reliably.
-      { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } },
+      // `exact`, not `ideal`: a phone or tablet always has a rear camera, and
+      // the front one is never the right choice for reading paper — `ideal`
+      // is only a preference the browser can (and on some devices does)
+      // ignore. `exact` throws OverconstrainedError instead of silently
+      // picking the front camera, which is exactly what should happen: the
+      // bare `{ video: true }` fallback below still catches a laptop with
+      // only a front camera.
+      { video: { facingMode: { exact: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } },
       { video: true },
     ]
 
@@ -445,7 +454,9 @@ export function OrderNoScanner({ invoiceNumber, onConfirm, busy = false }: Props
           )}
 
           <label className="label" htmlFor="order-no">
-            {t('orderno.field_label', { invoice: invoiceNumber })}
+            {invoiceNumber
+              ? t('orderno.field_label', { invoice: invoiceNumber })
+              : t('orderno.field_label_new')}
           </label>
           <input
             id="order-no"

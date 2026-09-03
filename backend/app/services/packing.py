@@ -106,22 +106,50 @@ _INVOICE_SELECT = """
 """
 
 
-async def create_invoice(
+async def create_invoice_from_order_no(
     conn: AsyncConnection,
     *,
-    invoice_number: str,
+    order_no: str,
     purchase_order_line_id: UUID,
     units: int,
     customer_name: Optional[str],
+    actor_id: str,
+    source: str = "ocr",
+    raw_text: Optional[str] = None,
+    confidence: Optional[float] = None,
+    was_corrected: bool = False,
 ) -> Dict[str, Any]:
-    """Admin books an invoice against a received PO line (PRD §5.4).
+    """A Packer books an invoice from the Order No she just OCR-scanned off the
+    physical invoice (PRD §5.4). There is no separate typed invoice number —
+    the scanned Order No fills both `invoice_number` and `order_no`, so the
+    rest of the system (matching, packing, out-scan) keys off exactly the
+    value the camera read, unchanged.
 
     `sku` is deliberately not a caller-supplied field — it is derived from the
     PO line, the same reasoning as CG3's sticker-knows-its-own-SKU check: a
     typed SKU can disagree with the line it is booked against, and a derived
     one cannot.
+
+    `order_no` is not unique in the schema (a re-dispatch can legitimately
+    share one — see 0015_order_no_ocr.sql), but `invoice_number` is
+    required-unique, so scanning the same Order No twice surfaces the
+    existing `duplicate_invoice` conflict rather than silently creating a
+    second row.
+
+    The `raw_text`/`confidence`/`was_corrected` provenance is logged into
+    `order_no_scans` the same way `record_order_no` logs it for the
+    attach-to-existing-invoice path — this is the first read of this Order
+    No, not a later one, but the audit reasoning (0015: "the OCR misread it"
+    needs to be a checkable claim) applies identically here.
     """
-    invoice_number = invoice_number.strip().upper()
+    order_no = order_no.strip().upper()
+    if not ORDER_NO_RE.match(order_no):
+        raise AppError(
+            f"{order_no} is not a valid Order No.",
+            code="bad_order_no",
+            http_status=422,
+            hint=ORDER_NO_HINT,
+        )
 
     line = (
         await conn.execute(
@@ -140,15 +168,16 @@ async def create_invoice(
     existing = (
         await conn.execute(
             text("select 1 from invoices where upper(invoice_number) = :num"),
-            {"num": invoice_number},
+            {"num": order_no},
         )
     ).first()
 
     if existing is not None:
         raise AppError(
-            f"Invoice {invoice_number} already exists.",
+            f"Invoice {order_no} already exists.",
             code="duplicate_invoice",
             http_status=409,
+            hint="Look it up instead of creating it again.",
         )
 
     invoice_id = (
@@ -156,13 +185,13 @@ async def create_invoice(
             text(
                 """
                 insert into invoices
-                  (invoice_number, purchase_order_line_id, sku, units, customer_name)
-                values (:num, :line_id, :sku, :units, :customer)
+                  (invoice_number, order_no, purchase_order_line_id, sku, units, customer_name)
+                values (:num, :num, :line_id, :sku, :units, :customer)
                 returning id
                 """
             ),
             {
-                "num": invoice_number,
+                "num": order_no,
                 "line_id": str(line["id"]),
                 "sku": line["sku"],
                 "units": units,
@@ -170,6 +199,27 @@ async def create_invoice(
             },
         )
     ).scalar_one()
+
+    await conn.execute(
+        text(
+            """
+            insert into order_no_scans
+                (invoice_id, raw_text, parsed_order_no, confidence, source, was_corrected,
+                 scanned_by)
+            values
+                (:invoice_id, :raw_text, :parsed, :confidence, :source, :was_corrected, :who)
+            """
+        ),
+        {
+            "invoice_id": str(invoice_id),
+            "raw_text": raw_text,
+            "parsed": order_no,
+            "confidence": confidence,
+            "source": source,
+            "was_corrected": was_corrected,
+            "who": actor_id,
+        },
+    )
 
     return await get_invoice(conn, invoice_id)
 
@@ -466,7 +516,7 @@ async def verify_invoice(
     for its own units-complete check.
     """
     invoice = await lookup_for_matching(conn, invoice_number)
-    badge = await resolve_badge(conn, badge_code, ["invoice_matcher", "admin"])
+    badge = await resolve_badge(conn, badge_code, ["invoice_matcher", "packer", "admin"])
 
     await conn.execute(
         text(

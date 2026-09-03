@@ -17,7 +17,6 @@ import { ExceptionsPage } from '@/pages/Exceptions'
 import { ReconciliationPage } from '@/pages/Reconciliation'
 import { PutawayPage } from '@/pages/Putaway'
 import { InvoiceMatchingPage } from '@/pages/InvoiceMatching'
-import { InvoicesPage } from '@/pages/Invoices'
 import { PackingPage } from '@/pages/Packing'
 import { BatchesPage } from '@/pages/Batches'
 import { StockPage } from '@/pages/Stock'
@@ -183,14 +182,6 @@ function Shell() {
         element={
           <Protected page="stock">
             <StockPage />
-          </Protected>
-        }
-      />
-      <Route
-        path="/invoices"
-        element={
-          <Protected page="invoices">
-            <InvoicesPage />
           </Protected>
         }
       />

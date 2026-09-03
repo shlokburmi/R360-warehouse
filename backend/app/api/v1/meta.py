@@ -54,9 +54,13 @@ PAGE_ACCESS: Dict[str, List[str]] = {
     # Admin-only per DECISIONS.md §CE1/§CH1; 0033_ops_manager_staff_admin.sql
     # reverses that specifically, knowingly reopening the fraud vector those
     # sections describe. Badge issue/revoke and audit history stay Admin-only.
+    #
+    # "invoices" was removed here — there is no more manual invoice entry
+    # anywhere in the dashboard. Invoices are only ever created by a Packer
+    # scanning the physical invoice (0035_packer_invoice_creation.sql).
     "ops_manager": [
         "dashboard", "approvals", "stickers", "exceptions", "reports",
-        "gate-entry", "pickup", "invoices", "batches", "loading",
+        "gate-entry", "pickup", "batches", "loading",
         # Issuing box/unit sticker sheets is require_ops_manager-gated
         # (warehouse.py generate_box_stickers/generate_unit_stickers) — the
         # nav needs to actually reach the page that action lives on.
@@ -75,8 +79,12 @@ PAGE_ACCESS: Dict[str, List[str]] = {
     # packing_assignments_insert now names invoice_matcher explicitly.
     "invoice_matcher": ["exceptions", "invoice-matching", "packing"],
     # Packers apply and scan both box and unit stickers at intake, in addition
-    # to their outbound packing job.
-    "packer": ["box-counting", "unit-scanning", "exceptions", "packing"],
+    # to their outbound packing job. "invoice-matching" was added here
+    # (0035_packer_invoice_creation.sql): a Packer now scans the physical
+    # invoice herself (OCR reads the Order No, creating it) and hands the
+    # carton to a different packing lady, rather than a separate Invoice
+    # Matcher doing that step.
+    "packer": ["box-counting", "unit-scanning", "exceptions", "packing", "invoice-matching"],
     # Admin's actual real-world use here is oversight — approve/decline and
     # track activity/logs — not hands-on station work. The backend still
     # accepts admin on every operational endpoint (require_roles always

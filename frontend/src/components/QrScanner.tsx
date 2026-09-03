@@ -110,9 +110,16 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
     // "the wrong camera, working" instead of "no camera", which matters because
     // desktop is where this gets demonstrated and tested.
     const attempts: MediaStreamConstraints[] = [
+      // `exact`, not `ideal`: a phone or tablet always has a rear camera, and
+      // the front one is never the right choice for scanning a sticker —
+      // `ideal` is only a preference the browser can (and on some devices
+      // does) ignore. `exact` throws OverconstrainedError instead of
+      // silently picking the front camera, which is exactly what should
+      // happen: the bare `{ video: true }` fallback below still catches a
+      // laptop with only a front camera.
       {
         video: {
-          facingMode: { ideal: 'environment' },
+          facingMode: { exact: 'environment' },
           width: { ideal: 1920 },
           height: { ideal: 1080 },
         },
