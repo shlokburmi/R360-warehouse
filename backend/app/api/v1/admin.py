@@ -7,8 +7,9 @@ Manager who can create accounts could manufacture the second person CONTROL
 POINT 5 requires. That risk is accepted knowingly here; see the migration
 0033_ops_manager_staff_admin.sql for the record of the decision.
 
-Badge issue/revoke and account history stay Admin-only — not asked for, and
-issuing a badge is the sharper edge of the same fraud vector (a working badge
+Badge issue/revoke, password reset, and account history stay Admin-only — not
+asked for, and both badge issuance and setting someone's login credential are
+the sharper edge of the same fraud vector (a working badge or a working login
 under a fabricated identity, not just the identity itself).
 """
 
@@ -23,6 +24,7 @@ from app.core.config import Settings, get_settings
 from app.schemas.admin import (
     AdminMeta,
     BadgeIssued,
+    PasswordReset,
     StaffCreate,
     StaffCreated,
     StaffOut,
@@ -72,6 +74,18 @@ async def update_staff(
     user: CurrentUser = Depends(require_ops_manager),
 ):
     return await admin_service.update_staff(conn, UUID(user.id), profile_id, payload)
+
+
+@router.post("/staff/{profile_id}/reset-password", response_model=PasswordReset)
+async def reset_password(
+    profile_id: UUID,
+    conn: AsyncConnection = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    user: CurrentUser = Depends(require_admin),
+):
+    """Set a new temporary password, shown once. Admin-only — Ops Manager's
+    staff CRUD (0033) does not extend to login credentials."""
+    return await admin_service.reset_password(conn, settings, profile_id)
 
 
 @router.delete("/staff/{profile_id}", status_code=204)

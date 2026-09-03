@@ -454,6 +454,12 @@ export type StaffCreated = {
   temporary_password: string
 }
 
+export type PasswordReset = {
+  staff: Staff
+  /** Same one-time-reveal rule as StaffCreated.temporary_password. */
+  temporary_password: string
+}
+
 export type BadgeIssued = {
   staff: Staff
   /**

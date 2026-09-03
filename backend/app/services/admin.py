@@ -38,6 +38,7 @@ from app.schemas.admin import (
     BADGE_ROLES,
     AdminMeta,
     BadgeIssued,
+    PasswordReset,
     RoleOption,
     StaffCreate,
     StaffCreated,
@@ -237,6 +238,66 @@ async def create_staff(
 
     log.info("Admin provisioned %s (%s) as %s", staff.full_name, payload.email, staff.role)
     return StaffCreated(staff=staff, temporary_password=password)
+
+
+async def _set_auth_password(settings: Settings, profile_id: UUID, password: str) -> None:
+    """Overwrite the GoTrue password directly (0035) — the same admin API used
+    to create the account in the first place, not a request the account holder
+    approves. Unlike _delete_auth_user this is not best-effort: if it fails,
+    the Admin has to know before handing over a password that doesn't work."""
+    if not settings.supabase_service_role_key:
+        raise AppError(
+            "Password reset is not configured on this server.",
+            code="auth_unconfigured",
+            http_status=503,
+            hint="Set SUPABASE_SERVICE_ROLE_KEY in the backend environment.",
+        )
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.put(
+                f"{settings.supabase_url}/auth/v1/admin/users/{profile_id}",
+                headers={
+                    "Authorization": f"Bearer {settings.supabase_service_role_key}",
+                    "apikey": settings.supabase_service_role_key,
+                    "Content-Type": "application/json",
+                },
+                json={"password": password},
+            )
+    except httpx.HTTPError as exc:
+        log.error("GoTrue admin password reset errored for %s: %s", profile_id, exc)
+        raise AppError(
+            "Could not reach the auth service. Please retry.",
+            code="auth_error",
+            http_status=502,
+        ) from exc
+
+    if response.status_code >= 400:
+        log.error(
+            "GoTrue admin password reset failed for %s: %s %s",
+            profile_id,
+            response.status_code,
+            response.text[:400],
+        )
+        raise AppError(
+            "Could not reset the password. Please retry.",
+            code="auth_error",
+            http_status=502,
+        )
+
+
+async def reset_password(
+    conn: AsyncConnection, settings: Settings, profile_id: UUID
+) -> PasswordReset:
+    """Admin-only (DECISIONS.md §CE1's reasoning applies here too — this is a
+    login credential, the same category as provisioning and badge issue, not
+    a profile field). Ops Manager's staff CRUD access (0033) does not extend
+    to this."""
+    staff = await _get_staff(conn, profile_id)
+    password = _temporary_password()
+    await _set_auth_password(settings, profile_id, password)
+    log.info("Admin reset the password for %s (%s)", staff.full_name, staff.employee_code)
+    return PasswordReset(staff=staff, temporary_password=password)
 
 
 # ===========================================================================

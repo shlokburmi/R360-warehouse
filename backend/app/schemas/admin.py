@@ -101,6 +101,13 @@ class StaffCreated(BaseModel):
     temporary_password: str
 
 
+class PasswordReset(BaseModel):
+    staff: StaffOut
+    # Same one-time-reveal rule as StaffCreated.temporary_password — this
+    # replaces it, it isn't a second copy of anything ever stored.
+    temporary_password: str
+
+
 class StaffUpdate(BaseModel):
     """Every field optional; only what is sent is changed."""
 

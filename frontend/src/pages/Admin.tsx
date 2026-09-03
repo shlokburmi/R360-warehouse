@@ -10,6 +10,7 @@ import type {
   AccountHistoryEntry,
   AdminMeta,
   BadgeIssued,
+  PasswordReset,
   PhotoRetention,
   Staff,
   StaffCreated,
@@ -39,9 +40,11 @@ export function AdminPage() {
   const [creating, setCreating] = useState(false)
   const [created, setCreated] = useState<StaffCreated | null>(null)
   const [issued, setIssued] = useState<BadgeIssued | null>(null)
+  const [passwordReset, setPasswordReset] = useState<PasswordReset | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [confirmResetPassword, setConfirmResetPassword] = useState<string | null>(null)
   const [showInactive, setShowInactive] = useState(true)
 
   const meta = useQuery({
@@ -108,6 +111,19 @@ export function AdminPage() {
     },
     onError: (err) => {
       setConfirmDelete(null)
+      setError(err as ApiError)
+    },
+  })
+
+  const resetPassword = useMutation({
+    mutationFn: (id: string) => post<PasswordReset>(`/admin/staff/${id}/reset-password`),
+    onSuccess: (result) => {
+      setError(null)
+      setConfirmResetPassword(null)
+      setPasswordReset(result)
+    },
+    onError: (err) => {
+      setConfirmResetPassword(null)
       setError(err as ApiError)
     },
   })
@@ -180,6 +196,32 @@ export function AdminPage() {
     )
   }
 
+  if (passwordReset) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-black">{t('admin.password_reset')}</h1>
+        <Banner
+          tone="ok"
+          title={t('admin.password_reset_done', { name: passwordReset.staff.full_name })}
+        >
+          {t('admin.password_body')}
+        </Banner>
+        <Card title={t('admin.temp_password')}>
+          <p className="select-all break-all rounded-xl bg-slate-100 p-4 text-center font-mono text-3xl font-black dark:bg-slate-800">
+            {passwordReset.temporary_password}
+          </p>
+          <button
+            type="button"
+            className="btn-ghost mt-4 w-full"
+            onClick={() => setPasswordReset(null)}
+          >
+            Done
+          </button>
+        </Card>
+      </div>
+    )
+  }
+
   const rows = (staff.data ?? []).filter((s) => showInactive || s.is_active)
 
   return (
@@ -229,16 +271,17 @@ export function AdminPage() {
 
       {rows.map((person) => {
         const isSelf = person.id === me?.id
-        // Badge issue/revoke stays Admin-only on the backend (DECISIONS.md
-        // §CE1) even though staff add/edit/delete does not (§0033) — hide
-        // rather than let an Ops Manager hit a 403 on click.
+        // Badge issue/revoke and password reset stay Admin-only on the backend
+        // (DECISIONS.md §CE1) even though staff add/edit/delete does not
+        // (§0033) — hide rather than let an Ops Manager hit a 403 on click.
         const isAdmin = me?.role === 'admin'
         const open = expanded === person.id
         const busy =
           update.isPending ||
           issueBadge.isPending ||
           revokeBadge.isPending ||
-          deleteStaff.isPending
+          deleteStaff.isPending ||
+          resetPassword.isPending
 
         return (
           <Card
@@ -397,6 +440,27 @@ export function AdminPage() {
                       {t('admin.reactivate')}
                     </button>
                   )}
+
+                  {isAdmin &&
+                    (confirmResetPassword === person.id ? (
+                      <button
+                        type="button"
+                        className="btn-danger"
+                        disabled={busy}
+                        onClick={() => resetPassword.mutate(person.id)}
+                      >
+                        {t('admin.confirm_reset_password')}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        disabled={busy}
+                        onClick={() => setConfirmResetPassword(person.id)}
+                      >
+                        {t('admin.reset_password')}
+                      </button>
+                    ))}
 
                   {confirmDelete === person.id ? (
                     <button
