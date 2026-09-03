@@ -101,10 +101,17 @@ class StaffCreated(BaseModel):
     temporary_password: str
 
 
+class PasswordResetRequest(BaseModel):
+    # Optional: Admin can set a specific password instead of getting a random
+    # one. Either way the only place it is ever visible again is the response
+    # to this same request — see PasswordReset.temporary_password.
+    new_password: Optional[str] = Field(default=None, min_length=8, max_length=72)
+
+
 class PasswordReset(BaseModel):
     staff: StaffOut
-    # Same one-time-reveal rule as StaffCreated.temporary_password — this
-    # replaces it, it isn't a second copy of anything ever stored.
+    # Same one-time-reveal rule whether this was typed by the Admin or
+    # generated — it isn't a second copy of anything ever stored.
     temporary_password: str
 
 

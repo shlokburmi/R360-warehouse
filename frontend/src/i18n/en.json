@@ -518,6 +518,8 @@
     "confirm_delete": "Confirm delete",
     "reset_password": "Reset password",
     "confirm_reset_password": "Confirm reset",
+    "custom_password_hint": "Leave blank to generate a random one instead. At least 8 characters.",
+    "custom_password_placeholder": "Type a specific password (optional)",
     "password_reset": "Password reset",
     "password_reset_done": "{{name}}'s password has been reset",
     "show_deactivated": "Show deactivated accounts",

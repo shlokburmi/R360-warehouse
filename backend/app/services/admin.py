@@ -21,7 +21,7 @@ See `_create_auth_user` for why that does not undermine DECISIONS.md §B1.
 import logging
 import secrets
 import string
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 import httpx
@@ -272,6 +272,17 @@ async def _set_auth_password(settings: Settings, profile_id: UUID, password: str
             http_status=502,
         ) from exc
 
+    if response.status_code in (400, 422):
+        body = response.json() if response.content else {}
+        # GoTrue's own password policy (min length beyond ours, breach check if
+        # enabled, etc.) — surface its message rather than a generic failure,
+        # same as _create_auth_user does for a duplicate email.
+        raise AppError(
+            body.get("msg") or body.get("message") or "That password was not accepted.",
+            code="auth_rejected",
+            http_status=422,
+        )
+
     if response.status_code >= 400:
         log.error(
             "GoTrue admin password reset failed for %s: %s %s",
@@ -287,14 +298,23 @@ async def _set_auth_password(settings: Settings, profile_id: UUID, password: str
 
 
 async def reset_password(
-    conn: AsyncConnection, settings: Settings, profile_id: UUID
+    conn: AsyncConnection,
+    settings: Settings,
+    profile_id: UUID,
+    new_password: Optional[str] = None,
 ) -> PasswordReset:
     """Admin-only (DECISIONS.md §CE1's reasoning applies here too — this is a
     login credential, the same category as provisioning and badge issue, not
     a profile field). Ops Manager's staff CRUD access (0033) does not extend
-    to this."""
+    to this.
+
+    `new_password` lets the Admin set a specific password instead of a random
+    one. Either way it is returned once, the same as a freshly minted one —
+    there is nowhere it is stored in plaintext, including when the Admin
+    chose it themselves.
+    """
     staff = await _get_staff(conn, profile_id)
-    password = _temporary_password()
+    password = new_password or _temporary_password()
     await _set_auth_password(settings, profile_id, password)
     log.info("Admin reset the password for %s (%s)", staff.full_name, staff.employee_code)
     return PasswordReset(staff=staff, temporary_password=password)

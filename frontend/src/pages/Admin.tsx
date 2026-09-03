@@ -45,6 +45,7 @@ export function AdminPage() {
   const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [confirmResetPassword, setConfirmResetPassword] = useState<string | null>(null)
+  const [customPassword, setCustomPassword] = useState('')
   const [showInactive, setShowInactive] = useState(true)
 
   const meta = useQuery({
@@ -116,14 +117,20 @@ export function AdminPage() {
   })
 
   const resetPassword = useMutation({
-    mutationFn: (id: string) => post<PasswordReset>(`/admin/staff/${id}/reset-password`),
+    mutationFn: ({ id, newPassword }: { id: string; newPassword: string }) =>
+      post<PasswordReset>(`/admin/staff/${id}/reset-password`, {
+        new_password: newPassword.trim() || undefined,
+      }),
     onSuccess: (result) => {
       setError(null)
       setConfirmResetPassword(null)
+      setCustomPassword('')
       setPasswordReset(result)
     },
     onError: (err) => {
-      setConfirmResetPassword(null)
+      // Left open, not collapsed: a rejected custom password (too short, or
+      // whatever GoTrue's own policy refuses) is something to fix and retry,
+      // not retype from scratch.
       setError(err as ApiError)
     },
   })
@@ -441,26 +448,16 @@ export function AdminPage() {
                     </button>
                   )}
 
-                  {isAdmin &&
-                    (confirmResetPassword === person.id ? (
-                      <button
-                        type="button"
-                        className="btn-danger"
-                        disabled={busy}
-                        onClick={() => resetPassword.mutate(person.id)}
-                      >
-                        {t('admin.confirm_reset_password')}
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="btn-ghost"
-                        disabled={busy}
-                        onClick={() => setConfirmResetPassword(person.id)}
-                      >
-                        {t('admin.reset_password')}
-                      </button>
-                    ))}
+                  {isAdmin && confirmResetPassword !== person.id && (
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      disabled={busy}
+                      onClick={() => setConfirmResetPassword(person.id)}
+                    >
+                      {t('admin.reset_password')}
+                    </button>
+                  )}
 
                   {confirmDelete === person.id ? (
                     <button
@@ -482,6 +479,51 @@ export function AdminPage() {
                     </button>
                   )}
                 </div>
+
+                {isAdmin && confirmResetPassword === person.id && (
+                  <div className="space-y-3 rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+                    <Field
+                      label={t('admin.reset_password')}
+                      hint={t('admin.custom_password_hint')}
+                    >
+                      <input
+                        type="text"
+                        className="input font-mono"
+                        placeholder={t('admin.custom_password_placeholder')}
+                        value={customPassword}
+                        disabled={busy}
+                        onChange={(event) => setCustomPassword(event.target.value)}
+                        minLength={8}
+                        maxLength={72}
+                        autoComplete="off"
+                        spellCheck={false}
+                      />
+                    </Field>
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        className="btn-danger"
+                        disabled={busy}
+                        onClick={() =>
+                          resetPassword.mutate({ id: person.id, newPassword: customPassword })
+                        }
+                      >
+                        {t('admin.confirm_reset_password')}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        disabled={busy}
+                        onClick={() => {
+                          setConfirmResetPassword(null)
+                          setCustomPassword('')
+                        }}
+                      >
+                        {t('common.cancel')}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <AccountHistory profileId={person.id} />
               </div>

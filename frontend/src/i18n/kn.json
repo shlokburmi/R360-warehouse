@@ -518,6 +518,8 @@
     "confirm_delete": "ಅಳಿಸುವಿಕೆ ಖಚಿತಪಡಿಸಿ",
     "reset_password": "ಪಾಸ್‌ವರ್ಡ್ ಮರುಹೊಂದಿಸಿ",
     "confirm_reset_password": "ಮರುಹೊಂದಿಕೆ ಖಚಿತಪಡಿಸಿ",
+    "custom_password_hint": "ಖಾಲಿ ಬಿಟ್ಟರೆ ಯಾದೃಚ್ಛಿಕ ಪಾಸ್‌ವರ್ಡ್ ರಚಿಸಲಾಗುತ್ತದೆ. ಕನಿಷ್ಠ 8 ಅಕ್ಷರಗಳು.",
+    "custom_password_placeholder": "ನಿರ್ದಿಷ್ಟ ಪಾಸ್‌ವರ್ಡ್ ಟೈಪ್ ಮಾಡಿ (ಐಚ್ಛಿಕ)",
     "password_reset": "ಪಾಸ್‌ವರ್ಡ್ ಮರುಹೊಂದಿಸಲಾಗಿದೆ",
     "password_reset_done": "{{name}} ಅವರ ಪಾಸ್‌ವರ್ಡ್ ಅನ್ನು ಮರುಹೊಂದಿಸಲಾಗಿದೆ",
     "show_deactivated": "ನಿಷ್ಕ್ರಿಯ ಖಾತೆಗಳನ್ನು ತೋರಿಸಿ",

@@ -25,6 +25,7 @@ from app.schemas.admin import (
     AdminMeta,
     BadgeIssued,
     PasswordReset,
+    PasswordResetRequest,
     StaffCreate,
     StaffCreated,
     StaffOut,
@@ -79,13 +80,17 @@ async def update_staff(
 @router.post("/staff/{profile_id}/reset-password", response_model=PasswordReset)
 async def reset_password(
     profile_id: UUID,
+    payload: PasswordResetRequest = PasswordResetRequest(),
     conn: AsyncConnection = Depends(get_db),
     settings: Settings = Depends(get_settings),
     user: CurrentUser = Depends(require_admin),
 ):
-    """Set a new temporary password, shown once. Admin-only — Ops Manager's
-    staff CRUD (0033) does not extend to login credentials."""
-    return await admin_service.reset_password(conn, settings, profile_id)
+    """Set a new password (Admin-chosen, or a random one if not given), shown
+    once. Admin-only — Ops Manager's staff CRUD (0033) does not extend to
+    login credentials."""
+    return await admin_service.reset_password(
+        conn, settings, profile_id, new_password=payload.new_password
+    )
 
 
 @router.delete("/staff/{profile_id}", status_code=204)
