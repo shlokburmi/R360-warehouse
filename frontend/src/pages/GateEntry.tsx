@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { get, post, ApiError } from '@/lib/api'
 import { useErrorText } from '@/hooks/useErrorText'
+import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate'
 import { cleanVehicleNumber, VEHICLE_RE, PO_REFERENCE_RE } from '@/lib/validation'
 import { Banner, Card, Field, StatusChip } from '@/components/ui'
 import {
@@ -95,6 +96,22 @@ export function GateEntryPage() {
     onError: (err) => setError(err as ApiError),
   })
 
+  // `submitted` above is a one-time snapshot from the POST response — it never
+  // changed again, so this screen showed "pending approval" forever even after
+  // Admin/Ops decided it seconds later, until the guard navigated away and
+  // back to "View Trucks". This keeps it live the same way that page already
+  // is: poll plus a realtime nudge on the same table.
+  const liveEntry = useQuery({
+    queryKey: ['gate-entry', submitted?.id],
+    queryFn: () => get<GateEntry>(`/gate/entries/${submitted!.id}`),
+    enabled: Boolean(submitted?.id),
+    initialData: submitted ?? undefined,
+    refetchInterval: 15_000,
+  })
+  useRealtimeInvalidate('gate_entries', [['gate-entry', submitted?.id]])
+
+  const entry = liveEntry.data ?? submitted
+
   const driverCount = persons.filter((p) => p.visitor_role === 'driver').length
   const blocked = persons.some((p) => p.lookup?.is_blocked)
 
@@ -119,31 +136,40 @@ export function GateEntryPage() {
 
   const valid = problems.length === 0
 
-  if (submitted) {
+  if (entry) {
+    const stillPending = entry.status === 'pending_approval'
     return (
       <div className="space-y-4">
-        <Banner tone="warn" title={t('gate.sent_for_approval')}>
-          Waiting for Admin to approve <strong>{submitted.entry_code}</strong>. The
-          vehicle cannot enter until they do.
+        <Banner tone={stillPending ? 'warn' : 'ok'} title={t('gate.sent_for_approval')}>
+          {stillPending ? (
+            <>
+              Waiting for Admin to approve <strong>{entry.entry_code}</strong>. The
+              vehicle cannot enter until they do.
+            </>
+          ) : (
+            <>
+              <strong>{entry.entry_code}</strong> has been decided — see its status below.
+            </>
+          )}
         </Banner>
 
-        <Card title={submitted.entry_code} action={<StatusChip status={submitted.status} />}>
+        <Card title={entry.entry_code} action={<StatusChip status={entry.status} />}>
           <dl className="grid grid-cols-1 gap-3 text-base sm:grid-cols-2">
             <div>
               <dt className="text-slate-500 dark:text-slate-400">{t('gate.vehicle')}</dt>
-              <dd className="font-bold">{submitted.vehicle_number}</dd>
+              <dd className="font-bold">{entry.vehicle_number}</dd>
             </div>
             <div>
               <dt className="text-slate-500 dark:text-slate-400">{t('gate.vendor')}</dt>
-              <dd className="font-bold">{submitted.vendor_name}</dd>
+              <dd className="font-bold">{entry.vendor_name}</dd>
             </div>
             <div>
               <dt className="text-slate-500 dark:text-slate-400">PO</dt>
-              <dd className="font-bold">{submitted.po_number ?? '—'}</dd>
+              <dd className="font-bold">{entry.po_number ?? '—'}</dd>
             </div>
             <div>
               <dt className="text-slate-500 dark:text-slate-400">{t('gate.people')}</dt>
-              <dd className="font-bold">{submitted.persons.length}</dd>
+              <dd className="font-bold">{entry.persons.length}</dd>
             </div>
           </dl>
         </Card>
