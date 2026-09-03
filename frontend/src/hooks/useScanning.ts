@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { ApiError, post } from '@/lib/api'
 import { deviceLabel, enqueue, newScanId } from '@/lib/offlineQueue'
@@ -46,6 +46,20 @@ export function useScanning(contextId: string, scanType: ScanContext) {
   const [feedback, setFeedback] = useState<ScanFeedback[]>([])
   const [busy, setBusy] = useState(false)
 
+  // Codes that can never succeed or fail differently on a re-scan: already
+  // accepted, or already rejected specifically as a duplicate. QrScanner's
+  // own debounce is time-based and same-code-only by design (a rejection
+  // like "a different box is still open" can genuinely become scannable
+  // again once that resolves, so it must not be permanently blocked there —
+  // see QrScanner.tsx's own comment). But "already scanned" is not one of
+  // those resolvable cases: a sticker that has been recorded never becomes
+  // un-recorded. A dense sheet of small stickers held a little too long in
+  // frame re-crosses QrScanner's 5s window repeatedly, so without this, the
+  // exact same already-settled outcome gets re-submitted over the network
+  // every 5 seconds for as long as the camera keeps re-reading it — this
+  // catches that below the network, not by changing the debounce.
+  const settledCodes = useRef<Set<string>>(new Set())
+
   const push = useCallback((item: Omit<ScanFeedback, 'id' | 'at'>) => {
     setFeedback((current) => [
       { ...item, id: crypto.randomUUID(), at: Date.now() },
@@ -57,6 +71,16 @@ export function useScanning(contextId: string, scanType: ScanContext) {
 
   const submit = useCallback(
     async (code: string, disposition?: 'stock' | 'quarantine') => {
+      const clean = code.trim().toUpperCase()
+
+      if (settledCodes.current.has(clean)) {
+        // Same tone the server would answer with for this exact case (accepted
+        // = false, duplicate = false) — this is a client-side shortcut to that
+        // answer, not a different signal.
+        push({ code, tone: 'bad', message: 'Already scanned.' })
+        return null
+      }
+
       const clientEventId = newScanId()
       const scannedAt = new Date().toISOString()
       setBusy(true)
@@ -89,6 +113,13 @@ export function useScanning(contextId: string, scanType: ScanContext) {
           tone: result.accepted ? 'ok' : result.duplicate ? 'warn' : 'bad',
           message: result.message,
         })
+
+        // Accepted, or rejected specifically as already-scanned: neither
+        // outcome changes on a re-scan of this exact code, unlike a
+        // business-state rejection (e.g. "a different box is still open").
+        if (result.accepted || result.reject_reason === 'already_scanned') {
+          settledCodes.current.add(clean)
+        }
 
         void queryClient.invalidateQueries({ queryKey: ['box-progress', entryId] })
         void queryClient.invalidateQueries({ queryKey: ['unit-progress', entryId] })
