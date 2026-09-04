@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { UnreadableFile, cropRegion, filesToPages, isPdf } from '@/lib/pageImages'
+import { UnreadableFile, coverCropBox, cropRegion, filesToPages, isPdf } from '@/lib/pageImages'
 import {
   GUIDE_BOX,
   isOrderNo,
@@ -211,7 +211,15 @@ export function OrderNoScanner({ invoiceNumber, onConfirm, busy = false }: Props
     // would take several seconds on a warehouse phone and return the customer's
     // name and address as well — which is personal data this feature has no
     // reason to touch, never mind hold in a `raw_text` audit column.
-    const frame = cropRegion(video, video.videoWidth, video.videoHeight, GUIDE_BOX)
+    //
+    // GUIDE_BOX is authored as a fraction of the *displayed* viewfinder (a
+    // fixed 4:3 box, video shown with object-fit: cover) — mapped to a
+    // fraction of the raw frame before cropping, because a phone's rear
+    // camera routinely negotiates something other than 4:3, and cropping
+    // the raw fractions directly then reads pixels the operator never
+    // framed (see coverCropBox's comment).
+    const rawGuideBox = coverCropBox(video.videoWidth, video.videoHeight, 4 / 3, GUIDE_BOX)
+    const frame = cropRegion(video, video.videoWidth, video.videoHeight, rawGuideBox)
     const prepared = preprocess(frame)
 
     try {

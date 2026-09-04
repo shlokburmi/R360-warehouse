@@ -45,16 +45,9 @@ type Options = {
   allowStatus?: number[]
 }
 
-export async function api<T>(path: string, options: Options = {}): Promise<T> {
-  const token = await getAccessToken()
-
-  if (!token) {
-    throw new ApiError('Your session has ended. Please sign in again.', 401, 'no_session')
-  }
-
-  let response: Response
+async function doFetch(path: string, token: string, options: Options): Promise<Response> {
   try {
-    response = await fetch(`${BASE}${path}`, {
+    return await fetch(`${BASE}${path}`, {
       method: options.method ?? 'GET',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -68,6 +61,38 @@ export async function api<T>(path: string, options: Options = {}): Promise<T> {
     // a server error matters: the scanning pages queue on network errors and
     // surface everything else immediately.
     throw new ApiError('No connection. Your work is saved on this device.', 0, 'network')
+  }
+}
+
+export async function api<T>(path: string, options: Options = {}): Promise<T> {
+  const token = await getAccessToken()
+
+  if (!token) {
+    throw new ApiError('Your session has ended. Please sign in again.', 401, 'no_session')
+  }
+
+  let response = await doFetch(path, token, options)
+
+  if (response.status === 401) {
+    // A 401 does not necessarily mean the session is actually gone. Supabase
+    // pauses its own background refresh ticker while the tab is hidden (the
+    // auth-js client only runs it on a focused tab), and a client-side step
+    // like taking a photo for OCR routinely backgrounds the tab for long
+    // enough that the access token handed back by getAccessToken() above is
+    // stale even though a perfectly good refresh token still exists. Try one
+    // explicit refresh-and-retry before treating this as a real sign-out —
+    // without it, a single stale token forces a full sign-out on a flow that
+    // is guaranteed to hit the same race again on the very next attempt.
+    let refreshed: Awaited<ReturnType<typeof supabase.auth.refreshSession>> | null = null
+    try {
+      refreshed = await supabase.auth.refreshSession()
+    } catch {
+      refreshed = null
+    }
+
+    if (refreshed && !refreshed.error && refreshed.data.session) {
+      response = await doFetch(path, refreshed.data.session.access_token, options)
+    }
   }
 
   if (response.status === 401) {

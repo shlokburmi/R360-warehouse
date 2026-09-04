@@ -113,6 +113,56 @@ export async function filesToPages(
   }
 }
 
+/**
+ * Map a guide box authored as a fraction of a `.viewfinder`-style container
+ * (a fixed `containerAspect`, video shown with `object-fit: cover`) into a
+ * fraction of the *raw* media frame.
+ *
+ * A guide box like `GUIDE_BOX` in readOrderNo.ts is drawn over what the
+ * operator sees, which equals the raw frame's own fractions only when the
+ * camera happens to negotiate exactly `containerAspect`. Any other aspect
+ * ratio — routine on a phone's rear camera — means `object-fit: cover` is
+ * itself cropping off-centre strips the operator never sees, so applying
+ * the guide box's fractions straight to the raw frame reads pixels outside
+ * what was actually framed (extra header/date-line text above or below the
+ * Order No, in practice). QrScanner.tsx's `decodeCroppedFrame` solves the
+ * same problem inline for the barcode path; this is the same geometry,
+ * shared so OrderNoScanner doesn't reimplement it slightly differently.
+ */
+export function coverCropBox(
+  mediaWidth: number,
+  mediaHeight: number,
+  containerAspect: number,
+  box: { x: number; y: number; w: number; h: number },
+): { x: number; y: number; w: number; h: number } {
+  const mediaAspect = mediaWidth / mediaHeight
+
+  let visibleW: number
+  let visibleH: number
+  let offsetX: number
+  let offsetY: number
+  if (mediaAspect > containerAspect) {
+    // Media wider than the container: full height visible, sides cropped.
+    visibleH = mediaHeight
+    visibleW = mediaHeight * containerAspect
+    offsetX = (mediaWidth - visibleW) / 2
+    offsetY = 0
+  } else {
+    // Media narrower/taller than the container: full width visible, top/bottom cropped.
+    visibleW = mediaWidth
+    visibleH = mediaWidth / containerAspect
+    offsetX = 0
+    offsetY = (mediaHeight - visibleH) / 2
+  }
+
+  return {
+    x: (offsetX + box.x * visibleW) / mediaWidth,
+    y: (offsetY + box.y * visibleH) / mediaHeight,
+    w: (box.w * visibleW) / mediaWidth,
+    h: (box.h * visibleH) / mediaHeight,
+  }
+}
+
 /** Crop a fractional region out of a canvas or video frame. */
 export function cropRegion(
   from: CanvasImageSource,
