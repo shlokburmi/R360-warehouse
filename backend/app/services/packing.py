@@ -110,7 +110,10 @@ async def my_badge(conn: AsyncConnection) -> Dict[str, str]:
             hint="Ask an Admin to issue one.",
         )
 
-    return {"badge_qr": qrcode_util.to_data_uri(code, scale=8)}
+    # border=4 (ISO/IEC 18004's minimum quiet zone): this image is scanned
+    # straight off a phone screen, which supplies no printed white card
+    # around it the way BadgeCardPrint's page does.
+    return {"badge_qr": qrcode_util.to_data_uri(code, scale=8, border=4)}
 
 
 # ---------------------------------------------------------------------------

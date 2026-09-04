@@ -41,7 +41,14 @@ export function MyBadgeQr({ bare = false }: { bare?: boolean }) {
   if (!badge.data) return null
 
   const image = (
-    <img src={badge.data.badge_qr} alt="" width={220} height={220} className="mx-auto" />
+    // A solid white frame around the image, not just the QR's own built-in
+    // quiet zone — in dark mode the surrounding Card is a dark, frosted
+    // surface, and a scanner reading this straight off a screen (rather than
+    // a printed card, which was always on white) needs a clean, undistracted
+    // border regardless of theme.
+    <div className="mx-auto w-fit rounded-xl bg-white p-4">
+      <img src={badge.data.badge_qr} alt="" width={260} height={260} />
+    </div>
   )
 
   if (bare) return image

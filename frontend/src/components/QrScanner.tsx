@@ -243,6 +243,24 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
           if (ok) {
             setStatus('running')
             cropInterval = window.setInterval(decodeCroppedFrame, 150)
+
+            // Best-effort: a badge is now sometimes held up as a phone
+            // screen a few centimetres from the lens (0037) rather than a
+            // sticker at arm's length, which is closer than this camera's
+            // default autofocus range is tuned for. Not every camera
+            // exposes this, and `focusMode` isn't in the standard DOM
+            // typings yet — both are why this is silently best-effort
+            // rather than one of the `attempts` constraints above (an
+            // unsupported constraint there would throw and skip the whole
+            // attempt, not just this one preference).
+            try {
+              controls.streamVideoConstraintsApply?.({
+                advanced: [{ focusMode: 'continuous' } as MediaTrackConstraintSet],
+              })
+            } catch {
+              // Fixed/auto focus is what this camera had anyway.
+            }
+
             return
           }
 
