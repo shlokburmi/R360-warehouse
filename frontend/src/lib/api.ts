@@ -1,4 +1,4 @@
-import { getAccessToken, supabase } from './supabase'
+import { forceLocalSignOut, getAccessToken, supabase } from './supabase'
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000/api/v1'
 
@@ -96,7 +96,13 @@ export async function api<T>(path: string, options: Options = {}): Promise<T> {
   }
 
   if (response.status === 401) {
-    await supabase.auth.signOut()
+    // forceLocalSignOut() is guaranteed to clear the local session even if
+    // its own network call fails, and notifies AuthProvider (which has no
+    // presence in this module) so `session` actually updates and the app
+    // redirects to login — a bare `supabase.auth.signOut()` here both risks
+    // throwing unguarded on bad signal and, even when it doesn't throw,
+    // leaves React state untouched.
+    await forceLocalSignOut()
     throw new ApiError('Your session has expired. Please sign in again.', 401, 'expired')
   }
 

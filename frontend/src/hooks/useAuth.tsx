@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { supabase } from '@/lib/supabase'
+import { forceLocalSignOut, onForcedSignOut, supabase } from '@/lib/supabase'
 import { get } from '@/lib/api'
 
 export type Me = {
@@ -34,18 +34,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (active) setSession(data.session)
-    })
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (active) setSession(data.session)
+      })
+      .catch(() => {
+        // A rejected getSession() (Supabase can trigger a network refresh
+        // internally when the stored token has expired) must not leave
+        // `session` stuck at its initial `null` forever with `loading`
+        // never resolving — that reads as "stuck loading", not the actual
+        // "couldn't confirm you're signed in, try again" it is. Treating it
+        // as no-session at least reaches the login screen instead of a
+        // permanent spinner.
+        if (active) setSession(null)
+      })
 
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, next) => {
       setSession(next)
       if (!next) setMe(null)
     })
 
+    // A forced sign-out from outside this component (api.ts reacting to a
+    // confirmed 401) has no React state to clear directly — it notifies
+    // this listener instead of relying on Supabase's own SIGNED_OUT event,
+    // which (like signOut() below) depends on a network call that a forced
+    // sign-out is specifically triggered by having already failed.
+    const unsubscribeForced = onForcedSignOut(() => {
+      if (active) {
+        setSession(null)
+        setMe(null)
+      }
+    })
+
     return () => {
       active = false
       subscription.subscription.unsubscribe()
+      unsubscribeForced()
     }
   }, [])
 
@@ -113,23 +138,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       },
       async signOut() {
-        try {
-          await supabase.auth.signOut({ scope: 'local' })
-        } catch {
-          // supabase-js's signOut() first tries to revoke the session on the
-          // server, and only clears the *locally persisted* session if that
-          // network call succeeds (or comes back 401/403/404) — a plain
-          // connectivity failure (weak signal, timeout) leaves the stored
-          // session untouched. Sign-out must not depend on connectivity, or
-          // a bad signal makes the button silently do nothing and strands
-          // the operator on whatever broken-session screen sent them here.
-        }
-        // Clear local state directly rather than trusting the SDK's
-        // SIGNED_OUT event to have fired (see above — on a network failure
-        // it doesn't), so this always actually signs the device out.
-        window.localStorage.removeItem('r360-warehouse-auth')
-        setSession(null)
-        setMe(null)
+        // forceLocalSignOut() notifies the onForcedSignOut listener above,
+        // which clears session/me — guaranteed, regardless of connectivity.
+        await forceLocalSignOut()
       },
       can: (page: string) => me?.allowed_pages.includes(page) ?? false,
     }),

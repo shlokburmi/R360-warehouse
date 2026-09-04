@@ -32,3 +32,39 @@ export async function getAccessToken(): Promise<string | null> {
   const { data } = await supabase.auth.getSession()
   return data.session?.access_token ?? null
 }
+
+type Listener = () => void
+const forcedSignOutListeners = new Set<Listener>()
+
+/** AuthProvider subscribes once, to clear its React state when a forced
+ * sign-out happens somewhere with no React context to update directly
+ * (api.ts's 401 handler). Returns an unsubscribe function. */
+export function onForcedSignOut(listener: Listener): () => void {
+  forcedSignOutListeners.add(listener)
+  return () => forcedSignOutListeners.delete(listener)
+}
+
+/**
+ * Sign out of this device, guaranteed, regardless of connectivity.
+ *
+ * `supabase.auth.signOut()` tries to revoke the session on the server
+ * first, and only clears the *locally persisted* session if that network
+ * call succeeds (or comes back 401/403/404) — a plain connectivity failure
+ * (weak signal, timeout) leaves the stale session in storage untouched, and
+ * `scope: 'local'` does not change this (it only changes what the server
+ * call is asked to revoke, not whether that call is attempted at all).
+ *
+ * Called from two places that don't share React state — a person tapping
+ * "Sign out", and api.ts reacting to a confirmed 401 — so local cleanup
+ * happens here rather than being trusted to Supabase's own SIGNED_OUT
+ * event, which depends on that same network call having succeeded.
+ */
+export async function forceLocalSignOut(): Promise<void> {
+  try {
+    await supabase.auth.signOut({ scope: 'local' })
+  } catch {
+    // Best-effort — local cleanup below happens either way.
+  }
+  window.localStorage.removeItem('r360-warehouse-auth')
+  forcedSignOutListeners.forEach((listener) => listener())
+}
