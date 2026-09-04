@@ -76,10 +76,21 @@ export function InvoiceMatchingPage() {
       )
       setInvoice(found)
       setStep(found.stage === 'open' ? 'assign' : 'done')
-    } catch {
-      // Not a failure — this Order No simply has no invoice yet, the normal
-      // case. Create one from exactly what was just read.
-      createInvoice.mutate(reading)
+    } catch (err) {
+      const apiErr = err as ApiError
+      if (apiErr.code === 'unknown_order_no') {
+        // The one expected failure — this Order No simply has no invoice
+        // yet, the normal case. Create one from exactly what was just read.
+        createInvoice.mutate(reading)
+      } else {
+        // Anything else (a network drop, an expired session, a server
+        // error, or `ambiguous_order_no` — several invoices already share
+        // this Order No, which a human has to resolve) is a real failure,
+        // not "not found yet". Treating it as the latter used to silently
+        // attempt to create a duplicate invoice instead of showing what
+        // actually went wrong.
+        setError(apiErr)
+      }
     }
   }
 
