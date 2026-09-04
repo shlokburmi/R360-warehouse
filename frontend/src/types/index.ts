@@ -459,6 +459,12 @@ export type BadgeIssued = {
   badge_qr: string
 }
 
+/** The caller's own current badge, image only — see BadgeIssued for why the
+ * raw code is never returned to a screen. */
+export type MyBadge = {
+  badge_qr: string
+}
+
 export type RoleOption = {
   value: string
   label: string

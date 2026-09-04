@@ -42,6 +42,13 @@ class BadgeHolder(BaseModel):
     employee_code: Optional[str] = None
 
 
+class MyBadge(BaseModel):
+    # Image only, never the raw code — same as BadgeCardPrint, and for the
+    # same reason: a code typed at a station is worth exactly as much as a
+    # scanned one, so the text version is never put on a screen.
+    badge_qr: str
+
+
 class InvoiceOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -201,6 +208,22 @@ async def resolve_badge(
     else:
         expected = [expect]
     return await packing_service.resolve_badge(conn, payload.badge_code, expected)
+
+
+@router.get("/badges/mine", response_model=MyBadge)
+async def my_badge(
+    conn: AsyncConnection = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """The caller's own current badge, as a QR, for display on her own
+    dashboard so a colleague can scan it off the screen instead of a
+    printed card.
+
+    Self-only: `my_badge_code()` resolves from auth.uid() inside the
+    database, so this can never be asked to return someone else's code. See
+    0037_self_badge_view.sql.
+    """
+    return await packing_service.my_badge(conn)
 
 
 # ---------------------------------------------------------------------------

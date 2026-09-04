@@ -17,6 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.core.errors import AppError
+from app.services import qrcode_util
 
 BADGE_HINT = "Hold the badge steady under the scanner, or type the code on it."
 
@@ -88,6 +89,28 @@ async def resolve_badge(
         "role": row["role"],
         "employee_code": row["employee_code"],
     }
+
+
+async def my_badge(conn: AsyncConnection) -> Dict[str, str]:
+    """The caller's own current badge, rendered as a QR.
+
+    `my_badge_code()` resolves the caller from auth.uid() inside the
+    database (0037_self_badge_view.sql), so this can never be pointed at
+    someone else's badge. The code itself never leaves this function — only
+    the rendered image goes back, same as admin_service.issue_badge, and for
+    the same reason: a badge code in a log file is a badge in a log file.
+    """
+    code = (await conn.execute(text("select my_badge_code()"))).scalar_one_or_none()
+
+    if code is None:
+        raise AppError(
+            "You do not have an active attribution badge.",
+            code="no_badge",
+            http_status=404,
+            hint="Ask an Admin to issue one.",
+        )
+
+    return {"badge_qr": qrcode_util.to_data_uri(code, scale=8)}
 
 
 # ---------------------------------------------------------------------------

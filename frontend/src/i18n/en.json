@@ -178,7 +178,12 @@
     "code": "Badge code",
     "print": "Print badge",
     "printed_done": "Done — I have printed it",
-    "type_instead": "Type badge code instead"
+    "type_instead": "Type badge code instead",
+    "show_mine": "Show my QR code",
+    "hide_mine": "Hide my QR code",
+    "loading_mine": "Loading your QR code…",
+    "mine_title": "My badge",
+    "mine_hint": "Let a colleague scan this from your screen to attribute work to you."
   },
   "dashboard": {
     "title": "Dashboard",

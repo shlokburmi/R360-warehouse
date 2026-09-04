@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, get, post } from '@/lib/api'
 import { useErrorText } from '@/hooks/useErrorText'
 import { BadgeScan } from '@/components/BadgeScan'
+import { MyBadgeQr } from '@/components/MyBadgeQr'
 import { Banner, Card, EmptyState, Spinner } from '@/components/ui'
 import type { AttributionResult, PackingState } from '@/types'
 
@@ -25,6 +26,7 @@ export function PackingPage() {
   const [active, setActive] = useState<PackingState | null>(null)
   const [error, setError] = useState<ApiError | null>(null)
   const [result, setResult] = useState<AttributionResult | null>(null)
+  const [showBadge, setShowBadge] = useState(false)
 
   const mine = useQuery({
     queryKey: ['packing', 'assigned-to-me'],
@@ -52,7 +54,18 @@ export function PackingPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-black">{t('packing.title')}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-black">{t('packing.title')}</h1>
+        <button
+          type="button"
+          className="btn-ghost"
+          onClick={() => setShowBadge((v) => !v)}
+        >
+          {showBadge ? t('badge.hide_mine') : t('badge.show_mine')}
+        </button>
+      </div>
+
+      {showBadge && <MyBadgeQr />}
 
       {error && (
         <Banner tone={error.isControlPoint ? 'bad' : 'warn'} title={errorText(error).title}>
