@@ -149,18 +149,30 @@ export function useScanning(contextId: string, scanType: ScanContext) {
         return result
       } catch (error) {
         if (error instanceof ApiError && error.isOffline) {
-          await enqueue({
-            client_event_id: clientEventId,
-            raw_code: code,
-            scanned_at: scannedAt,
-            was_offline: true,
-            device_label: deviceLabel(),
-            disposition,
-            scan_type: scanType,
-            entry_id: entryId,
-            attempts: 0,
-          })
-          settle(pendingId, { tone: 'warn', message: 'Saved on device — will sync when online' })
+          try {
+            await enqueue({
+              client_event_id: clientEventId,
+              raw_code: code,
+              scanned_at: scannedAt,
+              was_offline: true,
+              device_label: deviceLabel(),
+              disposition,
+              scan_type: scanType,
+              entry_id: entryId,
+              attempts: 0,
+            })
+            settle(pendingId, { tone: 'warn', message: 'Saved on device — will sync when online' })
+          } catch {
+            // enqueue() itself can fail (IndexedDB blocked in private
+            // browsing, quota exhausted after a long shift of queued
+            // scans). Without this, the "Scanning…" row pushed above is
+            // orphaned forever — not sent, not queued, with nothing telling
+            // the operator the scan was actually lost.
+            settle(pendingId, {
+              tone: 'bad',
+              message: 'Could not save this scan — rescan once back online',
+            })
+          }
           return null
         }
 

@@ -60,6 +60,14 @@ export function PackingPage() {
         </Banner>
       )}
 
+      {/* A failed fetch here otherwise looks identical to "nothing assigned
+          to you" — isLoading goes false on a failure too, not just a success. */}
+      {mine.isError && (
+        <Banner tone="warn" title={errorText(mine.error as ApiError).title}>
+          {(mine.error as ApiError)?.hint}
+        </Banner>
+      )}
+
       {result && !active && (
         <Banner tone="ok" title={result.message}>
           {t('packing.confirm_packed')}

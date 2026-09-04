@@ -85,6 +85,17 @@ export function BatchesPage() {
         </Banner>
       )}
 
+      {/* A failed fetch here otherwise looks identical to "nothing waiting" —
+          isLoading goes false on a failure too, not just a success. */}
+      {(ready.isError || batches.isError) && (
+        <Banner
+          tone="warn"
+          title={errorText((ready.error ?? batches.error) as ApiError).title}
+        >
+          {((ready.error ?? batches.error) as ApiError)?.hint}
+        </Banner>
+      )}
+
       {active && active.length > 0 && (
         <Card title={t('batches.in_progress')}>
           <ul className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -239,6 +250,16 @@ function BatchDetail({ batchId, onBack }: { batchId: string; onBack: () => void 
   })
 
   if (batch.isLoading) return <Spinner />
+  if (batch.isError) {
+    // Distinct from "not found" below — a network failure must not be
+    // reported as though the batch does not exist.
+    const err = batch.error as ApiError
+    return (
+      <Banner tone="warn" title={errorText(err).title}>
+        {err.hint}
+      </Banner>
+    )
+  }
   if (!batch.data) return <Banner tone="bad" title={t('batches.not_found')} />
 
   const b = batch.data

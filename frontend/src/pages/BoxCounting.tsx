@@ -245,6 +245,16 @@ export function BoxCountingPage() {
   })
 
   if (entry.isLoading) return <Spinner />
+  if (entry.isError) {
+    // Distinct from "not found" below — a network failure must not be
+    // reported as though the truck does not exist.
+    const err = entry.error as ApiError
+    return (
+      <Banner tone="warn" title={errorText(err).title}>
+        {err.hint}
+      </Banner>
+    )
+  }
   if (!entry.data) return <Banner tone="bad" title={t('boxcount.truck_not_found')} />
 
   const isOps = me?.role === 'admin' || me?.role === 'ops_manager'
@@ -660,6 +670,12 @@ export function BoxCountingPage() {
       {/* Step 3 — scan them back */}
       {hasStickers && !verified && (
         <>
+          {progress.isError && (
+            <Banner tone="warn" title={errorText(progress.error as ApiError).title}>
+              {(progress.error as ApiError)?.hint}
+            </Banner>
+          )}
+
           <ProgressCounter
             label={t('boxcount.boxes_scanned')}
             scanned={progress.data?.scanned ?? 0}

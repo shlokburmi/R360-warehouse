@@ -111,6 +111,14 @@ export function PutawayPage() {
         </Banner>
       )}
 
+      {/* A failed fetch here otherwise looks identical to "nothing to put
+          away" — isLoading goes false on a failure too, not just a success. */}
+      {queue.isError && (
+        <Banner tone="warn" title={errorText(queue.error as ApiError).title}>
+          {(queue.error as ApiError)?.hint}
+        </Banner>
+      )}
+
       {result && (
         <Banner tone="ok" title={result.message}>
           {result.complete && 'Move the empty carton to the outside rack.'}

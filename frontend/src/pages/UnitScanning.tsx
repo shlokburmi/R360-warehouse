@@ -99,6 +99,16 @@ export function UnitScanningPage() {
   })
 
   if (entry.isLoading) return <Spinner />
+  if (entry.isError) {
+    // Distinct from "not found" below — a network failure must not be
+    // reported as though the truck does not exist.
+    const err = entry.error as ApiError
+    return (
+      <Banner tone="warn" title={errorText(err).title}>
+        {err.hint}
+      </Banner>
+    )
+  }
   if (!entry.data) return <Banner tone="bad" title={t('units.truck_not_found')} />
 
   const isOps = me?.role === 'admin' || me?.role === 'ops_manager'
@@ -127,6 +137,17 @@ export function UnitScanningPage() {
       {error && (
         <Banner tone={error.isControlPoint ? 'bad' : 'warn'} title={errorText(error).title}>
           {error.hint}
+        </Banner>
+      )}
+
+      {/* A failed fetch here otherwise looks identical to "no boxes yet" —
+          isLoading goes false on a failure too, not just a success. */}
+      {(boxes.isError || progress.isError) && (
+        <Banner
+          tone="warn"
+          title={errorText((boxes.error ?? progress.error) as ApiError).title}
+        >
+          {((boxes.error ?? progress.error) as ApiError)?.hint}
         </Banner>
       )}
 
@@ -329,6 +350,7 @@ function BoxCloseCard({ box, onDone }: { box: Box; onDone: () => void }) {
   )
   const [note, setNote] = useState(box.damage_note ?? '')
   const [photoPaths, setPhotoPaths] = useState<string[]>([])
+  const [photoUploading, setPhotoUploading] = useState(false)
   const [error, setError] = useState<ApiError | null>(null)
   const [closeMessage, setCloseMessage] = useState<{
     closed: boolean
@@ -373,15 +395,34 @@ function BoxCloseCard({ box, onDone }: { box: Box; onDone: () => void }) {
   })
 
   const uploadPhoto = async (file: File) => {
-    const ticket = await post<{ path: string; upload_url: string }>('/uploads/damage-photo', {
-      box_id: box.id,
-    })
-    await fetch(ticket.upload_url, {
-      method: 'PUT',
-      body: file,
-      headers: { 'Content-Type': file.type || 'image/jpeg' },
-    })
-    setPhotoPaths((current) => [...current, ticket.path])
+    // Unlike CameraCapture.tsx's near-identical upload (its reference for
+    // this fix), this had no try/catch or response.ok check at all: a
+    // network drop mid-upload — plausible right when a phone's camera/
+    // gallery picker backgrounds the tab — was an unhandled promise
+    // rejection, and the "Add photo (n)" counter just never moved with no
+    // indication whether the photo saved.
+    setPhotoUploading(true)
+    setError(null)
+    try {
+      const ticket = await post<{ path: string; upload_url: string }>('/uploads/damage-photo', {
+        box_id: box.id,
+      })
+      const response = await fetch(ticket.upload_url, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type || 'image/jpeg' },
+      })
+      if (!response.ok) throw new Error('Photo upload failed.')
+      setPhotoPaths((current) => [...current, ticket.path])
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err
+          : new ApiError('Photo upload failed. Please retry.', 0, 'upload_failed'),
+      )
+    } finally {
+      setPhotoUploading(false)
+    }
   }
 
   const damageRecorded = box.damage_level !== null
@@ -437,13 +478,16 @@ function BoxCloseCard({ box, onDone }: { box: Box; onDone: () => void }) {
                 onChange={(event) => setNote(event.target.value)}
                 placeholder={t('units.describe_damage')}
               />
-              <label className="btn-ghost mb-3 w-full cursor-pointer">
-                📷 Add photo ({photoPaths.length})
+              <label
+                className={`btn-ghost mb-3 w-full ${photoUploading ? 'opacity-60' : 'cursor-pointer'}`}
+              >
+                {photoUploading ? 'Uploading…' : `📷 Add photo (${photoPaths.length})`}
                 <input
                   type="file"
                   accept="image/*"
                   capture="environment"
                   className="sr-only"
+                  disabled={photoUploading}
                   onChange={(event) => {
                     const file = event.target.files?.[0]
                     if (file) void uploadPhoto(file)

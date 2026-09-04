@@ -28,6 +28,7 @@ import type { AwaitingPickup, ExitRequestResult, Pickup, PickupVerifyResult } fr
  */
 export function PickupPage() {
   const { t } = useTranslation()
+  const errorText = useErrorText()
   const queryClient = useQueryClient()
   const [openPickupId, setOpenPickupId] = useState<string | null>(null)
   const [registering, setRegistering] = useState<AwaitingPickup | null>(null)
@@ -82,6 +83,17 @@ export function PickupPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-black">{t('pickup.title')}</h1>
+
+      {/* A failed fetch here otherwise looks identical to "nothing waiting" —
+          isLoading goes false on a failure too, not just a success. */}
+      {(awaiting.isError || active.isError) && (
+        <Banner
+          tone="warn"
+          title={errorText((awaiting.error ?? active.error) as ApiError).title}
+        >
+          {((awaiting.error ?? active.error) as ApiError)?.hint}
+        </Banner>
+      )}
 
       {active.data && active.data.length > 0 && (
         <Card title={t('pickup.vehicles_onsite')}>
@@ -330,6 +342,16 @@ function PickupDetail({ pickupId, onBack }: { pickupId: string; onBack: () => vo
   })
 
   if (pickup.isLoading) return <Spinner />
+  if (pickup.isError) {
+    // Distinct from "not found" below — a network failure must not be
+    // reported as though the pickup does not exist.
+    const err = pickup.error as ApiError
+    return (
+      <Banner tone="warn" title={errorText(err).title}>
+        {err.hint}
+      </Banner>
+    )
+  }
   if (!pickup.data) return <Banner tone="bad" title={t('pickup.not_found')} />
 
   const p = pickup.data
