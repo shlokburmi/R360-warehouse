@@ -102,7 +102,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       },
       async signOut() {
-        await supabase.auth.signOut()
+        try {
+          await supabase.auth.signOut({ scope: 'local' })
+        } catch {
+          // supabase-js's signOut() first tries to revoke the session on the
+          // server, and only clears the *locally persisted* session if that
+          // network call succeeds (or comes back 401/403/404) — a plain
+          // connectivity failure (weak signal, timeout) leaves the stored
+          // session untouched. Sign-out must not depend on connectivity, or
+          // a bad signal makes the button silently do nothing and strands
+          // the operator on whatever broken-session screen sent them here.
+        }
+        // Clear local state directly rather than trusting the SDK's
+        // SIGNED_OUT event to have fired (see above — on a network failure
+        // it doesn't), so this always actually signs the device out.
+        window.localStorage.removeItem('r360-warehouse-auth')
+        setSession(null)
         setMe(null)
       },
       can: (page: string) => me?.allowed_pages.includes(page) ?? false,
