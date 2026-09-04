@@ -14,8 +14,11 @@ import type { MyBadge } from '@/types'
  *
  * Image only, same as BadgeCardPrint — the raw code is never put on screen
  * as text.
+ *
+ * `bare` skips the surrounding Card so this can sit inside another one (see
+ * AboutMe.tsx) instead of nesting two cards.
  */
-export function MyBadgeQr() {
+export function MyBadgeQr({ bare = false }: { bare?: boolean }) {
   const { t } = useTranslation()
   const errorText = useErrorText()
 
@@ -37,15 +40,15 @@ export function MyBadgeQr() {
 
   if (!badge.data) return null
 
+  const image = (
+    <img src={badge.data.badge_qr} alt="" width={220} height={220} className="mx-auto" />
+  )
+
+  if (bare) return image
+
   return (
     <Card title={t('badge.mine_title')} subtitle={t('badge.mine_hint')}>
-      <img
-        src={badge.data.badge_qr}
-        alt=""
-        width={220}
-        height={220}
-        className="mx-auto"
-      />
+      {image}
     </Card>
   )
 }

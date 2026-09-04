@@ -179,11 +179,15 @@
     "print": "Print badge",
     "printed_done": "Done — I have printed it",
     "type_instead": "Type badge code instead",
-    "show_mine": "Show my QR code",
-    "hide_mine": "Hide my QR code",
+    "show_mine": "About Me",
+    "hide_mine": "Hide About Me",
     "loading_mine": "Loading your QR code…",
     "mine_title": "My badge",
-    "mine_hint": "Let a colleague scan this from your screen to attribute work to you."
+    "mine_hint": "Let a colleague scan this from your screen to attribute work to you.",
+    "about_me_title": "About Me",
+    "about_me_name": "Name",
+    "about_me_role": "Role",
+    "about_me_code": "Employee code"
   },
   "dashboard": {
     "title": "Dashboard",
