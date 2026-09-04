@@ -89,10 +89,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       error,
       async signIn(email, password) {
         setError(null)
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        })
+        let signInError: { message: string } | null
+        try {
+          const result = await supabase.auth.signInWithPassword({
+            email: email.trim(),
+            password,
+          })
+          signInError = result.error
+        } catch {
+          // signInWithPassword only wraps a genuine AuthError into
+          // `{ error }` — a plain network failure (weak signal, offline)
+          // rejects the promise instead with the browser's raw "Failed to
+          // fetch" TypeError, which is not a message anyone signing in on a
+          // shaky mobile connection should have to interpret.
+          throw new Error('No connection. Check your signal and try again.')
+        }
         if (signInError) {
           throw new Error(
             signInError.message === 'Invalid login credentials'
