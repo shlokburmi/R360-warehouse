@@ -23,6 +23,7 @@ const NAV: { page: string; to: string; key: string }[] = [
   { page: 'exceptions', to: '/exceptions', key: 'nav.exceptions' },
   { page: 'reports', to: '/reports', key: 'nav.reports' },
   { page: 'admin', to: '/admin', key: 'nav.staff' },
+  { page: 'about-me', to: '/about-me', key: 'nav.about_me' },
 ]
 
 export function Layout({ children }: { children: ReactNode }) {

@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, get, post } from '@/lib/api'
 import { useErrorText } from '@/hooks/useErrorText'
-import { AboutMe } from '@/components/AboutMe'
 import { BadgeScan } from '@/components/BadgeScan'
 import { Banner, Card, EmptyState, Spinner } from '@/components/ui'
 import type { AttributionResult, PackingState } from '@/types'
@@ -26,7 +25,6 @@ export function PackingPage() {
   const [active, setActive] = useState<PackingState | null>(null)
   const [error, setError] = useState<ApiError | null>(null)
   const [result, setResult] = useState<AttributionResult | null>(null)
-  const [showAboutMe, setShowAboutMe] = useState(false)
 
   const mine = useQuery({
     queryKey: ['packing', 'assigned-to-me'],
@@ -54,18 +52,7 @@ export function PackingPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-black">{t('packing.title')}</h1>
-        <button
-          type="button"
-          className="btn-ghost"
-          onClick={() => setShowAboutMe((v) => !v)}
-        >
-          {showAboutMe ? t('badge.hide_mine') : t('badge.show_mine')}
-        </button>
-      </div>
-
-      {showAboutMe && <AboutMe />}
+      <h1 className="text-2xl font-black">{t('packing.title')}</h1>
 
       {error && (
         <Banner tone={error.isControlPoint ? 'bad' : 'warn'} title={errorText(error).title}>

@@ -48,7 +48,9 @@ class MeOut(BaseModel):
 PAGE_ACCESS: Dict[str, List[str]] = {
     # Guard still declares the box count on this page (Step 1); the scanning
     # steps on it now belong to packers.
-    "security_guard": ["gate-entry", "box-counting", "pickup", "my-entries", "loading"],
+    "security_guard": [
+        "gate-entry", "box-counting", "pickup", "my-entries", "loading", "about-me",
+    ],
     # Ops Manager, reintroduced: PRD §8 — "can see everything, approve
     # exceptions, view reports". Staff add/edit/delete on the admin screen was
     # Admin-only per DECISIONS.md §CE1/§CH1; 0033_ops_manager_staff_admin.sql
@@ -65,33 +67,40 @@ PAGE_ACCESS: Dict[str, List[str]] = {
         # (warehouse.py generate_box_stickers/generate_unit_stickers) — the
         # nav needs to actually reach the page that action lives on.
         "box-counting", "unit-scanning",
-        "admin",
+        "admin", "about-me",
     ],
     # Offloading no longer scans goods in — packers do (see scans_insert in
     # 0019) — and no longer shelves goods either, now that warehouse_staff is
     # its own role again. Reconciliation (CONTROL POINT 4) and receiving stay.
-    "offloading": ["exceptions", "reconciliation"],
+    "offloading": ["exceptions", "reconciliation", "about-me"],
     # Carved back out of offloading: putaway only.
-    "warehouse_staff": ["exceptions", "putaway", "stock"],
+    "warehouse_staff": ["exceptions", "putaway", "stock", "about-me"],
     # Invoice Matching, reintroduced: matching, the exceptions anyone can
     # raise, and "packing" — the /invoices/assign handover step (PRD §7: "call
     # a packing lady while handing them over") lives on that page, and
     # packing_assignments_insert now names invoice_matcher explicitly.
-    "invoice_matcher": ["exceptions", "invoice-matching", "packing"],
+    "invoice_matcher": ["exceptions", "invoice-matching", "packing", "about-me"],
     # Packers apply and scan both box and unit stickers at intake, in addition
     # to their outbound packing job. "invoice-matching" was added here
     # (0035_packer_invoice_creation.sql): a Packer now scans the physical
     # invoice herself (OCR reads the Order No, creating it) and hands the
     # carton to a different packing lady, rather than a separate Invoice
     # Matcher doing that step.
-    "packer": ["box-counting", "unit-scanning", "exceptions", "packing", "invoice-matching"],
+    #
+    # "about-me" (0037_self_badge_view.sql): her own name/role/employee code
+    # and the QR off her own badge, so an Invoice Matcher can scan it off her
+    # screen at /invoices/assign instead of a printed card.
+    "packer": [
+        "box-counting", "unit-scanning", "exceptions", "packing",
+        "invoice-matching", "about-me",
+    ],
     # Admin's actual real-world use here is oversight — approve/decline and
     # track activity/logs — not hands-on station work. The backend still
     # accepts admin on every operational endpoint (require_roles always
     # unions with admin) as an emergency fallback if a role's own account is
     # unavailable; this list only controls what shows up in the nav day to
     # day, not what's actually permitted.
-    "admin": ["dashboard", "approvals", "exceptions", "reports", "admin"],
+    "admin": ["dashboard", "approvals", "exceptions", "reports", "admin", "about-me"],
 }
 
 

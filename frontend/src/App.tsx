@@ -24,6 +24,7 @@ import { PickupPage } from '@/pages/Pickup'
 import { ReportsPage } from '@/pages/Reports'
 import { AdminPage } from '@/pages/Admin'
 import { LoadingPage } from '@/pages/Loading'
+import { AboutMePage } from '@/pages/AboutMe'
 
 /**
  * Route guard.
@@ -248,6 +249,15 @@ function Shell() {
         element={
           <Protected page="loading">
             <LoadingPage />
+          </Protected>
+        }
+      />
+
+      <Route
+        path="/about-me"
+        element={
+          <Protected page="about-me">
+            <AboutMePage />
           </Protected>
         }
       />
