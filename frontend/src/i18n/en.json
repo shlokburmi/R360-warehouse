@@ -98,7 +98,9 @@
     "permission_hint": "Allow camera access in your browser settings, or type the sticker code below.",
     "unavailable": "No camera available on this device.",
     "unavailable_hint": "Type the sticker code below instead.",
-    "sticker_code": "Sticker code"
+    "sticker_code": "Sticker code",
+    "hint_steady": "Hold it steady, centred, and well lit.",
+    "hint_reposition": "Still not finding it — try moving it a little closer or farther, or type the code below."
   },
   "errors": {
     "generic": "Something went wrong.",

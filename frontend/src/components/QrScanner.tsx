@@ -42,6 +42,12 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
   )
   const [manual, setManual] = useState('')
   const [showManual, setShowManual] = useState(false)
+  // Live, escalating guidance while a scan is genuinely still in progress —
+  // not a static instruction shown once, but the scanner telling the
+  // operator something is actually still wrong rather than leaving them to
+  // guess why nothing is happening (or, as has happened, to give up and
+  // move the camera before it would have caught it).
+  const [liveHint, setLiveHint] = useState<string | null>(null)
 
   // Callers routinely pass an inline `onScan` closure that changes identity on
   // every render (e.g. `onScan={(code) => submit(code, ...)}`). `handleCode`
@@ -72,6 +78,7 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
       if (lastScan.current.code === clean && now - lastScan.current.at < debounceMs) return
       lastScan.current = { code: clean, at: now }
 
+      setLiveHint(null)
       onScanRef.current(clean)
     },
     [debounceMs],
@@ -83,6 +90,7 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
     let cancelled = false
     let watchdog: number | undefined
     let cropInterval: number | undefined
+    let searchStart = 0
     const hints = new Map()
     // Every code this app ever generates is a QR (qrcode_util.py is segno,
     // QR-only, for badges and every sticker type) — CODE_128 and DATA_MATRIX
@@ -175,7 +183,26 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
     const cropCanvas = document.createElement('canvas')
     const cropCtx = cropCanvas.getContext('2d', { willReadFrequently: true })
 
+    // Escalating hints, purely time-based — deliberately not a pixel-level
+    // blur/focus heuristic. A hand-tuned sharpness score would need real-
+    // device calibration this can't get right now, and a wrong threshold
+    // (false "too blurry" on a perfectly good frame) would be worse than no
+    // hint at all. Elapsed search time can't be wrong the same way: it only
+    // ever means "still hasn't found one", which is always true when shown.
+    function updateLiveHint() {
+      const elapsed = Date.now() - searchStart
+      const next =
+        elapsed < 2500
+          ? null
+          : elapsed < 6000
+            ? t('scanner.hint_steady')
+            : t('scanner.hint_reposition')
+      setLiveHint((current) => (current === next ? current : next))
+    }
+
     function decodeCroppedFrame() {
+      updateLiveHint()
+
       const video = videoRef.current
       if (!video || !cropCtx || video.videoWidth === 0 || cancelled) return
 
@@ -271,6 +298,8 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
 
           if (ok) {
             setStatus('running')
+            searchStart = Date.now()
+            setLiveHint(null)
             cropInterval = window.setInterval(decodeCroppedFrame, 150)
 
             // Best-effort: a badge is now sometimes held up as a phone
@@ -297,17 +326,40 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
                 | ((trackFilter: (track: MediaStreamTrack) => boolean) => MediaTrackCapabilities)
                 | undefined
               const capabilities = capsGet?.(() => true) as
-                | (MediaTrackCapabilities & { focusMode?: string[] })
+                | (MediaTrackCapabilities & {
+                    focusMode?: string[]
+                    focusDistance?: { min: number; max: number; step: number }
+                  })
+                | undefined
+
+              const applyConstraints = controls.streamVideoConstraintsApply as
+                | ((constraints: MediaTrackConstraints) => Promise<void>)
                 | undefined
 
               if (capabilities?.focusMode?.includes('continuous')) {
-                const applyConstraints = controls.streamVideoConstraintsApply as
-                  | ((constraints: MediaTrackConstraints) => Promise<void>)
-                  | undefined
                 void applyConstraints
                   ?.({ advanced: [{ focusMode: 'continuous' } as MediaTrackConstraintSet] })
                   .catch(() => {
                     // Fixed/auto focus is what this camera had anyway.
+                  })
+              } else if (capabilities?.focusDistance && capabilities.focusMode?.includes('manual')) {
+                // No continuous mode, but some cameras (mainly Android Chrome
+                // over the Image Capture extensions; essentially never a
+                // laptop's own webcam) expose a settable focus distance.
+                // Force it to the nearest point the camera supports — a
+                // badge held up close is closer than "continuous" mode's own
+                // hunting range often bothers covering.
+                void applyConstraints
+                  ?.({
+                    advanced: [
+                      {
+                        focusMode: 'manual',
+                        focusDistance: capabilities.focusDistance.min,
+                      } as MediaTrackConstraintSet,
+                    ],
+                  })
+                  .catch(() => {
+                    // Whatever focus it already had.
                   })
               }
             } catch {
@@ -343,6 +395,7 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
       if (cropInterval) window.clearInterval(cropInterval)
       controlsRef.current?.stop()
       controlsRef.current = null
+      setLiveHint(null)
     }
   }, [handleCode, paused])
 
@@ -358,6 +411,11 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
           {status === 'starting' && (
             <p className="absolute inset-0 flex items-center justify-center text-white">
               {t('scanner.starting')}
+            </p>
+          )}
+          {status === 'running' && liveHint && (
+            <p className="absolute inset-x-0 bottom-2 mx-3 rounded-lg bg-black/70 px-3 py-1.5 text-center text-sm font-semibold text-white">
+              {liveHint}
             </p>
           )}
         </div>
