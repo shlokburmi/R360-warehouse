@@ -98,16 +98,16 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
     // one format that can ever match means every single decode attempt does
     // less work, which is the single biggest lever on how fast a scan lands.
     hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE])
-    // TRY_HARDER trades a little per-attempt time for a more exhaustive
-    // search — worth spending now that dropping two whole formats above
-    // freed up that budget. It matters most for exactly the harder real
-    // cases (a badge held at a slight angle, or read off a glossy phone
-    // screen instead of a printed card): most "it won't scan" time is spent
-    // repositioning after a missed read, not in the decode call itself, so
-    // fewer misses is the actual speedup an operator feels.
-    hints.set(DecodeHintType.TRY_HARDER, true)
-
-    const reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 80 })
+    // TRY_HARDER and a shorter delayBetweenScanAttempts were tried here
+    // earlier for raw speed, then reverted: both increase how much canvas/
+    // decode work runs per second against the live video, and that
+    // increased load is a plausible contributor to the black-video failure
+    // this file's `painting()` comment now documents — iOS Safari's video
+    // compositing has known sensitivity to exactly this kind of pressure.
+    // A scanner that works correctly, slightly slower, beats one that is
+    // faster on paper and unusable in practice. The format restriction above
+    // is kept — it only ever reduces work, with no such tradeoff.
+    const reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 150 })
 
     // Three attempts, in order of preference.
     //
@@ -164,8 +164,43 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
       { video: true },
     ]
 
-    /** Has the element actually painted a frame, rather than merely been handed a stream? */
-    const painting = () => (videoRef.current?.videoWidth ?? 0) > 0
+    /**
+     * Has the element actually painted a real camera frame, rather than
+     * merely been handed a stream?
+     *
+     * `videoWidth > 0` alone is not enough — on at least some iOS Safari
+     * versions, `videoWidth`/`videoHeight` reflect the stream's metadata
+     * (its negotiated dimensions) the moment that metadata loads, which can
+     * happen independent of whether the video element is actually decoding
+     * and compositing visible frames. That produced a real, reproducible
+     * failure: the camera worked (confirmed with the phone's own native
+     * camera app, same distance and lighting), permission was granted, this
+     * check reported success — and the on-screen video was solid black the
+     * whole time. So this draws the current frame into a tiny throwaway
+     * canvas and checks whether any sampled pixel is non-black — a direct
+     * read of what is actually being rendered, not a proxy for it.
+     */
+    const probeCanvas = document.createElement('canvas')
+    probeCanvas.width = 8
+    probeCanvas.height = 8
+    const probeCtx = probeCanvas.getContext('2d', { willReadFrequently: true })
+
+    const painting = () => {
+      const video = videoRef.current
+      if (!video || video.videoWidth === 0 || !probeCtx) return false
+      try {
+        probeCtx.drawImage(video, 0, 0, 8, 8)
+        const data = probeCtx.getImageData(0, 0, 8, 8).data
+        for (let i = 0; i < data.length; i += 4) {
+          if (data[i] !== 0 || data[i + 1] !== 0 || data[i + 2] !== 0) return true
+        }
+        return false
+      } catch {
+        // A not-yet-ready video source can throw on draw — treat that the
+        // same as "nothing painted yet" and let the poll loop retry.
+        return false
+      }
+    }
 
     // Second, narrower decode pass, additive to the full-frame one above —
     // it never replaces it, only runs alongside it, so a single isolated
