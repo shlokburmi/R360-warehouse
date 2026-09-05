@@ -11,6 +11,17 @@ type Props = {
 }
 
 /**
+ * The browser's own barcode detector — hardware-accelerated (Google ML Kit
+ * on Android Chrome, where it's supported; nowhere else as of writing, most
+ * notably not in Safari on iPhone). Not in TS's DOM lib yet, hence the
+ * manual type. Feature-detected below and used only where present, as an
+ * addition alongside the ZXing path — never a replacement for it, since it
+ * simply does not exist on a large share of the devices this runs on.
+ */
+type NativeBarcodeDetector = { detect: (source: CanvasImageSource) => Promise<{ rawValue: string }[]> }
+type NativeBarcodeDetectorCtor = new (options: { formats: string[] }) => NativeBarcodeDetector
+
+/**
  * Camera scanner for sticker QR codes.
  *
  * Two behaviours here are worth knowing about:
@@ -90,6 +101,7 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
     let cancelled = false
     let watchdog: number | undefined
     let cropInterval: number | undefined
+    let nativeInterval: number | undefined
     let searchStart = 0
     const hints = new Map()
     // Every code this app ever generates is a QR (qrcode_util.py is segno,
@@ -335,6 +347,45 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
             setLiveHint(null)
             cropInterval = window.setInterval(decodeCroppedFrame, 150)
 
+            // Where the browser exposes its own native detector, race it
+            // alongside the ZXing loops above rather than replacing them —
+            // purely additive, so a device without it (notably iPhone
+            // Safari, where this whole file has been debugged) behaves
+            // exactly as before. Where it IS available, it runs on-chip
+            // (Android Chrome uses Google ML Kit under the hood) instead of
+            // as synchronous JS on the main thread, so it's both much
+            // faster and does not carry the same main-thread-stall risk
+            // that the resolution reduction above was working around for
+            // the ZXing path. `handleCode`'s own debounce makes it safe for
+            // both paths to find the same code.
+            const DetectorCtor = (
+              window as unknown as { BarcodeDetector?: NativeBarcodeDetectorCtor }
+            ).BarcodeDetector
+            if (DetectorCtor) {
+              try {
+                const detector = new DetectorCtor({ formats: ['qr_code'] })
+                const tick = async () => {
+                  if (cancelled) return
+                  const video = videoRef.current
+                  if (video && video.videoWidth > 0) {
+                    try {
+                      const results = await detector.detect(video)
+                      if (results.length > 0 && !cancelled) handleCode(results[0].rawValue)
+                    } catch {
+                      // A transient detection failure (e.g. a frame mid-
+                      // transition) — the next tick tries again.
+                    }
+                  }
+                  if (!cancelled) nativeInterval = window.setTimeout(tick, 120)
+                }
+                void tick()
+              } catch {
+                // The class can exist but fail to construct for an
+                // unsupported format on some implementations — the ZXing
+                // loops above already cover this case regardless.
+              }
+            }
+
             // A previous version of this effect tried to nudge the camera's
             // focus (continuous mode, then a manual focusDistance fallback)
             // through streamVideoConstraintsApply. Removed: it caused a
@@ -373,6 +424,7 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
       cancelled = true
       if (watchdog) window.clearTimeout(watchdog)
       if (cropInterval) window.clearInterval(cropInterval)
+      if (nativeInterval) window.clearTimeout(nativeInterval)
       controlsRef.current?.stop()
       controlsRef.current = null
       setLiveHint(null)
