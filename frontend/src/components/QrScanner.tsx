@@ -101,7 +101,7 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
 
     const reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 80 })
 
-    // Two attempts, in order of preference.
+    // Three attempts, in order of preference.
     //
     // The first asks for the rear camera at a resolution high enough to read a
     // small code at arm's length without dropping the frame rate — right for
@@ -112,20 +112,29 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
     // small unit stickers packed close together needs more pixels per code
     // than a single box sticker at the same distance to resolve at all.
     //
-    // The second asks for nothing at all. A laptop has only a front camera and
-    // may not offer this on it; depending on the browser that surfaces as
-    // an OverconstrainedError, or worse, as a stream that resolves and then
-    // never produces a frame. Retrying bare means the desktop case degrades to
-    // "the wrong camera, working" instead of "no camera", which matters because
-    // desktop is where this gets demonstrated and tested.
+    // The second drops only `facingMode` and keeps the same resolution/frame-
+    // rate ask. A laptop has one front camera, no `environment` match at all,
+    // so the first attempt's `exact` throws — and without this middle step
+    // that fell straight through to the bare, unconstrained third attempt,
+    // silently handing the browser's low default resolution (often 640x480)
+    // to a case that specifically needs more pixels: a laptop scanning
+    // someone else's *phone screen* held up to it (About Me's on-screen
+    // badge) is already fighting moiré and glare, and a soft camera makes
+    // that strictly harder for no reason — the laptop can ask for 1080p same
+    // as a phone can, it just can't ask for a *rear* one.
+    //
+    // The third asks for nothing at all, for whatever neither preference
+    // above negotiates — a stream that resolves and then never produces a
+    // frame on some laptop/browser combinations, which the painting() check
+    // further down exists to detect and fall through from.
     const attempts: MediaStreamConstraints[] = [
       // `exact`, not `ideal`: a phone or tablet always has a rear camera, and
       // the front one is never the right choice for scanning a sticker —
       // `ideal` is only a preference the browser can (and on some devices
       // does) ignore. `exact` throws OverconstrainedError instead of
       // silently picking the front camera, which is exactly what should
-      // happen: the bare `{ video: true }` fallback below still catches a
-      // laptop with only a front camera.
+      // happen: the next attempt below still catches a laptop with only a
+      // front camera.
       {
         video: {
           facingMode: { exact: 'environment' },
@@ -134,6 +143,13 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
           // More frames per second is more chances to land a decode inside
           // the same half-second an operator holds a badge under the lens.
           // `ideal`, so a camera that only offers less still connects.
+          frameRate: { ideal: 30 },
+        },
+      },
+      {
+        video: {
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
           frameRate: { ideal: 30 },
         },
       },
