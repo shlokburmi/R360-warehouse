@@ -84,13 +84,22 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
     let watchdog: number | undefined
     let cropInterval: number | undefined
     const hints = new Map()
-    hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-      BarcodeFormat.QR_CODE,
-      BarcodeFormat.CODE_128,
-      BarcodeFormat.DATA_MATRIX,
-    ])
+    // Every code this app ever generates is a QR (qrcode_util.py is segno,
+    // QR-only, for badges and every sticker type) — CODE_128 and DATA_MATRIX
+    // were never actually produced anywhere. Restricting the search to the
+    // one format that can ever match means every single decode attempt does
+    // less work, which is the single biggest lever on how fast a scan lands.
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE])
+    // TRY_HARDER trades a little per-attempt time for a more exhaustive
+    // search — worth spending now that dropping two whole formats above
+    // freed up that budget. It matters most for exactly the harder real
+    // cases (a badge held at a slight angle, or read off a glossy phone
+    // screen instead of a printed card): most "it won't scan" time is spent
+    // repositioning after a missed read, not in the decode call itself, so
+    // fewer misses is the actual speedup an operator feels.
+    hints.set(DecodeHintType.TRY_HARDER, true)
 
-    const reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 150 })
+    const reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 80 })
 
     // Two attempts, in order of preference.
     //
@@ -122,6 +131,10 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
           facingMode: { exact: 'environment' },
           width: { ideal: 1920 },
           height: { ideal: 1080 },
+          // More frames per second is more chances to land a decode inside
+          // the same half-second an operator holds a badge under the lens.
+          // `ideal`, so a camera that only offers less still connects.
+          frameRate: { ideal: 30 },
         },
       },
       { video: true },
