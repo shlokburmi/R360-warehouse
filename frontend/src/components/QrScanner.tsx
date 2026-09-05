@@ -302,69 +302,16 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
             setLiveHint(null)
             cropInterval = window.setInterval(decodeCroppedFrame, 150)
 
-            // Best-effort: a badge is now sometimes held up as a phone
-            // screen a few centimetres from the lens (0037) rather than a
-            // sticker at arm's length, which is closer than this camera's
-            // default autofocus range is tuned for.
-            //
-            // Only attempted when the camera's own reported capabilities
-            // list 'continuous' focusMode support — most laptop webcams
-            // (fixed-focus) don't, and asking anyway risks the browser
-            // renegotiating the track into a broken state (observed as a
-            // black video element) rather than cleanly rejecting, which is
-            // why this is gated on capabilities rather than just caught.
-            // `streamVideoConstraintsApply` is also async, so a bare
-            // try/catch around the call site would not catch a rejection
-            // anyway — `.catch()` on the promise it returns does.
-            try {
-              // @zxing/browser's own .d.ts mistypes both of these (a
-              // `find`-style boolean predicate as one returning
-              // `MediaStreamTrack[]`, and an async applier as returning
-              // `void`) — casts here match what the implementation
-              // actually does, not what its types claim.
-              const capsGet = controls.streamVideoCapabilitiesGet as
-                | ((trackFilter: (track: MediaStreamTrack) => boolean) => MediaTrackCapabilities)
-                | undefined
-              const capabilities = capsGet?.(() => true) as
-                | (MediaTrackCapabilities & {
-                    focusMode?: string[]
-                    focusDistance?: { min: number; max: number; step: number }
-                  })
-                | undefined
-
-              const applyConstraints = controls.streamVideoConstraintsApply as
-                | ((constraints: MediaTrackConstraints) => Promise<void>)
-                | undefined
-
-              if (capabilities?.focusMode?.includes('continuous')) {
-                void applyConstraints
-                  ?.({ advanced: [{ focusMode: 'continuous' } as MediaTrackConstraintSet] })
-                  .catch(() => {
-                    // Fixed/auto focus is what this camera had anyway.
-                  })
-              } else if (capabilities?.focusDistance && capabilities.focusMode?.includes('manual')) {
-                // No continuous mode, but some cameras (mainly Android Chrome
-                // over the Image Capture extensions; essentially never a
-                // laptop's own webcam) expose a settable focus distance.
-                // Force it to the nearest point the camera supports — a
-                // badge held up close is closer than "continuous" mode's own
-                // hunting range often bothers covering.
-                void applyConstraints
-                  ?.({
-                    advanced: [
-                      {
-                        focusMode: 'manual',
-                        focusDistance: capabilities.focusDistance.min,
-                      } as MediaTrackConstraintSet,
-                    ],
-                  })
-                  .catch(() => {
-                    // Whatever focus it already had.
-                  })
-              }
-            } catch {
-              // getCapabilities() itself can throw on some browsers/devices.
-            }
+            // A previous version of this effect tried to nudge the camera's
+            // focus (continuous mode, then a manual focusDistance fallback)
+            // through streamVideoConstraintsApply. Removed: it caused a
+            // black video element on at least two different devices in
+            // practice (the whole point of the capability gating was to
+            // prevent exactly that, and it still happened), and there is no
+            // way to verify a fix for a non-standard, inconsistently
+            // implemented API against real hardware from here. A working
+            // camera the operator can type a fallback code from beats a
+            // camera this component broke trying to focus it better.
 
             return
           }
