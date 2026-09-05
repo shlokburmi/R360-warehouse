@@ -111,25 +111,26 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
 
     // Three attempts, in order of preference.
     //
-    // The first asks for the rear camera at a resolution high enough to read a
-    // small code at arm's length without dropping the frame rate — right for
-    // the phone or tablet this is actually used on. `ideal` is a soft
-    // preference, not a requirement, so asking for more than a camera can do
-    // never throws — it just negotiates down to whatever the camera actually
-    // offers, same as it always did at the lower number. A sheet with several
-    // small unit stickers packed close together needs more pixels per code
-    // than a single box sticker at the same distance to resolve at all.
+    // The first asks for the rear camera at 720p. This used to ask for
+    // 1080p, copied from OrderNoScanner's reasoning — but that reasoning is
+    // about reading 9pt *text*, which genuinely needs more pixels per
+    // character. A QR code is designed to decode reliably from far fewer
+    // pixels than that, and the extra resolution bought nothing here except
+    // roughly 2.25x more pixels for every single decode attempt (every
+    // ~150ms) to search and, once a code is actually in frame, fully
+    // decode — real synchronous JS work. That is the likely cause of a
+    // reproduced failure: the video only went black while a QR was actually
+    // in frame, never while pointed at anything else, which is exactly the
+    // signature of decode work heavy enough to stall the main thread long
+    // enough for the browser to blank the video rather than a camera or
+    // lighting problem. Lower resolution is the direct fix for that specific
+    // shape of failure — the crop pass below shrinks accordingly too, since
+    // it upscales *from* the video's own dimensions.
     //
-    // The second drops only `facingMode` and keeps the same resolution/frame-
-    // rate ask. A laptop has one front camera, no `environment` match at all,
-    // so the first attempt's `exact` throws — and without this middle step
-    // that fell straight through to the bare, unconstrained third attempt,
-    // silently handing the browser's low default resolution (often 640x480)
-    // to a case that specifically needs more pixels: a laptop scanning
-    // someone else's *phone screen* held up to it (About Me's on-screen
-    // badge) is already fighting moiré and glare, and a soft camera makes
-    // that strictly harder for no reason — the laptop can ask for 1080p same
-    // as a phone can, it just can't ask for a *rear* one.
+    // The second drops only `facingMode`, for the same reason as before: a
+    // laptop has one front camera, no `environment` match at all, so the
+    // first attempt's `exact` throws — and without this middle step that
+    // fell straight through to the bare, unconstrained third attempt.
     //
     // The third asks for nothing at all, for whatever neither preference
     // above negotiates — a stream that resolves and then never produces a
@@ -146,18 +147,15 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
       {
         video: {
           facingMode: { exact: 'environment' },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          // More frames per second is more chances to land a decode inside
-          // the same half-second an operator holds a badge under the lens.
-          // `ideal`, so a camera that only offers less still connects.
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
           frameRate: { ideal: 30 },
         },
       },
       {
         video: {
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
           frameRate: { ideal: 30 },
         },
       },
