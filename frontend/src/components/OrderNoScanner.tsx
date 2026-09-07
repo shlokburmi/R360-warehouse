@@ -536,7 +536,12 @@ export function OrderNoScanner({ invoiceNumber, onConfirm, busy = false }: Props
           <input
             id="order-no"
             className="input font-mono text-xl uppercase tracking-wider"
-            placeholder="CP002458380_0001"
+            // Not a real-looking example (the old "CP002458380_0001" happened
+            // to be this exact test invoice's actual correct value, so an
+            // empty field showing its placeholder was visually identical to
+            // a correctly-filled one — including to me, debugging this from
+            // screenshots). Xs can never be mistaken for a real reading.
+            placeholder="CPXXXXXXXXX_XXXX"
             value={value}
             onChange={(event) => setValue(event.target.value)}
             autoCapitalize="characters"

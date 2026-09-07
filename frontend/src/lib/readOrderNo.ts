@@ -184,7 +184,17 @@ export async function getWorker(
 
   await worker.setParameters({
     tessedit_char_whitelist: 'CP0123456789_',
-    tessedit_pageseg_mode: job === 'line' ? PSM.SINGLE_LINE : PSM.SPARSE_TEXT,
+    // SINGLE_BLOCK, not SINGLE_LINE, for the camera job: GUIDE_BOX is 24% of
+    // the frame's height, and every field report of a real capture through
+    // it shows two lines inside the box — the Delivery Challan Date line
+    // sitting right above the Order No line, not the single isolated line
+    // this job's PSM was originally chosen assuming the operator would frame.
+    // SINGLE_LINE (PSM 7) explicitly assumes exactly one line of text and can
+    // behave unpredictably fed two — SINGLE_BLOCK (PSM 6, "a single uniform
+    // block of text") is the mode actually suited to a short multi-line
+    // snippet like this, and still costs nothing extra for the rare case
+    // that really is one isolated line.
+    tessedit_pageseg_mode: job === 'line' ? PSM.SINGLE_BLOCK : PSM.SPARSE_TEXT,
   })
 
   return worker
