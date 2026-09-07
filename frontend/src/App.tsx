@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { Layout } from '@/components/Layout'
+import { UpdatePrompt } from '@/components/UpdatePrompt'
 import { Banner, Spinner } from '@/components/ui'
 import { startAutoFlush } from '@/lib/offlineQueue'
 
@@ -271,6 +272,7 @@ export default function App() {
   return (
     <AuthProvider>
       <Shell />
+      <UpdatePrompt />
     </AuthProvider>
   )
 }

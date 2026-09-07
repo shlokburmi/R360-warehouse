@@ -10,7 +10,13 @@ export default defineConfig({
     // keeps the app shell available so a dropped connection means "scans are
     // queuing" rather than a blank browser error page.
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt', not 'autoUpdate': autoUpdate reloads the page the moment a
+      // new deploy is detected, with no warning — which silently wiped out
+      // whatever an operator was mid-way through (a badge scan, an OCR
+      // upload) every time a deploy went out anywhere in the app, even one
+      // that only touched the backend. 'prompt' surfaces UpdatePrompt.tsx
+      // instead, so reloading is something she chooses between tasks.
+      registerType: 'prompt',
       includeAssets: ['favicon.svg'],
       manifest: {
         name: 'R360 Warehouse',
