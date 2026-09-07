@@ -37,7 +37,7 @@ import { AboutMePage } from '@/pages/AboutMe'
  */
 function Protected({ page, children }: { page?: string; children: ReactNode }) {
   const { t } = useTranslation()
-  const { session, me, loading, error, signOut } = useAuth()
+  const { session, me, loading, signOut } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -45,7 +45,12 @@ function Protected({ page, children }: { page?: string; children: ReactNode }) {
 
   if (!session) return <Navigate to="/login" state={{ from: location }} replace />
 
-  if (error || !me) {
+  // Not `error || !me`: `error` can now be set by a background profile
+  // refetch (a token refresh coinciding with a bad connection) that failed
+  // while a perfectly good `me` from the last successful load is still
+  // sitting there — see useAuth.tsx. Only the genuine "never loaded a
+  // profile at all" case should block the page.
+  if (!me) {
     return (
       <div className="mx-auto max-w-lg space-y-4 p-6">
         <Banner tone="bad" title={t('app.no_profile_title')}>

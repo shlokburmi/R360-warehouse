@@ -77,6 +77,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // The profile — role, name, which pages exist — comes from the API, not from
   // the JWT. Roles can change mid-shift and a token issued eight hours ago
   // should not be what decides what someone can see.
+  //
+  // `loading` deliberately does NOT get set back to true here on a rerun of
+  // this effect. Supabase's client refreshes the auth token automatically —
+  // notably, when a backgrounded tab regains focus, which is exactly what
+  // happens every time a file/photo picker opens and closes over this app.
+  // That refresh publishes a new `session` object for the *same* signed-in
+  // user, re-running this effect. Setting `loading = true` here used to make
+  // `Protected` (App.tsx) unmount the entire current page in favour of its
+  // "Signing in…" spinner on every one of those routine refreshes — turning
+  // "picked a photo to upload" into "the whole screen was reset" with no
+  // error and no photo. `loading` now only ever reflects the *first* check
+  // (its initial useState(true) default, resolved once below); a later
+  // session change still refreches `/me` in the background, but does so
+  // without tearing down whatever the operator is in the middle of.
   useEffect(() => {
     if (!session) {
       setLoading(false)
@@ -84,7 +98,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     let active = true
-    setLoading(true)
 
     get<Me>('/me')
       .then((profile) => {
@@ -94,7 +107,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .catch((err: Error) => {
         if (!active) return
-        setMe(null)
+        // Not `setMe(null)`: a background refetch failing (a token refresh
+        // landing during a flaky connection, say) must not blank a page that
+        // was already working from the last successful profile it has.
+        // `me` only ever goes back to null via an explicit sign-out.
         setError(err.message)
       })
       .finally(() => {
