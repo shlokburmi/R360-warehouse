@@ -164,7 +164,7 @@ class TestBadgeCodesAreUnreadable:
 
 
 class TestIssuingABadge:
-    async def test_only_an_admin_can_issue(self, db, badge_holders):
+    async def test_a_packer_cannot_issue_a_badge(self, db, badge_holders):
         """A packer who could issue a badge could issue themselves a second
         one — one person on both halves of CONTROL POINT 5."""
         await as_authenticated(db, badge_holders["packer"]["id"])
@@ -174,6 +174,23 @@ class TestIssuingABadge:
                 {"id": badge_holders["matcher"]["id"]},
             )
         await as_postgres(db)
+
+    async def test_an_ops_manager_can_issue(self, db, badge_holders):
+        """0038: widened from Admin-only at the user's explicit request
+        (DECISIONS.md §CH1a) — an Ops Manager can now issue/reissue too."""
+        old_code = badge_holders["packer"]["badge_code"]
+
+        await as_authenticated(db, badge_holders["ops"]["id"])
+        new_code = (
+            await db.execute(
+                text("select admin_issue_badge(cast(:id as uuid))"),
+                {"id": badge_holders["packer"]["id"]},
+            )
+        ).scalar_one()
+        await as_postgres(db)
+
+        assert new_code != old_code
+        assert new_code.startswith("BDG-")
 
     async def test_issuing_replaces_the_old_code(self, db, badge_holders):
         """A reissue kills the badge it replaces, which is what makes "lost
@@ -253,7 +270,7 @@ class TestIssuingABadge:
         # instead of the unhelpful "not recognised".
         assert holder["badge_active"] is False
 
-    async def test_only_an_admin_can_revoke(self, db, badge_holders):
+    async def test_a_packer_cannot_revoke_a_badge(self, db, badge_holders):
         await as_authenticated(db, badge_holders["packer"]["id"])
         async with rejected(db, containing="Only an Admin"):
             await db.execute(
@@ -261,6 +278,23 @@ class TestIssuingABadge:
                 {"id": badge_holders["matcher"]["id"]},
             )
         await as_postgres(db)
+
+    async def test_an_ops_manager_can_revoke(self, db, badge_holders):
+        """0038, same widening as issuing — see DECISIONS.md §CH1a."""
+        await as_authenticated(db, badge_holders["ops"]["id"])
+        await db.execute(
+            text("select admin_revoke_badge(cast(:id as uuid))"),
+            {"id": badge_holders["matcher"]["id"]},
+        )
+        holder = (
+            await db.execute(
+                text("select badge_active from resolve_badge_holder(:c)"),
+                {"c": badge_holders["matcher"]["badge_code"]},
+            )
+        ).mappings().one()
+        await as_postgres(db)
+
+        assert holder["badge_active"] is False
 
 
 class TestAccountChanges:

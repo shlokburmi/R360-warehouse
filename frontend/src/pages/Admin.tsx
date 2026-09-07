@@ -278,10 +278,15 @@ export function AdminPage() {
 
       {rows.map((person) => {
         const isSelf = person.id === me?.id
-        // Badge issue/revoke and password reset stay Admin-only on the backend
-        // (DECISIONS.md §CE1) even though staff add/edit/delete does not
-        // (§0033) — hide rather than let an Ops Manager hit a 403 on click.
+        // Password reset stays Admin-only on the backend — hide rather than
+        // let an Ops Manager hit a 403 on click.
         const isAdmin = me?.role === 'admin'
+        // Badge issue/revoke is now Admin-or-Ops-Manager (0038), a deliberate
+        // widening of DECISIONS.md §CE1 the user asked for, on the same
+        // "reintroduce it for Ops Manager" shape §0023 already used elsewhere
+        // — kept as its own flag rather than folded into isAdmin so password
+        // reset (still Admin-only) doesn't move with it by accident.
+        const canManageBadges = isAdmin || me?.role === 'ops_manager'
         const open = expanded === person.id
         const busy =
           update.isPending ||
@@ -335,7 +340,7 @@ export function AdminPage() {
             )}
 
             <div className="flex flex-wrap gap-3">
-              {person.can_hold_badge && person.is_active && isAdmin && (
+              {person.can_hold_badge && person.is_active && canManageBadges && (
                 <button
                   type="button"
                   className={person.badge_usable ? 'btn-ghost' : 'btn-primary'}
@@ -347,7 +352,7 @@ export function AdminPage() {
               )}
 
               {person.badge_usable &&
-                isAdmin &&
+                canManageBadges &&
                 (confirmRevoke === person.id ? (
                   <button
                     type="button"

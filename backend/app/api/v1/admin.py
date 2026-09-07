@@ -109,7 +109,11 @@ async def delete_staff(
 async def issue_badge(
     profile_id: UUID,
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_admin),
+    # Widened from require_admin to require_ops_manager (admin or ops_manager)
+    # at the user's explicit request, accepting the CONTROL POINT 5 trade-off
+    # DECISIONS.md §CE1 states — 0038_ops_manager_badge_issue.sql moves the
+    # matching DB-level guard the same way.
+    user: CurrentUser = Depends(require_ops_manager),
 ):
     """Mint a badge and return it once, for printing.
 
@@ -124,7 +128,7 @@ async def issue_badge(
 async def revoke_badge(
     profile_id: UUID,
     conn: AsyncConnection = Depends(get_db),
-    user: CurrentUser = Depends(require_admin),
+    user: CurrentUser = Depends(require_ops_manager),
 ):
     return await admin_service.revoke_badge(conn, profile_id)
 

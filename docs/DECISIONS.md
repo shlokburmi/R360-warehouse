@@ -675,6 +675,22 @@ split). `require_roles()` still unions every check with `admin` (§CC3's
 new roles; the identity-based CP5 check (`verified_by <> packed_by`) is what
 actually stops a single logged-in account self-dealing, regardless of role.
 
+### CH1a. Badge issue/revoke moves to Ops Manager too
+
+§CH1 recorded provisioning and badge issuance as the one capability that did
+*not* move to Ops Manager in the role split, for the CONTROL POINT 5 reason
+§CE1 gives: an Ops Manager who can issue a badge can mint one under a name with
+no real person behind it, satisfying "two badges" without "two people."
+
+The user reviewed that trade-off a second time and asked to reverse it for
+badge issue/revoke specifically — not for provisioning, which still stays
+Admin-only. `admin_issue_badge()` and `admin_revoke_badge()` now guard with
+`is_ops_manager()` instead of `is_admin()` (0038), and `/staff/{id}/badge` and
+`/staff/{id}/badge/revoke` use `require_ops_manager` instead of `require_admin`
+on the API side. The frontend's `canManageBadges` flag (Admin.tsx) is kept
+separate from `isAdmin`, which still gates password reset — this widening is
+scoped to badges only.
+
 ### CH2. Matching gets its own unit-sticker scan, additive to CG3
 
 The user also asked for a second, independent product-in-hand check at
