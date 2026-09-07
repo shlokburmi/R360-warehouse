@@ -562,11 +562,13 @@ async def issue_badge(conn: AsyncConnection, profile_id: UUID) -> BadgeIssued:
     return BadgeIssued(
         staff=staff,
         badge_code=code,
-        # border=4 (the ISO/IEC 18004 minimum quiet zone), not the module
-        # default of 1 — a badge is now also scanned straight off a phone
-        # screen (0037), where there is no printed white card supplying the
-        # quiet zone for it, only whatever crowds right up against the image.
-        badge_qr=qrcode_util.to_data_uri(code, scale=8, border=4),
+        # SVG, not PNG, for the same reason my_badge() uses it — a badge is
+        # also scanned straight off a phone screen (0037), and a raster image
+        # blurs when the browser upscales it to whatever size that screen
+        # shows it at. border=4 is the ISO/IEC 18004 minimum quiet zone, not
+        # the module default of 1 — there is no printed white card supplying
+        # it here, only whatever crowds right up against the image.
+        badge_qr=qrcode_util.to_svg_data_uri(code, border=4),
     )
 
 

@@ -110,10 +110,12 @@ async def my_badge(conn: AsyncConnection) -> Dict[str, str]:
             hint="Ask an Admin to issue one.",
         )
 
-    # border=4 (ISO/IEC 18004's minimum quiet zone): this image is scanned
-    # straight off a phone screen, which supplies no printed white card
-    # around it the way BadgeCardPrint's page does.
-    return {"badge_qr": qrcode_util.to_data_uri(code, scale=8, border=4)}
+    # SVG, not PNG: this image is scanned straight off a phone screen at
+    # whatever size that screen (or the full-screen scan view) happens to
+    # render it, and a raster image upscaled beyond its native resolution
+    # blurs the module edges a scanning camera needs sharp. border=4 is
+    # ISO/IEC 18004's minimum quiet zone.
+    return {"badge_qr": qrcode_util.to_svg_data_uri(code, border=4)}
 
 
 # ---------------------------------------------------------------------------
