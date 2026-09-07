@@ -111,6 +111,7 @@
   "errors": {
     "generic": "Something went wrong.",
     "network": "No connection. Your scans are being saved and will sync automatically.",
+    "timeout": "That took too long to respond. Your scans are being saved and will sync automatically.",
     "already_batched": "This carton is already in a batch.",
     "already_decided": "This request has already been decided.",
     "already_departed": "This truck has already departed.",

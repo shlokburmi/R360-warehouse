@@ -56,13 +56,22 @@ export default defineConfig({
           {
             // The OCR runtime, cached on first use rather than at install.
             //
-            // CacheFirst is right here in a way it would never be for API data:
-            // these files are immutable for a given dependency version, so
-            // "stale" is not a state they can be in. The matcher's station pays
-            // the ~6MB download once and then reads challans offline forever;
-            // the dashboard-only users never fetch it at all.
+            // StaleWhileRevalidate, not CacheFirst: these files ARE immutable
+            // for a given dependency version, so a *successfully* cached copy
+            // never goes stale — but CacheFirst also never asks the network
+            // again once something is cached at all, including a partial file
+            // from a connection that dropped mid-download. On the flaky
+            // warehouse wifi this runs on (0-20 KB/s readings turn up
+            // routinely), that produces a device permanently stuck with a
+            // broken OCR engine and no way to self-heal short of clearing
+            // site data by hand. StaleWhileRevalidate still serves instantly
+            // from cache on every load — same speed as CacheFirst for the
+            // matcher's station once warm — but also re-fetches in the
+            // background each time, so a bad cache entry gets a real chance
+            // to repair itself on the next successful attempt instead of
+            // staying broken forever.
             urlPattern: /\/tesseract\/.*\.(wasm|mjs|js|gz)$|\/assets\/pdf-[^/]*\.js$/,
-            handler: 'CacheFirst',
+            handler: 'StaleWhileRevalidate',
             options: {
               cacheName: 'ocr-runtime',
               expiration: { maxEntries: 12 },

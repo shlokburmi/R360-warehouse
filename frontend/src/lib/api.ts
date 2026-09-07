@@ -26,7 +26,12 @@ export class ApiError extends Error {
   }
 
   get isOffline() {
-    return this.code === 'network'
+    // A timeout is treated the same as an outright network failure here: on
+    // the connection this app runs on, a request that took 20s and never
+    // answered is not meaningfully different from one that was refused
+    // immediately — both mean "the network is the problem right now", and
+    // the scanning pages already know how to queue that for later.
+    return this.code === 'network' || this.code === 'timeout'
   }
 }
 
@@ -45,7 +50,30 @@ type Options = {
   allowStatus?: number[]
 }
 
+// `fetch` has no built-in timeout — on the connection this app actually runs
+// on (a warehouse floor with patchy wifi; 0.00-20 KB/s readings turn up
+// routinely in the field), a dead or crawling request otherwise hangs
+// indefinitely with zero feedback. That is indistinguishable from "the app
+// is broken" to whoever is staring at a spinner that never resolves — several
+// reports that looked like a stuck scanner or a stuck sign-in turned out to
+// be exactly this. 20s is generous enough not to cut off a request that was
+// merely slow but genuinely progressing.
+const REQUEST_TIMEOUT_MS = 20_000
+
 async function doFetch(path: string, token: string, options: Options): Promise<Response> {
+  const timedOut = new AbortController()
+  const timer = window.setTimeout(() => timedOut.abort(), REQUEST_TIMEOUT_MS)
+
+  // Combine the caller's own signal (if any) with the timeout rather than
+  // relying on AbortSignal.any — not supported on every Android WebView this
+  // still has to run on. Nothing currently passes its own signal, but the
+  // option stays honoured for whoever does next.
+  const external = options.signal
+  if (external) {
+    if (external.aborted) timedOut.abort()
+    else external.addEventListener('abort', () => timedOut.abort(), { once: true })
+  }
+
   try {
     return await fetch(`${BASE}${path}`, {
       method: options.method ?? 'GET',
@@ -54,13 +82,23 @@ async function doFetch(path: string, token: string, options: Options): Promise<R
         ...(options.body ? { 'Content-Type': 'application/json' } : {}),
       },
       body: options.body ? JSON.stringify(options.body) : undefined,
-      signal: options.signal,
+      signal: timedOut.signal,
     })
   } catch {
-    // fetch only rejects on a genuine network failure. Distinguishing this from
-    // a server error matters: the scanning pages queue on network errors and
-    // surface everything else immediately.
+    // fetch rejects both on a genuine network failure and on our own timeout
+    // abort — distinguished so the operator is told which one happened
+    // rather than a single generic "no connection" that isn't quite true
+    // when the request was merely too slow, not refused outright.
+    if (timedOut.signal.aborted && !external?.aborted) {
+      throw new ApiError(
+        'That took too long to respond. Check your connection and try again.',
+        0,
+        'timeout',
+      )
+    }
     throw new ApiError('No connection. Your work is saved on this device.', 0, 'network')
+  } finally {
+    window.clearTimeout(timer)
   }
 }
 
