@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { forceLocalSignOut, onForcedSignOut, supabase } from '@/lib/supabase'
-import { get } from '@/lib/api'
+import { ApiError, get } from '@/lib/api'
 
 export type Me = {
   id: string
@@ -99,23 +99,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let active = true
 
-    get<Me>('/me')
-      .then((profile) => {
-        if (!active) return
-        setMe(profile)
-        setError(null)
-      })
-      .catch((err: Error) => {
-        if (!active) return
-        // Not `setMe(null)`: a background refetch failing (a token refresh
-        // landing during a flaky connection, say) must not blank a page that
-        // was already working from the last successful profile it has.
-        // `me` only ever goes back to null via an explicit sign-out.
-        setError(err.message)
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
+    /**
+     * Fetch the profile, retrying a transient failure rather than treating
+     * the first one as final.
+     *
+     * The backend is on Render's Free plan, which spins down on inactivity —
+     * so the very first request after any idle period hits an instance that
+     * is still waking up, and answers 502/503 (or nothing at all until the
+     * timeout) for the first several seconds. One attempt was enough to send
+     * `Protected` straight to its "Cannot load your profile" screen, which
+     * says to sign out and ask an Admin — for what is really just a server
+     * that needed another twenty seconds. Then Supabase's own automatic
+     * token refresh would re-run this effect a minute later, quietly
+     * succeed, and drop the operator on the dashboard, which is exactly the
+     * "shows the error, then after some time redirects me" that was
+     * reported.
+     *
+     * Only transient failures are retried: a network/timeout error or a 5xx.
+     * A 4xx is a real answer about this account (a genuinely missing
+     * profile, say) and retrying it would just delay the honest message.
+     */
+    const RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 15_000]
+
+    async function loadProfile() {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const profile = await get<Me>('/me')
+          if (!active) return
+          setMe(profile)
+          setError(null)
+          return
+        } catch (err) {
+          if (!active) return
+
+          const apiError = err instanceof ApiError ? err : null
+          const transient = apiError ? apiError.isOffline || apiError.status >= 500 : false
+
+          if (!transient || attempt >= RETRY_DELAYS_MS.length) {
+            // Not `setMe(null)`: a background refetch failing (a token
+            // refresh landing during a flaky connection, say) must not
+            // blank a page that was already working from the last
+            // successful profile it has. `me` only ever goes back to null
+            // via an explicit sign-out.
+            setError((err as Error).message)
+            return
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]))
+        }
+      }
+    }
+
+    void loadProfile().finally(() => {
+      if (active) setLoading(false)
+    })
 
     return () => {
       active = false
