@@ -56,9 +56,17 @@ type Options = {
 // indefinitely with zero feedback. That is indistinguishable from "the app
 // is broken" to whoever is staring at a spinner that never resolves — several
 // reports that looked like a stuck scanner or a stuck sign-in turned out to
-// be exactly this. 20s is generous enough not to cut off a request that was
-// merely slow but genuinely progressing.
-const REQUEST_TIMEOUT_MS = 20_000
+// be exactly this.
+//
+// 60s, not something shorter: the backend is on Render's Free plan, which
+// spins down on inactivity and can take 50+ seconds to wake on the first
+// request after any idle period (Render's own dashboard states this). A
+// shorter timeout doesn't make that cold start faster — it just fails a
+// request that was genuinely about to succeed, which is worse than the
+// indefinite hang this was meant to fix. 60s clears that worst case with
+// room to spare while still eventually giving up on a connection that is
+// truly dead rather than just slow to wake something up.
+const REQUEST_TIMEOUT_MS = 60_000
 
 async function doFetch(path: string, token: string, options: Options): Promise<Response> {
   const timedOut = new AbortController()
