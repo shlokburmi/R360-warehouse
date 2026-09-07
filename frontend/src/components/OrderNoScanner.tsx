@@ -122,6 +122,7 @@ export function OrderNoScanner({ invoiceNumber, onConfirm, busy = false }: Props
     if (source !== 'camera') return
 
     let cancelled = false
+    let watchdog: number | undefined
 
     const attempts: MediaStreamConstraints[] = [
       // A higher resolution than the barcode scanner asks for. Printed 9pt text
@@ -139,6 +140,40 @@ export function OrderNoScanner({ invoiceNumber, onConfirm, busy = false }: Props
       { video: true },
     ]
 
+    // Acquiring a stream is not the same as painting it — QrScanner.tsx's
+    // `painting()` comment documents the reproduced failure this guards
+    // against: Safari can reject video.play() in situations it considers
+    // un-gestured, leaving a live MediaStream attached to an element that
+    // never renders a visible frame while getUserMedia still resolved
+    // successfully. Without this check, this component had no way to
+    // detect that and just sat on a black box forever with no fallback —
+    // exactly the "stuck on Retake" report. Draws the current frame into a
+    // tiny throwaway canvas and checks a sampled pixel is non-black, a
+    // direct read of what is actually being rendered rather than a proxy
+    // for it (videoWidth/videoHeight alone can already be nonzero from the
+    // stream's negotiated metadata before a frame ever composites).
+    const probeCanvas = document.createElement('canvas')
+    probeCanvas.width = 8
+    probeCanvas.height = 8
+    const probeCtx = probeCanvas.getContext('2d', { willReadFrequently: true })
+
+    const painting = () => {
+      const video = videoRef.current
+      if (!video || video.videoWidth === 0 || !probeCtx) return false
+      try {
+        probeCtx.drawImage(video, 0, 0, 8, 8)
+        const data = probeCtx.getImageData(0, 0, 8, 8).data
+        for (let i = 0; i < data.length; i += 4) {
+          if (data[i] !== 0 || data[i + 1] !== 0 || data[i + 2] !== 0) return true
+        }
+        return false
+      } catch {
+        // A not-yet-ready video source can throw on draw — treat that the
+        // same as "nothing painted yet" and let the poll loop retry.
+        return false
+      }
+    }
+
     async function start() {
       for (const constraints of attempts) {
         if (cancelled) return
@@ -150,7 +185,25 @@ export function OrderNoScanner({ invoiceNumber, onConfirm, busy = false }: Props
           }
           streamRef.current = stream
           if (videoRef.current) videoRef.current.srcObject = stream
-          return
+
+          const ok = await new Promise<boolean>((resolve) => {
+            const started = Date.now()
+            const poll = () => {
+              if (cancelled) return resolve(false)
+              if (painting()) return resolve(true)
+              if (Date.now() - started > 4000) return resolve(false)
+              watchdog = window.setTimeout(poll, 200)
+            }
+            poll()
+          })
+
+          if (cancelled) return
+          if (ok) return
+
+          // Nothing painted. Release this camera before trying the next
+          // constraints, or the retry competes with a device we still hold.
+          stream.getTracks().forEach((track) => track.stop())
+          streamRef.current = null
         } catch {
           /* fall through to the next attempt */
         }
@@ -162,6 +215,7 @@ export function OrderNoScanner({ invoiceNumber, onConfirm, busy = false }: Props
 
     return () => {
       cancelled = true
+      if (watchdog) window.clearTimeout(watchdog)
       streamRef.current?.getTracks().forEach((track) => track.stop())
       streamRef.current = null
       // The worker is deliberately NOT torn down here — switching between camera
