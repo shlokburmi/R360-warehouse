@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { ApiError, get } from '@/lib/api'
@@ -21,6 +22,7 @@ import type { MyBadge } from '@/types'
 export function MyBadgeQr({ bare = false }: { bare?: boolean }) {
   const { t } = useTranslation()
   const errorText = useErrorText()
+  const [fullscreen, setFullscreen] = useState(false)
 
   const badge = useQuery({
     queryKey: ['badges', 'mine'],
@@ -40,22 +42,68 @@ export function MyBadgeQr({ bare = false }: { bare?: boolean }) {
 
   if (!badge.data) return null
 
+  // A phone screen makes a much smaller physical QR than, say, a laptop
+  // screen showing the same image — a scanning camera reads a QR's physical
+  // size, not its pixel count, so a small one is genuinely harder to
+  // resolve, not just a rendering nitpick. The inline image is sized up from
+  // its old fixed 260px, but the fullscreen view is the real fix: it uses as
+  // much of the screen as the code's own aspect ratio allows, which a card
+  // sitting in a page of other content never can.
   const image = (
-    // A solid white frame around the image, not just the QR's own built-in
-    // quiet zone — in dark mode the surrounding Card is a dark, frosted
-    // surface, and a scanner reading this straight off a screen (rather than
-    // a printed card, which was always on white) needs a clean, undistracted
-    // border regardless of theme.
-    <div className="mx-auto w-fit rounded-xl bg-white p-4">
-      <img src={badge.data.badge_qr} alt="" width={260} height={260} />
+    <div className="mx-auto w-fit max-w-full rounded-xl bg-white p-4">
+      <img
+        src={badge.data.badge_qr}
+        alt=""
+        className="mx-auto block h-auto w-full max-w-[22rem]"
+      />
     </div>
   )
 
-  if (bare) return image
+  const content = (
+    <>
+      {image}
+      <button
+        type="button"
+        className="btn-primary mt-3 w-full"
+        onClick={() => setFullscreen(true)}
+      >
+        {t('badge.view_fullscreen')}
+      </button>
+    </>
+  )
 
   return (
-    <Card title={t('badge.mine_title')} subtitle={t('badge.mine_hint')}>
-      {image}
-    </Card>
+    <>
+      {bare ? (
+        content
+      ) : (
+        <Card title={t('badge.mine_title')} subtitle={t('badge.mine_hint')}>
+          {content}
+        </Card>
+      )}
+
+      {fullscreen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('badge.mine_title')}
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-white p-6"
+        >
+          <img
+            src={badge.data.badge_qr}
+            alt=""
+            className="block"
+            style={{ width: 'min(85vw, 85vh)', height: 'min(85vw, 85vh)' }}
+          />
+          <button
+            type="button"
+            className="btn-primary w-full max-w-xs"
+            onClick={() => setFullscreen(false)}
+          >
+            {t('common.done')}
+          </button>
+        </div>
+      )}
+    </>
   )
 }
