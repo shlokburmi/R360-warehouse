@@ -41,8 +41,17 @@ async def resolve_badge(
 
     Returns only the name, role and id — never anything that could be used to
     act as that person. A badge is a label, and this endpoint treats it as one.
+
+    Lowercased, not just trimmed: `badge_code` is constrained to lowercase hex
+    (`^BDG-[0-9a-f]{16}$`, 0002_core_tables.sql) and resolve_badge_holder does
+    an exact match, but QrScanner.tsx's camera-decode path uppercases every
+    code it reads (correct for the box/unit/carton sticker codes, which really
+    are generated uppercase) before handing it to whichever endpoint called
+    this. Skipping this here made every camera-scanned badge resolve to
+    "not recognised" regardless of image quality — a typed code was never
+    affected, since a human types the case actually printed.
     """
-    code = badge_code.strip()
+    code = badge_code.strip().lower()
 
     # Through the definer function, not a direct read: `profiles.badge_code` is
     # not selectable by `authenticated` at all, because being able to read
