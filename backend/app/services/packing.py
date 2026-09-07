@@ -42,16 +42,24 @@ async def resolve_badge(
     Returns only the name, role and id — never anything that could be used to
     act as that person. A badge is a label, and this endpoint treats it as one.
 
-    Lowercased, not just trimmed: `badge_code` is constrained to lowercase hex
-    (`^BDG-[0-9a-f]{16}$`, 0002_core_tables.sql) and resolve_badge_holder does
-    an exact match, but QrScanner.tsx's camera-decode path uppercases every
-    code it reads (correct for the box/unit/carton sticker codes, which really
-    are generated uppercase) before handing it to whichever endpoint called
-    this. Skipping this here made every camera-scanned badge resolve to
-    "not recognised" regardless of image quality — a typed code was never
-    affected, since a human types the case actually printed.
+    Case-normalized, not just trimmed — and *mixed* case, not a blanket
+    `.lower()`: `badge_code` is constrained to a literal uppercase "BDG-"
+    prefix with a lowercase hex suffix (`^BDG-[0-9a-f]{16}$`,
+    0002_core_tables.sql — generated as `'BDG-' || encode(bytes, 'hex')`,
+    and Postgres `encode(...,'hex')` is lowercase), and resolve_badge_holder
+    does an exact match. QrScanner.tsx's camera-decode path uppercases every
+    code it reads (correct for the box/unit/carton sticker codes, which
+    really are generated all-uppercase), so a scanned badge arrives as
+    `BDG-F1D0CE3F73ABC021` — every letter upper, prefix included. A blanket
+    `.lower()` here (the previous version of this fix) produces
+    `bdg-f1d0ce3f73abc021`, which still doesn't match the stored
+    `BDG-f1d0ce3f73abc021`: it overcorrected the prefix along with the hex.
+    A typed code was never affected either way, since a human types the case
+    actually printed.
     """
-    code = badge_code.strip().lower()
+    code = badge_code.strip()
+    if code[:4].lower() == "bdg-":
+        code = "BDG-" + code[4:].lower()
 
     # Through the definer function, not a direct read: `profiles.badge_code` is
     # not selectable by `authenticated` at all, because being able to read
