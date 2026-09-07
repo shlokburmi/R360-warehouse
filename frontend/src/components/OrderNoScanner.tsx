@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { UnreadableFile, coverCropBox, cropRegion, filesToPages, isPdf } from '@/lib/pageImages'
 import {
   GUIDE_BOX,
+  LINE_ATTEMPTS,
   isOrderNo,
   isWorkerReady,
   getWorker,
@@ -274,21 +275,33 @@ export function OrderNoScanner({ invoiceNumber, onConfirm, busy = false }: Props
     // framed (see coverCropBox's comment).
     const rawGuideBox = coverCropBox(video.videoWidth, video.videoHeight, 4 / 3, GUIDE_BOX)
     const frame = cropRegion(video, video.videoWidth, video.videoHeight, rawGuideBox)
-    const prepared = preprocess(frame)
 
     try {
       const worker = await getWorker('line', (fraction) =>
         setProgress(`${t('orderno.reading')} ${Math.round(fraction * 100)}%`),
       )
-      setProgress(t('orderno.reading'))
-      const result = await worker.recognize(prepared)
-      present(
-        result?.data?.text ?? '',
-        typeof result?.data?.confidence === 'number' ? result.data.confidence : null,
-        prepared,
-      )
+
+      // A cascade, not one shot — see LINE_ATTEMPTS's comment. Every attempt
+      // crops the same operator-framed region; only the target width (hence
+      // effective character height Tesseract sees) changes between them.
+      let last: { text: string; conf: number | null; image: HTMLCanvasElement } | null = null
+      for (const [index, attempt] of LINE_ATTEMPTS.entries()) {
+        setProgress(
+          LINE_ATTEMPTS.length > 1
+            ? `${t('orderno.reading')} (${index + 1}/${LINE_ATTEMPTS.length})`
+            : t('orderno.reading'),
+        )
+        const prepared = preprocess(frame, attempt.width)
+        const result = await worker.recognize(prepared)
+        const text = result?.data?.text ?? ''
+        const conf = typeof result?.data?.confidence === 'number' ? result.data.confidence : null
+        last = { text, conf, image: prepared }
+        if (parseOrderNo(text)) break
+      }
+
+      present(last!.text, last!.conf, last!.image)
     } catch (error) {
-      setCrop(prepared.toDataURL('image/png'))
+      setCrop(frame.toDataURL('image/png'))
       failed(error)
     } finally {
       setProgress(null)

@@ -61,6 +61,34 @@ export const PAGE_ATTEMPTS = [
   { box: { x: 0, y: 0, w: 1, h: 1 }, width: 2400 },
 ] as const
 
+/**
+ * What to try against the camera's already-framed guide-box crop, in order,
+ * stopping at the first match.
+ *
+ * The live camera path used to make exactly one attempt, at a fixed 3x
+ * multiplier of whatever resolution the phone's camera happened to
+ * negotiate — as opposed to the fixed pixel *targets* PAGE_ATTEMPTS uses.
+ * That is a real difference: a multiplier overshoots the same 25-35px
+ * character-height window PAGE_ATTEMPTS's own measurements found on a
+ * high-resolution camera and undershoots it on a low-resolution one, so
+ * whether the one attempt landed in the window was a coin flip that
+ * depended on the specific phone's camera — matching a report of an Order
+ * No that read correctly every time via upload and failed every time via
+ * the live camera on one particular device.
+ *
+ * Reuses PAGE_ATTEMPTS's two measured-good band widths rather than
+ * guessing new ones — the guide box crops the same kind of thing (a
+ * header block a couple of lines tall), just already framed by the
+ * operator instead of computed from a fixed region of an unframed page.
+ * The original multiplier stays last, as a fallback for whatever this
+ * cascade doesn't cover.
+ */
+export const LINE_ATTEMPTS: Array<{ width?: number }> = [
+  { width: 1000 },
+  { width: 650 },
+  {},
+]
+
 /** The camera's guide box, as a fraction of the video frame. */
 export const GUIDE_BOX = { x: 0.1, y: 0.38, w: 0.8, h: 0.24 } as const
 
