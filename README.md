@@ -185,8 +185,8 @@ with your name against it, and the code is not.
 
 ```bash
 cd backend && source .venv/bin/activate
-pytest                            # 175 tests; skips cleanly with no database
-python scripts/e2e_full_flow.py   # 114 checks: the whole process over real HTTP
+pytest                            # 168 tests; skips cleanly with no database
+python scripts/e2e_full_flow.py   # 134 checks: the whole process over real HTTP
 python scripts/e2e_role_access.py # 721 checks: every route against every role
 python scripts/e2e_admin.py       # 40 checks over real HTTP
 python scripts/e2e_retention.py   # 14 checks against real Supabase Storage

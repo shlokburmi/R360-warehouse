@@ -28,9 +28,19 @@ export type ScanFeedback = {
 export type ScanContext =
   | 'box_verify'
   | 'unit_verify'
-  /** Product-in-hand confirmation at invoice matching, before the badge scan. */
+  /**
+   * Product-in-hand confirmation at invoice matching, and product boxes going
+   * into a carton at the packing bench.
+   *
+   * No page uses either any more: 0036_invoice_flow_simplified removed
+   * product/quantity tracking from the outbound flow, and with it
+   * /invoices/{id}/match-scan and /invoices/{id}/pack-scan. They stay in this
+   * union — and in offlineQueue.ts, which still knows how to drain them — so a
+   * device that queued scans under an older bundle can still replay them: the
+   * backend's /scan/sync deliberately still accepts both types for exactly
+   * that. Nothing should route a *new* scan through them.
+   */
   | 'match_unit'
-  /** Product boxes going into a carton at the packing bench. */
   | 'pack_unit'
   | 'out_scan'
   | 'gate_exit'
