@@ -849,3 +849,34 @@ walkthrough consumed them first — ten red tests, none of them about the code.
 Tests now create the rows they need inside their own transaction. The end-to-end
 harness, which genuinely cannot be idempotent (it closes the seeded invoices),
 checks for a fresh database up front and says so instead of failing halfway.
+
+**A resolution that resolves nothing looks exactly like a broken button.** The
+Exceptions page offers APPROVE & PROCEED / REJECT & RETURN for any exception
+with no box attached, and both wrote `status = 'resolved'` and stopped there —
+`fn_apply_exception_resolution` returns early when `box_id is null`, and nothing
+else picked the decision up. So the count mismatch that stopped the sticker
+step was still stopping it afterwards, and the next attempt raised the same
+exception again. From the floor it read as "I approve it and nothing happens",
+which was accurate.
+
+The fix is not a flag that overrides the check. Each generic outcome now does
+the one thing its label promises, or refuses:
+
+* `reject` cancels the gate entry (the sideways exit §0028 added), so the goods
+  go back with the vehicle.
+* `accept` on a *sticker-issue* mismatch — the guard's count against the PO's,
+  before anything is issued or scanned — lets `generate_box_stickers` issue one
+  sticker per box that actually arrived. `declared == issued == boxes`, so
+  CONTROL POINT 2 still has three agreeing numbers afterwards.
+* `accept` is **refused** where the thing holding the goods is a control point:
+  CP2 (issued stickers not all scanned back) and CP4 (inbound count still
+  disagreeing). No decision recorded on this page can conjure a missing scan,
+  and the refusal names what can — which is more use than a resolved exception
+  and a truck that has not moved.
+* `accept` is also refused when *more* boxes arrived than the PO covers: there
+  is no line to receive the surplus against, so the PO is what has to change.
+
+The acceptance is read back off the resolved exception (`details ->>
+'declared_box_count'`), not stored on the gate entry. A column would have to be
+invalidated by hand every time the guard re-declares the count, and the one that
+got forgotten would wave a number through that nobody had accepted.

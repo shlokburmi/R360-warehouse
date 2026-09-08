@@ -216,6 +216,7 @@ custody of the badge is the control.**
 | Situation | What the system does |
 |---|---|
 | Count mismatch at any control point | Refuses to proceed, and **writes**: the box is held, an exception is logged against the vendor and PO, Admin is alerted. This is why those endpoints answer `409` with a full body rather than raising — raising would roll back the record that makes the hold enforceable |
+| Ops decides an exception with no box on it | *Approve & proceed* accepts the discrepancy and unblocks the step that raised it — for a count the PO disagrees with, stickers are then issued for the boxes that actually arrived. *Reject & return* cancels the gate entry and the goods leave with the vehicle. Neither can approve past a control point: CP2's missing scans and CP4's disagreeing counts are refused, naming what does fix them (DECISIONS.md Part D) |
 | Scanner rejects a code | The rejection is *recorded* with a reason, so "the scanner didn't work" stays a claim that can be checked |
 | Device goes offline | Scans queue in IndexedDB and replay on reconnect. Every scan carries a device-minted id with a unique constraint, so replaying is a no-op |
 | A mistake needs correcting | Nothing is deleted. Corrections are reversing entries or superseding rows, with the original still visible and still in reports |

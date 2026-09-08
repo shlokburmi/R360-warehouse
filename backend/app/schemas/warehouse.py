@@ -204,6 +204,11 @@ class ExceptionOut(BaseModel):
     resolved_by_name: Optional[str] = None
     resolved_at: Optional[datetime] = None
 
+    # What the decision actually did to the truck's process, in a sentence, on
+    # the response to /resolve only. "Resolved" on its own tells the operator
+    # nothing about whether the goods can now move.
+    outcome: Optional[str] = None
+
 
 class ExceptionResolve(BaseModel):
     """Admin deciding a held box (DECISIONS.md §3).

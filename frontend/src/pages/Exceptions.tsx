@@ -7,6 +7,9 @@ import { useAuth } from '@/hooks/useAuth'
 import { Banner, Card, EmptyState, Spinner, StatusChip } from '@/components/ui'
 import type { WarehouseException } from '@/types'
 
+/** /resolve answers with one extra field: what the decision did to the truck. */
+type ResolveResult = WarehouseException & { outcome?: string | null }
+
 /**
  * PRD §5.9 — Exception management.
  *
@@ -36,8 +39,18 @@ const BOX_RESOLUTIONS = [
 ]
 
 const GENERAL_RESOLUTIONS = [
-  { value: 'accept', label: 'Approve & proceed', tone: 'ok' as const, help: '' },
-  { value: 'reject', label: 'Reject & return', tone: 'bad' as const, help: '' },
+  {
+    value: 'accept',
+    label: 'Approve & proceed',
+    tone: 'ok' as const,
+    help: 'The discrepancy is accepted as it stands, and the step that raised it can continue. A control point cannot be approved past.',
+  },
+  {
+    value: 'reject',
+    label: 'Reject & return',
+    tone: 'bad' as const,
+    help: 'The goods go back with the vehicle. The gate entry is cancelled, which cannot be undone.',
+  },
 ]
 
 export function ExceptionsPage() {
@@ -50,6 +63,11 @@ export function ExceptionsPage() {
   const [resolution, setResolution] = useState<string>('')
   const [note, setNote] = useState('')
   const [error, setError] = useState<ApiError | null>(null)
+  const [done, setDone] = useState<{
+    code: string
+    resolution: string
+    outcome?: string | null
+  } | null>(null)
 
   const isOps = me?.role === 'admin' || me?.role === 'ops_manager'
 
@@ -69,12 +87,24 @@ export function ExceptionsPage() {
   }
 
   const resolve = useMutation({
-    mutationFn: (id: string) => post(`/exceptions/${id}/resolve`, { resolution, note }),
-    onSuccess: () => {
+    mutationFn: (id: string) =>
+      post<ResolveResult>(`/exceptions/${id}/resolve`, { resolution, note }),
+    onSuccess: (result) => {
       setError(null)
+      // The card is about to leave the open list, so the confirmation has to
+      // outlive it: "resolved" on its own does not tell anyone whether the
+      // goods can move, and this page is where the decision was made.
+      setDone({
+        code: result.exception_code,
+        resolution: result.resolution ?? resolution,
+        outcome: result.outcome,
+      })
       reset()
+      window.scrollTo({ top: 0, behavior: 'smooth' })
       void queryClient.invalidateQueries({ queryKey: ['exceptions'] })
       void queryClient.invalidateQueries({ queryKey: ['boxes'] })
+      void queryClient.invalidateQueries({ queryKey: ['entries'] })
+      void queryClient.invalidateQueries({ queryKey: ['entry'] })
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
     },
     onError: (err) => setError(err as ApiError),
@@ -83,9 +113,16 @@ export function ExceptionsPage() {
   const escalate = useMutation({
     mutationFn: (id: string) =>
       post(`/exceptions/${id}/escalate`, { email_superadmin: true, note: note || null }),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       setError(null)
+      const escalated = exceptions.data?.find((e) => e.id === id)
+      setDone({
+        code: escalated?.exception_code ?? '',
+        resolution: 'escalated',
+        outcome: 'Emailed to the superadmin. The goods stay held until someone decides.',
+      })
       reset()
+      window.scrollTo({ top: 0, behavior: 'smooth' })
       void queryClient.invalidateQueries({ queryKey: ['exceptions'] })
     },
     onError: (err) => setError(err as ApiError),
@@ -106,7 +143,28 @@ export function ExceptionsPage() {
         </button>
       </div>
 
-      {error && (
+      {done && (
+        <Banner
+          tone={done.resolution === 'reject' || done.resolution === 'reject_box' ? 'warn' : 'ok'}
+          title={
+            done.code
+              ? `${done.code} — ${done.resolution.replace(/_/g, ' ')}`
+              : 'Decision recorded'
+          }
+        >
+          <span className="flex flex-wrap items-center gap-3">
+            <span>{done.outcome ?? 'The decision is on the record against the vendor and PO.'}</span>
+            <button type="button" className="underline" onClick={() => setDone(null)}>
+              {t('common.done')}
+            </button>
+          </span>
+        </Banner>
+      )}
+
+      {/* Only when no card is mid-decision: an open panel shows its own copy,
+          because a banner up here is off the screen the operator is looking at
+          and a refusal that nobody sees looks exactly like a dead button. */}
+      {error && active === null && (
         <Banner tone="bad" title={errorText(error).title}>
           {error.hint}
         </Banner>
@@ -212,27 +270,63 @@ export function ExceptionsPage() {
                   placeholder={t('exceptions.decision_note')}
                 />
 
+                {error && (
+                  <Banner tone="bad" title={errorText(error).title}>
+                    {error.hint}
+                  </Banner>
+                )}
+
+                {/* Says which of the two requirements is still missing. The
+                    button styles disabled as 40% opacity, which on a bright
+                    warehouse floor is not a difference anyone reads — so a tap
+                    on it looked like the app doing nothing. */}
+                {!chosen ? (
+                  <p className="text-base text-slate-500 dark:text-slate-400">
+                    Choose an outcome above.
+                  </p>
+                ) : note.trim().length < 3 ? (
+                  <p className="text-base text-slate-500 dark:text-slate-400">
+                    Say what was decided and why — this is what the audit trail keeps.
+                  </p>
+                ) : null}
+
                 <div className="flex gap-3">
-                  <button type="button" className="btn-ghost flex-1" onClick={reset}>
+                  <button
+                    type="button"
+                    className="btn-ghost flex-1"
+                    disabled={resolve.isPending || escalate.isPending}
+                    onClick={() => {
+                      setError(null)
+                      reset()
+                    }}
+                  >
                     {t('common.cancel')}
                   </button>
                   <button
                     type="button"
                     className="btn-primary flex-1"
                     disabled={!chosen || note.trim().length < 3 || resolve.isPending}
-                    onClick={() => resolve.mutate(exception.id)}
+                    onClick={() => {
+                      setError(null)
+                      setDone(null)
+                      resolve.mutate(exception.id)
+                    }}
                   >
-                    {t('common.confirm')}
+                    {resolve.isPending ? 'Confirming…' : t('common.confirm')}
                   </button>
                 </div>
 
                 <button
                   type="button"
                   className="btn-ghost w-full"
-                  disabled={escalate.isPending}
-                  onClick={() => escalate.mutate(exception.id)}
+                  disabled={escalate.isPending || resolve.isPending}
+                  onClick={() => {
+                    setError(null)
+                    setDone(null)
+                    escalate.mutate(exception.id)
+                  }}
                 >
-                  {t('exceptions.email_superadmin')}
+                  {escalate.isPending ? 'Sending…' : t('exceptions.email_superadmin')}
                 </button>
               </div>
             ) : (
@@ -243,6 +337,7 @@ export function ExceptionsPage() {
                   setActive(exception.id)
                   setResolution('')
                   setNote('')
+                  setError(null)
                 }}
               >
                 {t('exceptions.decide')}

@@ -64,6 +64,38 @@ async def _po_allocation(conn: AsyncConnection, po_id: UUID) -> List[Dict[str, A
     return allocation
 
 
+async def _count_accepted(conn: AsyncConnection, entry_id: UUID, declared: int) -> bool:
+    """Has Ops accepted this physical box count over the PO's?
+
+    Read back from the resolved exception rather than a flag on the gate entry,
+    for two reasons: the acceptance is only ever meaningful for the exact number
+    a named person accepted, and the exception row already carries who decided
+    it, when, and why. A separate column would have to be invalidated by hand
+    every time the guard re-declares the count — and the one that got forgotten
+    would silently wave a different number through.
+    """
+    return bool(
+        (
+            await conn.execute(
+                text(
+                    """
+                    select 1
+                      from exceptions
+                     where gate_entry_id = :entry_id
+                       and exception_type = 'box_count_mismatch'
+                       and status = 'resolved'
+                       and resolution = 'accept'
+                       and details ? 'po_expected_boxes'
+                       and details ->> 'declared_box_count' = :declared
+                     limit 1
+                    """
+                ),
+                {"entry_id": str(entry_id), "declared": str(declared)},
+            )
+        ).first()
+    )
+
+
 async def generate_box_stickers(
     conn: AsyncConnection, entry_id: UUID, reprint_of_id: Optional[UUID] = None
 ) -> Dict[str, Any]:
@@ -104,7 +136,7 @@ async def generate_box_stickers(
     # The guard counted the truck; the PO says what was ordered. A disagreement
     # here is a real discrepancy, not a rounding artefact — so it stops the line
     # and lands in the Admin queue rather than being silently absorbed.
-    if len(allocation) != declared:
+    if len(allocation) != declared and not await _count_accepted(conn, entry_id, declared):
         # Returned, not raised: logging the discrepancy against the vendor is a
         # write, and raising here would roll it back along with everything else
         # in the request. The route answers 409 and no stickers are issued.
@@ -127,6 +159,15 @@ async def generate_box_stickers(
                 f"{len(allocation)}. Count mismatch — contact Admin."
             ),
         }
+
+    if len(allocation) != declared:
+        # Ops accepted the physical count over the PO's (PRD §5.9, APPROVE &
+        # PROCEED). Issue one sticker per box that actually arrived, filling the
+        # PO's lines in line order, and stop there: a box beyond what the PO
+        # covers has no line to receive it against, which is why
+        # exceptions._check_general_resolution refuses to accept that direction
+        # at all rather than inventing a line here.
+        allocation = allocation[:declared]
 
     sheet_id = (
         await conn.execute(

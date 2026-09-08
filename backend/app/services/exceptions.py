@@ -111,11 +111,167 @@ async def create_exception(conn: AsyncConnection, payload: ExceptionCreate) -> D
     return await get_exception(conn, row["id"])
 
 
+# Statuses a gate entry can no longer be sent back from: the truck has either
+# already left or the goods are physically in. `reject` on an exception attached
+# to one of these records the decision and stops there — see _apply_general.
+_TERMINAL_ENTRY_STATUSES = (
+    "rejected",
+    "cancelled",
+    "offloaded",
+    "reconciled",
+    "departed",
+)
+
+
+def _blocked_step(details: Dict[str, Any]) -> Optional[str]:
+    """Which refusal raised a gate-level `box_count_mismatch`.
+
+    Both variants carry `declared_box_count`, and what "approve" can honestly
+    mean differs completely between them, so they are told apart by the field
+    only one of them has:
+
+    * `po_expected_boxes` — sticker issue refused because the guard's physical
+      count disagrees with the PO (stickers.generate_box_stickers). Nothing has
+      been issued or scanned yet, and no control point has been passed, so
+      accepting the physical count is a decision Ops is entitled to make.
+    * `scanned_box_count` — CONTROL POINT 2 refused because the issued stickers
+      were not all scanned back (gate.verify_box_count). Approving cannot
+      conjure the missing scans, and the transition trigger would refuse the
+      entry anyway.
+    """
+    if "po_expected_boxes" in details:
+        return "sticker_issue"
+    if "scanned_box_count" in details:
+        return "control_point_2"
+    return None
+
+
+async def _check_general_resolution(
+    conn: AsyncConnection, exc: Dict[str, Any], resolution: str
+) -> None:
+    """Refuse an `accept` that would not actually unblock anything.
+
+    PRD §5.9's two generic outcomes are "APPROVE & PROCEED" and "REJECT &
+    RETURN", and both are promises about what happens next. Where the thing
+    holding the goods is a hard control point, no decision recorded here can
+    keep that promise — so the refusal says what will, instead of marking the
+    exception resolved and leaving the operator to discover that the process
+    is still stuck exactly where it was.
+    """
+    if resolution != "accept":
+        return
+
+    details = exc["details"] or {}
+
+    if exc["exception_type"] == "box_count_mismatch":
+        step = _blocked_step(details)
+
+        if step == "control_point_2":
+            raise AppError(
+                "Every box sticker that was issued has to be scanned back before "
+                "the boxes can move inside (CONTROL POINT 2).",
+                code="cannot_accept",
+                http_status=422,
+                hint=(
+                    "Scan the boxes that are still missing, or reject and return "
+                    "the truck. Approving here cannot stand in for the scans."
+                ),
+            )
+
+        if step == "sticker_issue":
+            declared = int(details.get("declared_box_count") or 0)
+            expected = int(details.get("po_expected_boxes") or 0)
+            if declared > expected:
+                raise AppError(
+                    f"{declared} boxes arrived but {exc['po_number'] or 'the PO'} "
+                    f"only covers {expected}.",
+                    code="cannot_accept",
+                    http_status=422,
+                    hint=(
+                        "Boxes with nothing on the PO to receive them against "
+                        "cannot be accepted. Add the missing line to the PO, then "
+                        "issue the stickers."
+                    ),
+                )
+
+    if exc["exception_type"] == "inbound_mismatch":
+        raise AppError(
+            "The inbound team's count and the warehouse count still disagree "
+            "(CONTROL POINT 4).",
+            code="cannot_accept",
+            http_status=422,
+            hint=(
+                "Re-enter the inbound count on the reconciliation page, or reject "
+                "and return the goods. Putaway stays blocked until the two agree."
+            ),
+        )
+
+
+async def _apply_general_resolution(
+    conn: AsyncConnection, exc: Dict[str, Any], resolution: str, note: str
+) -> Optional[str]:
+    """The consequence of `accept`/`reject` on an exception with no box.
+
+    fn_apply_exception_resolution (0004) handles the three box outcomes in the
+    database. It returns early when `box_id is null`, which used to mean the
+    generic pair had no effect at all: the exception went to 'resolved' and the
+    truck stayed stopped at the step that raised it, so the next attempt at
+    that step simply raised the same exception again.
+
+    Returns a sentence for the operator about what happens next, or None when
+    the decision was a record and nothing more.
+    """
+    if exc["box_id"] is not None or exc["gate_entry_id"] is None:
+        return None
+
+    from app.services import gate  # local: gate imports notifications, not this
+
+    entry = (
+        await conn.execute(
+            text("select status::text as status from gate_entries where id = :id"),
+            {"id": str(exc["gate_entry_id"])},
+        )
+    ).mappings().first()
+
+    if entry is None:
+        return None
+
+    if resolution == "reject":
+        if entry["status"] in _TERMINAL_ENTRY_STATUSES:
+            # Nothing to send back — the goods are already in or the truck has
+            # gone. The decision stays on the record either way.
+            return None
+
+        await gate.cancel_entry(
+            conn,
+            exc["gate_entry_id"],
+            f"{exc['exception_code']}: {note}",
+        )
+        return f"{exc['entry_code']} has been cancelled. The goods go back with the vehicle."
+
+    if _blocked_step(exc["details"] or {}) == "sticker_issue":
+        # Nothing to write: generate_box_stickers reads this resolution back
+        # (stickers._count_override) rather than a flag that could drift out of
+        # step with the count it was accepted for.
+        return (
+            f"The declared box count stands. Issue the box stickers for "
+            f"{exc['entry_code']} to continue."
+        )
+
+    return None
+
+
 async def resolve_exception(
     conn: AsyncConnection, exception_id: UUID, resolution: str, note: str
 ) -> Dict[str, Any]:
-    """Admin decides. The consequences for the box are applied by
-    fn_apply_exception_resolution, inside this same transaction."""
+    """Admin decides.
+
+    The consequences for a *box* are applied by fn_apply_exception_resolution,
+    inside this same transaction. The consequences for an exception with no box
+    — the generic APPROVE & PROCEED / REJECT & RETURN pair — are applied by
+    _apply_general_resolution, because that trigger deliberately returns early
+    when `box_id is null` and something still has to unblock the truck.
+    """
     current = await get_exception(conn, exception_id)
 
     if current["status"] == "resolved":
@@ -141,6 +297,10 @@ async def resolve_exception(
             hint="A box-level exception needs a decision about the goods.",
         )
 
+    # Before the write, not after: an `accept` that cannot deliver what the
+    # button promises must leave the exception open for the action that can.
+    await _check_general_resolution(conn, current, resolution)
+
     await conn.execute(
         text(
             """
@@ -158,15 +318,21 @@ async def resolve_exception(
 
     resolved = await get_exception(conn, exception_id)
 
+    outcome = await _apply_general_resolution(conn, resolved, resolution, note)
+
     if resolved["gate_entry_id"]:
         await notifications.notify(
             conn,
             title=f"{resolved['exception_code']} resolved: {resolution.replace('_', ' ')}",
-            body=note,
+            body=f"{note}\n\n{outcome}" if outcome else note,
             recipient_role="packer",
             gate_entry_id=resolved["gate_entry_id"],
             exception_id=exception_id,
         )
+
+    # Not a column: what the decision *did* is derived from the decision, and
+    # the page that asked for it is the only thing that needs the sentence.
+    resolved["outcome"] = outcome
 
     return resolved
 
