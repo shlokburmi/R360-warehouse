@@ -136,7 +136,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
      * A 4xx is a real answer about this account (a genuinely missing
      * profile, say) and retrying it would just delay the honest message.
      */
-    const RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 15_000]
+    // ~80 seconds of patience, not ~30. Render's free plan spins the instance
+    // down on inactivity and takes 50s or more to wake, and while it wakes it
+    // answers 502 *immediately* — so the attempts fail fast and the only thing
+    // pacing this loop is these delays. Five of them added up to 30s, which
+    // gave up in the middle of a cold start and produced exactly the screen
+    // this retry loop was added to prevent. The first sign-in of the morning is
+    // the request most likely to hit it.
+    const RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 15_000, 20_000, 30_000]
 
     async function loadProfile() {
       for (let attempt = 0; ; attempt++) {
