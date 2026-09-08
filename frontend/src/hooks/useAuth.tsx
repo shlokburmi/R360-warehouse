@@ -44,9 +44,36 @@ const AuthContext = createContext<AuthState | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [me, setMe] = useState<Me | null>(null)
-  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [profileError, setProfileError] = useState<ApiError | null>(null)
+
+  // Two facts, kept apart, because conflating them is what produced a "Cannot
+  // load your profile" error on every correct sign-in:
+  //
+  //  * `sessionChecked` — has Supabase told us yet whether a session exists?
+  //    Until it has, "no session" is not an answer, it is silence.
+  //  * `profileLoading` — is a /me request in flight right now?
+  //
+  // `loading` used to be one piece of state set to false as soon as the first
+  // render saw `session === null` — which is *always*, since getSession() is
+  // async. It then stayed false forever, so from the moment a session appeared
+  // to the moment /me answered, Protected saw `loading: false, session: set,
+  // me: null` and rendered its "cannot load your profile" screen — for a
+  // profile that was still perfectly on its way. Signing in showed the error,
+  // then the dashboard a second or two later; on a cold-starting API, the error
+  // sat there for the best part of a minute first.
+  const [sessionChecked, setSessionChecked] = useState(false)
+  const [profileLoading, setProfileLoading] = useState(false)
+
+  // "We do not know who you are yet": either Supabase has not answered, or it
+  // has and we are still fetching the profile for the session it gave us.
+  //
+  // The second clause is deliberately gated on `!me`. A background refetch —
+  // Supabase refreshes the token whenever a backgrounded tab regains focus,
+  // which happens every time a photo picker closes over this app — must not
+  // tear down the page the operator is working on. With a profile already in
+  // hand, a refresh is invisible.
+  const loading = !sessionChecked || (session !== null && me === null && profileLoading)
 
   useEffect(() => {
     let active = true
@@ -54,7 +81,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth
       .getSession()
       .then(({ data }) => {
-        if (active) setSession(data.session)
+        if (active) {
+          setSession(data.session)
+          setSessionChecked(true)
+        }
       })
       .catch(() => {
         // A rejected getSession() (Supabase can trigger a network refresh
@@ -64,11 +94,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // "couldn't confirm you're signed in, try again" it is. Treating it
         // as no-session at least reaches the login screen instead of a
         // permanent spinner.
-        if (active) setSession(null)
+        if (active) {
+          setSession(null)
+          setSessionChecked(true)
+        }
       })
 
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, next) => {
       setSession(next)
+      setSessionChecked(true)
       if (!next) setMe(null)
     })
 
@@ -95,22 +129,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // the JWT. Roles can change mid-shift and a token issued eight hours ago
   // should not be what decides what someone can see.
   //
-  // `loading` deliberately does NOT get set back to true here on a rerun of
-  // this effect. Supabase's client refreshes the auth token automatically —
-  // notably, when a backgrounded tab regains focus, which is exactly what
-  // happens every time a file/photo picker opens and closes over this app.
-  // That refresh publishes a new `session` object for the *same* signed-in
-  // user, re-running this effect. Setting `loading = true` here used to make
-  // `Protected` (App.tsx) unmount the entire current page in favour of its
-  // "Signing in…" spinner on every one of those routine refreshes — turning
-  // "picked a photo to upload" into "the whole screen was reset" with no
-  // error and no photo. `loading` now only ever reflects the *first* check
-  // (its initial useState(true) default, resolved once below); a later
-  // session change still refreches `/me` in the background, but does so
-  // without tearing down whatever the operator is in the middle of.
+  // `profileLoading` goes true for every fetch, including the background ones.
+  // What keeps a background refetch from tearing down the page is the `!me`
+  // clause in `loading` above, not this flag — Supabase refreshes the token
+  // whenever a backgrounded tab regains focus (every time a photo picker closes
+  // over this app), and that used to unmount whatever the operator was in the
+  // middle of, losing the photo they had just taken.
   useEffect(() => {
     if (!session) {
-      setLoading(false)
+      setProfileLoading(false)
       return
     }
 
@@ -176,8 +203,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    setProfileLoading(true)
     void loadProfile().finally(() => {
-      if (active) setLoading(false)
+      if (active) setProfileLoading(false)
     })
 
     return () => {
