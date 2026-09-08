@@ -23,6 +23,17 @@ type AuthState = {
   me: Me | null
   loading: boolean
   error: string | null
+  /**
+   * Why the profile could not be loaded, as the API said it.
+   *
+   * The API answers this question precisely — "Your account has no warehouse
+   * profile yet", "This account has been deactivated", "No connection" — and
+   * the screen that reports the failure used to render fixed copy instead
+   * ("Sign out and sign in again"), throwing the answer away. Nobody could
+   * tell a missing profile from a deactivated account from a dropped
+   * connection, and only one of those three is fixed by signing out.
+   */
+  profileError: ApiError | null
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
   can: (page: string) => boolean
@@ -35,6 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [me, setMe] = useState<Me | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [profileError, setProfileError] = useState<ApiError | null>(null)
 
   useEffect(() => {
     let active = true
@@ -133,6 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (!active) return
           setMe(profile)
           setError(null)
+          setProfileError(null)
           return
         } catch (err) {
           if (!active) return
@@ -147,6 +160,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // successful profile it has. `me` only ever goes back to null
             // via an explicit sign-out.
             setError((err as Error).message)
+            setProfileError(apiError)
             return
           }
 
@@ -170,6 +184,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       me,
       loading,
       error,
+      profileError,
       async signIn(email, password) {
         setError(null)
         let signInError: { message: string } | null
@@ -202,7 +217,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       can: (page: string) => me?.allowed_pages?.includes(page) ?? false,
     }),
-    [session, me, loading, error],
+    [session, me, loading, error, profileError],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

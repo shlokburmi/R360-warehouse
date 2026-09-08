@@ -75,6 +75,14 @@ select seed_user('match2@r360.local',   'Invoice Matcher',  'invoice_matcher', '
 select seed_user('pack1@r360.local',    'Packer',           'packer',          'EMP-P01',  '9876500009', 'Pack1@2026!');
 select seed_user('pack2@r360.local',    'Packer',           'packer',          'EMP-P02',  '9876500010', 'Pack2@2026!');
 
+-- No `admin` line, deliberately: an Admin password sitting in git is a
+-- different class of problem from a shared station login, and the two real
+-- admin accounts already exist. If an Admin login is ever lost — or its profile
+-- row goes missing, which shows up as "Cannot load your profile" after a
+-- successful sign-in — repair it with manual/repair_login_profile.sql rather
+-- than adding a password here. Every Admin after the first should be created
+-- from the Staff screen, so it lands in the audit trail with a name against it.
+
 update profiles set badge_code = generate_badge_code()
  where role in ('packer', 'invoice_matcher', 'admin') and badge_code is null;
 

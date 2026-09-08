@@ -4,6 +4,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { Layout } from '@/components/Layout'
 import { UpdatePrompt } from '@/components/UpdatePrompt'
+import { useErrorText } from '@/hooks/useErrorText'
 import { Banner, Spinner } from '@/components/ui'
 import { startAutoFlush } from '@/lib/offlineQueue'
 
@@ -37,7 +38,8 @@ import { AboutMePage } from '@/pages/AboutMe'
  */
 function Protected({ page, children }: { page?: string; children: ReactNode }) {
   const { t } = useTranslation()
-  const { session, me, loading, signOut } = useAuth()
+  const errorText = useErrorText()
+  const { session, me, loading, signOut, profileError } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -51,11 +53,34 @@ function Protected({ page, children }: { page?: string; children: ReactNode }) {
   // sitting there — see useAuth.tsx. Only the genuine "never loaded a
   // profile at all" case should block the page.
   if (!me) {
+    // Say what actually happened. The API distinguishes a missing profile from a
+    // deactivated account from a server that could not be reached, and each has
+    // a different answer — signing out only helps the first. Rendering one fixed
+    // sentence for all three is why "cannot load your profile" was impossible to
+    // act on, for the operator and for whoever they asked.
+    const reason = profileError ? errorText(profileError) : null
+    const retryable = !profileError || profileError.isOffline || profileError.status >= 500
+
     return (
       <div className="mx-auto max-w-lg space-y-4 p-6">
-        <Banner tone="bad" title={t('app.no_profile_title')}>
-          {t('app.no_profile_body')}
+        <Banner tone="bad" title={reason?.title || t('app.no_profile_title')}>
+          {reason?.hint || t('app.no_profile_body')}
         </Banner>
+
+        {/* A dropped connection or a server still waking up is fixed by asking
+            again, not by signing out — and the profile fetch has already
+            retried six times by the time this screen appears, so the next thing
+            to offer is a fresh attempt rather than losing the session. */}
+        {retryable && (
+          <button
+            type="button"
+            className="btn-primary w-full"
+            onClick={() => window.location.reload()}
+          >
+            {t('app.try_again')}
+          </button>
+        )}
+
         {/* The escape hatch this state was missing.
         
             The usual cause is a session that outlived the profile it points at —
@@ -65,7 +90,7 @@ function Protected({ page, children }: { page?: string; children: ReactNode }) {
             stuck on this screen with no way forward at all. */}
         <button
           type="button"
-          className="btn-primary w-full"
+          className={retryable ? 'btn-ghost w-full' : 'btn-primary w-full'}
           onClick={async () => {
             await signOut()
             navigate('/login', { replace: true })
@@ -73,6 +98,14 @@ function Protected({ page, children }: { page?: string; children: ReactNode }) {
         >
           {t('common.sign_out')}
         </button>
+
+        {/* The code is what an Admin or a developer needs; the sentence above is
+            what the operator needs. Both, and small. */}
+        {profileError && (
+          <p className="text-center text-sm text-slate-500 dark:text-slate-400">
+            {profileError.code} · {profileError.status || 'no response'}
+          </p>
+        )}
       </div>
     )
   }
