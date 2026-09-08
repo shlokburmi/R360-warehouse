@@ -138,7 +138,7 @@ async def cartons(conn: AsyncConnection, batch_id: UUID) -> List[Dict[str, Any]]
     rows = await conn.execute(
         text(
             """
-            select i.id as invoice_id, i.invoice_number, i.sku, i.units,
+            select i.id as invoice_id, i.invoice_number,
                    i.customer_name,
                    pp.full_name as packed_by_name,
                    pr.out_scanned_at,

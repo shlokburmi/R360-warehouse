@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, get, post } from '@/lib/api'
 import { useErrorText } from '@/hooks/useErrorText'
+import { useAuth } from '@/hooks/useAuth'
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate'
 import { Banner, Card, EmptyState, Field, Spinner } from '@/components/ui'
 import type { BatchAwaitingCount, LoadApproval } from '@/types'
@@ -23,6 +24,14 @@ export function LoadingPage() {
   const { t } = useTranslation()
   const errorText = useErrorText()
   const queryClient = useQueryClient()
+  const { me } = useAuth()
+
+  // Counting the cartons on the bay is the guard's physical act, and
+  // /loading/batches/{id}/count is require_roles("security_guard") — admin
+  // passes, ops_manager does not. Ops Manager sees this page because their own
+  // half of the step is deciding the count, which happens on Approvals; the
+  // form itself would only 403 for them.
+  const isGuard = me?.role === 'security_guard' || me?.role === 'admin'
 
   const [counts, setCounts] = useState<Record<string, string>>({})
   const [error, setError] = useState<ApiError | null>(null)
@@ -79,7 +88,13 @@ export function LoadingPage() {
         <EmptyState title={t('loading.awaiting_none')} hint={t('loading.awaiting_none_hint')} />
       )}
 
-      {toCount.map((batch) => {
+      {!isGuard && toCount.length > 0 && (
+        <Banner tone="info" title={t('loading.waiting_guard_count')}>
+          {t('loading.waiting_guard_count_body')}
+        </Banner>
+      )}
+
+      {isGuard && toCount.map((batch) => {
         const typed = counts[batch.batch_id] ?? ''
         const value = Number(typed)
         const valid = typed !== '' && Number.isInteger(value) && value >= 0

@@ -77,7 +77,7 @@ function Protected({ page, children }: { page?: string; children: ReactNode }) {
     )
   }
 
-  if (page && !me.allowed_pages.includes(page)) {
+  if (page && !me.allowed_pages?.includes(page)) {
     return (
       <Layout>
         <Banner tone="warn" title={t('app.wrong_role_title')}>
@@ -147,7 +147,7 @@ function Shell() {
       <Route
         path="/entries"
         element={
-          <Protected>
+          <Protected page="entries">
             <EntriesPage />
           </Protected>
         }

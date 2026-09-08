@@ -195,7 +195,9 @@
     "view_fullscreen": "Show full-screen for scanning",
     "about_me_name": "Name",
     "about_me_role": "Role",
-    "about_me_code": "Employee code"
+    "about_me_code": "Employee code",
+    "not_for_role": "No badge for this role",
+    "not_for_role_body": "Attribution badges are carried by packing and invoice-matching staff, to record who handled a carton."
   },
   "dashboard": {
     "title": "Dashboard",
@@ -365,7 +367,9 @@
     "received": "Received",
     "packed": "Packed",
     "never_received": "Never received",
-    "received_not_packed": "Received, not packed"
+    "received_not_packed": "Received, not packed",
+    "waiting_inbound": "Waiting for the inbound team's count",
+    "waiting_inbound_body": "CONTROL POINT 4 compares the warehouse's own figure against an independent count entered by the offloading team."
   },
   "putaway": {
     "title": "Putaway",
@@ -444,7 +448,10 @@
     "cartons_loaded": "Cartons loaded",
     "open_gate_out": "Open gate · record time out",
     "cannot_leave": "The vehicle cannot leave until every carton is accounted for. Ops has been",
-    "not_found": "Pickup not found"
+    "not_found": "Pickup not found",
+    "open": "Open",
+    "waiting_guard": "Waiting for the guard",
+    "waiting_guard_body": "Loading the vehicle and opening the gate are done at the gate by the Security Guard."
   },
   "exceptions": {
     "title": "Exceptions",
@@ -586,7 +593,9 @@
     "counted_by": "Counted by {{name}}",
     "approve_count": "Approve count",
     "reject_count": "Reject count",
-    "reject_reason": "What needs recounting? (required)"
+    "reject_reason": "What needs recounting? (required)",
+    "waiting_guard_count": "Waiting for the guard's count",
+    "waiting_guard_count_body": "The cartons on the bay are counted at the bay by the Security Guard. Their count arrives on Approvals for your decision."
   },
   "exitapproval": {
     "title": "Vehicles waiting to leave",

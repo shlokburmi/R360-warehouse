@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, get, post, postControlPoint } from '@/lib/api'
 import { useErrorText } from '@/hooks/useErrorText'
+import { useAuth } from '@/hooks/useAuth'
 import { useScanning } from '@/hooks/useScanning'
 import { useRealtimeInvalidate } from '@/hooks/useRealtimeInvalidate'
 import { cleanVehicleNumber, VEHICLE_RE } from '@/lib/validation'
@@ -30,8 +31,17 @@ export function PickupPage() {
   const { t } = useTranslation()
   const errorText = useErrorText()
   const queryClient = useQueryClient()
+  const { me } = useAuth()
   const [openPickupId, setOpenPickupId] = useState<string | null>(null)
   const [registering, setRegistering] = useState<AwaitingPickup | null>(null)
+
+  // Registering the vehicle, scanning cartons onto it, verifying the load and
+  // opening the gate are all the guard's physical acts at the gate, and the API
+  // accepts them from security_guard (and admin) only. Ops Manager has this
+  // page for the visibility PRD §8 grants them — their own half of the exit is
+  // the decision on the Approvals screen — so they get the lists without
+  // buttons that would answer 403.
+  const isGuard = me?.role === 'security_guard' || me?.role === 'admin'
 
   const awaiting = useQuery({
     queryKey: ['awaiting-pickup'],
@@ -117,7 +127,7 @@ export function PickupPage() {
                     className="btn-primary"
                     onClick={() => setOpenPickupId(pickup.pickup_id)}
                   >
-                    Open
+                    {t('pickup.open')}
                   </button>
                 </div>
               </li>
@@ -145,13 +155,19 @@ export function PickupPage() {
                     {batch.carton_count} cartons · released by {batch.released_by_name}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={() => setRegistering(batch)}
-                >
-                  {t('pickup.register_vehicle')}
-                </button>
+                {isGuard ? (
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => setRegistering(batch)}
+                  >
+                    {t('pickup.register_vehicle')}
+                  </button>
+                ) : (
+                  <span className="chip bg-warn-bg text-warn dark:bg-warn-darkbg dark:text-warn-dark">
+                    {t('pickup.waiting_guard')}
+                  </span>
+                )}
               </li>
             ))}
           </ul>
@@ -292,6 +308,8 @@ function PickupDetail({ pickupId, onBack }: { pickupId: string; onBack: () => vo
   const { t } = useTranslation()
   const errorText = useErrorText()
   const queryClient = useQueryClient()
+  const { me } = useAuth()
+  const isGuard = me?.role === 'security_guard' || me?.role === 'admin'
   const [error, setError] = useState<ApiError | null>(null)
   const [verifyResult, setVerifyResult] = useState<PickupVerifyResult | null>(null)
 
@@ -384,7 +402,6 @@ function PickupDetail({ pickupId, onBack }: { pickupId: string; onBack: () => vo
       {verifyResult && !verifyResult.verified && (
         <Banner tone="bad" title={verifyResult.message}>
           {t('pickup.cannot_leave')}
-          notified.
         </Banner>
       )}
 
@@ -414,7 +431,7 @@ function PickupDetail({ pickupId, onBack }: { pickupId: string; onBack: () => vo
         </ul>
       )}
 
-      {loading && (
+      {loading && isGuard && (
         <button
           type="button"
           className={p.remaining_cartons === 0 ? 'btn-success w-full' : 'btn-ghost w-full'}
@@ -425,6 +442,12 @@ function PickupDetail({ pickupId, onBack }: { pickupId: string; onBack: () => vo
             ? 'All cartons loaded — verify'
             : `Verify (${p.remaining_cartons} still missing)`}
         </button>
+      )}
+
+      {loading && !isGuard && (
+        <Banner tone="warn" title={t('pickup.waiting_guard')}>
+          {t('pickup.waiting_guard_body')}
+        </Banner>
       )}
 
       {/* CONTROL POINT 7 passing is no longer enough on its own: the guard asks,
@@ -443,14 +466,16 @@ function PickupDetail({ pickupId, onBack }: { pickupId: string; onBack: () => vo
           >
             {p.verified_by_name}
           </Banner>
-          <button
-            type="button"
-            className="btn-primary w-full"
-            disabled={requestExit.isPending}
-            onClick={() => requestExit.mutate()}
-          >
-            {t('exitapproval.request')}
-          </button>
+          {isGuard && (
+            <button
+              type="button"
+              className="btn-primary w-full"
+              disabled={requestExit.isPending}
+              onClick={() => requestExit.mutate()}
+            >
+              {t('exitapproval.request')}
+            </button>
+          )}
         </>
       )}
 
@@ -468,14 +493,16 @@ function PickupDetail({ pickupId, onBack }: { pickupId: string; onBack: () => vo
               <Banner tone="ok" title={t('exitapproval.approved_open_gate')}>
                 {p.exit_approved_by_name}
               </Banner>
-              <button
-                type="button"
-                className="btn-success w-full"
-                disabled={release.isPending}
-                onClick={() => release.mutate()}
-              >
-                {t('pickup.open_gate_out')}
-              </button>
+              {isGuard && (
+                <button
+                  type="button"
+                  className="btn-success w-full"
+                  disabled={release.isPending}
+                  onClick={() => release.mutate()}
+                >
+                  {t('pickup.open_gate_out')}
+                </button>
+              )}
             </>
           ) : null}
         </>
@@ -520,7 +547,7 @@ function PickupDetail({ pickupId, onBack }: { pickupId: string; onBack: () => vo
                 <span className="chip bg-ok-bg text-ok dark:bg-ok-darkbg dark:text-ok-dark">
                   loaded
                 </span>
-              ) : loading ? (
+              ) : loading && isGuard ? (
                 <button
                   type="button"
                   className="btn-primary shrink-0"

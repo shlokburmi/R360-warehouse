@@ -20,6 +20,7 @@ from app.api.deps import (
 )
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError
+from app.schemas.admin import BADGE_ROLES
 from app.services import notifications as notif_service
 
 router = APIRouter(tags=["meta"])
@@ -37,19 +38,64 @@ class MeOut(BaseModel):
     role_label: str
     employee_code: Optional[str] = None
     email: Optional[str] = None
-    # What the frontend uses to decide which nav items exist at all. The API
-    # still enforces access independently — this only shapes the UI.
+    # Two lists, not one, because they answer different questions and used to
+    # be conflated:
+    #
+    # * `nav_pages` — what gets a navigation pill. This is a judgement about
+    #   whose day-to-day job a screen is; Admin's is deliberately short
+    #   (oversight, not station work).
+    # * `allowed_pages` — what the app will actually open. Admin passes every
+    #   `require_roles` check by design (see deps.py), so every page works for
+    #   them, and a link into one — a truck card on the dashboard, say — must
+    #   not land on "this page is for someone else".
+    #
+    # Neither is a security boundary: the API re-checks the role and RLS
+    # re-checks it again. These only shape the UI.
     allowed_pages: List[str]
+    nav_pages: List[str]
+    # Only packers, invoice matchers and admins ever carry an attribution
+    # badge (BADGE_ROLES, mirrored from fn_badge_holder_guard). Without this
+    # the About Me page tells a guard to ask an Admin for a badge that the
+    # database would refuse to issue.
+    can_hold_badge: bool
 
 
-# Which pages each role can reach (PRD §8). A guard sees gate pages and nothing
-# else; the point of listing it here is that the navigation is derived from one
-# table rather than scattered across components.
+# Every page the app has a route for. The names are the ones App.tsx passes to
+# `Protected`, and this list is what Admin gets — see MeOut.allowed_pages.
+ALL_PAGES: List[str] = [
+    "dashboard",
+    "approvals",
+    "gate-entry",
+    "entries",
+    "box-counting",
+    "unit-scanning",
+    "reconciliation",
+    "putaway",
+    "stock",
+    "invoice-matching",
+    "packing",
+    "batches",
+    "loading",
+    "pickup",
+    "exceptions",
+    "reports",
+    "admin",
+    "about-me",
+]
+
+# Which pages each role works from (PRD §8). The navigation is derived from this
+# one table rather than scattered across components.
+#
+# The rule this table has to satisfy: a role only gets a page if the actions on
+# that page are ones the API will accept from them. `scripts/e2e_role_access.py`
+# checks the API side of that for all seven roles; a page whose every button
+# answers 403 is worse than no page at all, because the operator cannot tell a
+# refusal from a broken app.
 PAGE_ACCESS: Dict[str, List[str]] = {
-    # Guard still declares the box count on this page (Step 1); the scanning
-    # steps on it now belong to packers.
+    # Guard still declares the box count on the truck page (Step 1); the
+    # scanning steps on it now belong to packers.
     "security_guard": [
-        "gate-entry", "box-counting", "pickup", "my-entries", "loading", "about-me",
+        "gate-entry", "entries", "box-counting", "pickup", "loading", "about-me",
     ],
     # Ops Manager, reintroduced: PRD §8 — "can see everything, approve
     # exceptions, view reports". Staff add/edit/delete on the admin screen was
@@ -57,29 +103,41 @@ PAGE_ACCESS: Dict[str, List[str]] = {
     # reverses that specifically, knowingly reopening the fraud vector those
     # sections describe. Badge issue/revoke and audit history stay Admin-only.
     #
-    # "invoices" was removed here — there is no more manual invoice entry
+    # "gate-entry" was removed: registering a truck is the guard's physical act
+    # at the gate and every call that page makes (visitor lookup, vendor
+    # proposal, the entry itself, the ID photo ticket) is guard-only on the API.
+    # Ops Manager's half of CONTROL POINT 1 is deciding the entry, on
+    # Approvals — and CP1's whole point is that those are two different people.
+    #
+    # "pickup" and "loading" stay, for the visibility §8 grants, but their
+    # action buttons are the guard's and are hidden accordingly (Pickup.tsx,
+    # Loading.tsx). "reconciliation" is likewise a read: the inbound count
+    # itself is the offloading team's (CONTROL POINT 4).
+    #
+    # "invoices" was removed earlier — there is no more manual invoice entry
     # anywhere in the dashboard. Invoices are only ever created by a Packer
     # scanning the physical invoice (0035_packer_invoice_creation.sql).
     "ops_manager": [
-        "dashboard", "approvals", "stickers", "exceptions", "reports",
-        "gate-entry", "pickup", "batches", "loading",
-        # Issuing box/unit sticker sheets is require_ops_manager-gated
-        # (warehouse.py generate_box_stickers/generate_unit_stickers) — the
-        # nav needs to actually reach the page that action lives on.
-        "box-counting", "unit-scanning",
+        "dashboard", "approvals", "exceptions", "reports",
+        "entries", "box-counting", "unit-scanning", "reconciliation",
+        "pickup", "batches", "loading",
         "admin", "about-me",
     ],
     # Offloading no longer scans goods in — packers do (see scans_insert in
     # 0019) — and no longer shelves goods either, now that warehouse_staff is
     # its own role again. Reconciliation (CONTROL POINT 4) and receiving stay.
-    "offloading": ["exceptions", "reconciliation", "about-me"],
+    #
+    # "entries" is how they get to a truck to reconcile it: it is their landing
+    # page (App.tsx), so without it they had a screen with no way back to it.
+    "offloading": ["entries", "reconciliation", "exceptions", "about-me"],
     # Carved back out of offloading: putaway only.
-    "warehouse_staff": ["exceptions", "putaway", "stock", "about-me"],
-    # Invoice Matching, reintroduced: matching, the exceptions anyone can
-    # raise, and "packing" — the /invoices/assign handover step (PRD §7: "call
-    # a packing lady while handing them over") lives on that page, and
-    # packing_assignments_insert now names invoice_matcher explicitly.
-    "invoice_matcher": ["exceptions", "invoice-matching", "packing", "about-me"],
+    "warehouse_staff": ["putaway", "stock", "exceptions", "about-me"],
+    # Invoice Matching, reintroduced: matching, plus the exceptions anyone can
+    # raise. Not "packing": /packing/assigned-to-me and /invoices/pack are the
+    # packer's own queue and her own badge confirmation, and the API refuses
+    # both for a matcher. The handover step §7 describes ("call a packing lady
+    # while handing them over") is the badge scan on the matching page itself.
+    "invoice_matcher": ["invoice-matching", "exceptions", "about-me"],
     # Packers apply and scan both box and unit stickers at intake, in addition
     # to their outbound packing job. "invoice-matching" was added here
     # (0035_packer_invoice_creation.sql): a Packer now scans the physical
@@ -91,21 +149,22 @@ PAGE_ACCESS: Dict[str, List[str]] = {
     # and the QR off her own badge, so an Invoice Matcher can scan it off her
     # screen at /invoices/assign instead of a printed card.
     "packer": [
-        "box-counting", "unit-scanning", "exceptions", "packing",
+        "entries", "box-counting", "unit-scanning", "exceptions", "packing",
         "invoice-matching", "about-me",
     ],
     # Admin's actual real-world use here is oversight — approve/decline and
-    # track activity/logs — not hands-on station work. The backend still
-    # accepts admin on every operational endpoint (require_roles always
-    # unions with admin) as an emergency fallback if a role's own account is
-    # unavailable; this list only controls what shows up in the nav day to
-    # day, not what's actually permitted.
+    # track activity/logs — not hands-on station work, so this is what appears
+    # in their navigation. It is *not* what they can open: `allowed_pages`
+    # gives Admin everything, because the backend accepts admin on every
+    # operational endpoint (require_roles always unions with admin) and a link
+    # from the dashboard into a truck has to work.
     "admin": ["dashboard", "approvals", "exceptions", "reports", "admin", "about-me"],
 }
 
 
 @router.get("/me", response_model=MeOut)
 async def me(user: CurrentUser = Depends(get_current_user)):
+    nav = PAGE_ACCESS.get(user.role, [])
     return MeOut(
         id=user.id,
         full_name=user.full_name,
@@ -113,7 +172,9 @@ async def me(user: CurrentUser = Depends(get_current_user)):
         role_label=user.role_label,
         employee_code=user.employee_code,
         email=user.email,
-        allowed_pages=PAGE_ACCESS.get(user.role, []),
+        allowed_pages=ALL_PAGES if user.role == "admin" else nav,
+        nav_pages=nav,
+        can_hold_badge=user.role in BADGE_ROLES,
     )
 
 

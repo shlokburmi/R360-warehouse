@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, get, postControlPoint } from '@/lib/api'
 import { useErrorText } from '@/hooks/useErrorText'
+import { useAuth } from '@/hooks/useAuth'
 import { Banner, Card, Spinner } from '@/components/ui'
 import type { Reconciliation } from '@/types'
 
@@ -20,6 +21,13 @@ export function ReconciliationPage() {
   const errorText = useErrorText()
   const { entryId = '' } = useParams()
   const queryClient = useQueryClient()
+  const { me } = useAuth()
+
+  // CONTROL POINT 4 is the offloading team's own independent count, and the API
+  // accepts the submission from offloading (and admin) only. Ops Manager can
+  // open this page to see where a count stands — that is the point of an
+  // independent count being visible — but the inputs are not theirs to fill.
+  const isInbound = me?.role === 'offloading' || me?.role === 'admin'
   const [counts, setCounts] = useState<Record<string, string>>({})
   const [error, setError] = useState<ApiError | null>(null)
 
@@ -96,21 +104,27 @@ export function ReconciliationPage() {
               </div>
               <div>
                 <p className="label">{t('recon.your_count')}</p>
-                <input
-                  className={`input text-center text-2xl font-black ${
-                    mismatch ? 'input-error' : ''
-                  }`}
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  value={entered}
-                  onChange={(event) =>
-                    setCounts((current) => ({
-                      ...current,
-                      [line.purchase_order_line_id]: event.target.value,
-                    }))
-                  }
-                />
+                {isInbound ? (
+                  <input
+                    className={`input text-center text-2xl font-black ${
+                      mismatch ? 'input-error' : ''
+                    }`}
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    value={entered}
+                    onChange={(event) =>
+                      setCounts((current) => ({
+                        ...current,
+                        [line.purchase_order_line_id]: event.target.value,
+                      }))
+                    }
+                  />
+                ) : (
+                  <p className="text-2xl font-black tabular-nums">
+                    {line.inbound_count ?? '—'}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -128,14 +142,20 @@ export function ReconciliationPage() {
         )
       })}
 
-      <button
-        type="button"
-        className="btn-primary w-full"
-        disabled={!allEntered || submit.isPending}
-        onClick={() => submit.mutate()}
-      >
-        {submit.isPending ? 'Submitting…' : 'Submit counts'}
-      </button>
+      {isInbound ? (
+        <button
+          type="button"
+          className="btn-primary w-full"
+          disabled={!allEntered || submit.isPending}
+          onClick={() => submit.mutate()}
+        >
+          {submit.isPending ? 'Submitting…' : 'Submit counts'}
+        </button>
+      ) : (
+        <Banner tone="info" title={t('recon.waiting_inbound')}>
+          {t('recon.waiting_inbound_body')}
+        </Banner>
+      )}
     </div>
   )
 }

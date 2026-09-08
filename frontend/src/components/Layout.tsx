@@ -12,7 +12,7 @@ const NAV: { page: string; to: string; key: string }[] = [
   { page: 'dashboard', to: '/dashboard', key: 'nav.dashboard' },
   { page: 'approvals', to: '/approvals', key: 'nav.approvals' },
   { page: 'gate-entry', to: '/gate-entry', key: 'nav.gate_entry' },
-  { page: 'box-counting', to: '/entries', key: 'nav.trucks' },
+  { page: 'entries', to: '/entries', key: 'nav.trucks' },
   { page: 'putaway', to: '/putaway', key: 'nav.putaway' },
   { page: 'invoice-matching', to: '/invoice-matching', key: 'nav.matching' },
   { page: 'packing', to: '/packing', key: 'nav.packing' },
@@ -33,7 +33,14 @@ export function Layout({ children }: { children: ReactNode }) {
   const online = useOnline()
   const pending = usePendingScans()
 
-  const items = NAV.filter((item) => me?.allowed_pages.includes(item.page))
+  // nav_pages, not allowed_pages: Admin can open every page (a truck card on
+  // the dashboard has to lead somewhere) but their navigation is deliberately
+  // oversight-only. See MeOut in backend/app/api/v1/meta.py.
+  // Optional-chained on purpose: the frontend and API deploy separately, so a
+  // fresh bundle can briefly talk to an API that predates `nav_pages`. Reading
+  // through an undefined there would throw inside the app shell and blank every
+  // page, rather than costing a navigation row for a minute.
+  const items = NAV.filter((item) => me?.nav_pages?.includes(item.page))
 
   return (
     <div className="relative min-h-screen">

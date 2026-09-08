@@ -10,7 +10,12 @@ export type Me = {
   role_label: string
   employee_code: string | null
   email: string | null
+  /** Pages the app will open for this user. Admin gets every page. */
   allowed_pages: string[]
+  /** Pages that get a navigation pill — a shorter list for Admin. */
+  nav_pages: string[]
+  /** Only packers, matchers and admins ever carry an attribution badge. */
+  can_hold_badge: boolean
 }
 
 type AuthState = {
@@ -195,7 +200,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // which clears session/me — guaranteed, regardless of connectivity.
         await forceLocalSignOut()
       },
-      can: (page: string) => me?.allowed_pages.includes(page) ?? false,
+      can: (page: string) => me?.allowed_pages?.includes(page) ?? false,
     }),
     [session, me, loading, error],
   )

@@ -272,7 +272,10 @@ export function AdminPage() {
         {t('admin.show_deactivated')}
       </label>
 
-      <RetentionPanel />
+      {/* Both of these read Admin-only endpoints (/admin/retention and
+          /admin/staff/{id}/history). An Ops Manager rendering them just
+          fires a request that comes back 403 and shows nothing. */}
+      {me?.role === 'admin' && <RetentionPanel />}
 
       {rows.length === 0 && <EmptyState title={t('admin.no_staff')} />}
 
@@ -530,7 +533,7 @@ export function AdminPage() {
                   </div>
                 )}
 
-                <AccountHistory profileId={person.id} />
+                {isAdmin && <AccountHistory profileId={person.id} />}
               </div>
             )}
           </Card>

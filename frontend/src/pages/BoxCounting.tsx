@@ -40,7 +40,7 @@ export function BoxCountingPage() {
   const { entryId = '' } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { me } = useAuth()
+  const { me, can } = useAuth()
 
   const [declared, setDeclared] = useState('')
   const [error, setError] = useState<ApiError | null>(null)
@@ -259,6 +259,12 @@ export function BoxCountingPage() {
 
   const isOps = me?.role === 'admin' || me?.role === 'ops_manager'
   const isGuard = me?.role === 'security_guard'
+  // Declaring the physical box count is the guard's own act at the truck:
+  // /gate/entries/{id}/box-count is require_roles("security_guard"), which
+  // admin also passes and ops_manager does not. Ops Manager saw this form and
+  // got a 403 from it — the same stale "…_or_ops" naming the scanning steps
+  // below were already fixed for.
+  const canDeclareCount = isGuard || me?.role === 'admin'
   // Scanning box stickers back in and confirming them inside are both
   // packer_or_ops-gated on the backend (warehouse.py scan_box, gate.py
   // verify_boxes) -- but that variable name is stale from before the role
@@ -604,7 +610,7 @@ export function BoxCountingPage() {
           <Banner tone="ok" title={`${entry.data.declared_box_count} boxes declared`}>
             {t('boxcount.before_stickers')}
           </Banner>
-        ) : isGuard || isOps ? (
+        ) : canDeclareCount ? (
           <>
             <Field label={t('boxcount.number_of_boxes')} required>
               <input
@@ -746,13 +752,18 @@ export function BoxCountingPage() {
           <Banner tone="ok" title={t('boxcount.count_verified')}>
             {entry.data.declared_box_count} boxes counted, issued and scanned.
           </Banner>
-          <button
-            type="button"
-            className="btn-primary w-full"
-            onClick={() => navigate(`/entries/${entryId}/units`)}
-          >
-            {t('boxcount.go_unit_scanning')}
-          </button>
+          {/* A guard can open this page (they declare the count on it) but not
+              the unit-scanning one, so for them this button led straight to
+              "this page is for someone else". */}
+          {can('unit-scanning') && (
+            <button
+              type="button"
+              className="btn-primary w-full"
+              onClick={() => navigate(`/entries/${entryId}/units`)}
+            >
+              {t('boxcount.go_unit_scanning')}
+            </button>
+          )}
         </>
       )}
 

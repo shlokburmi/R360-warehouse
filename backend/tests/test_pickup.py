@@ -489,3 +489,44 @@ class TestPickupAccess:
         assert row["verified_cartons"] == row["released_cartons"] == 2, (
             "the gate-exit stamp must succeed for a guard, not silently match zero rows"
         )
+
+
+class TestPickupResponseShape:
+    """The pickup response has to serialise for the invoices this app creates.
+
+    0036_invoice_flow_simplified stopped collecting `sku` and `units` — what is
+    inside a carton is Admin's separate ERP's concern — and made both columns
+    nullable. `PickupCarton` still required them, so FastAPI refused to
+    serialise its own response and *every* pickup route answered 500 for every
+    invoice created since: the guard could not register a collecting vehicle at
+    all. The batch's equivalent model was updated at the time; this one was
+    missed, which is the failure mode a schema test catches and a database test
+    cannot.
+    """
+
+    async def test_carton_serialises_without_sku_or_units(self):
+        from app.api.v1.pickup import PickupCarton
+
+        carton = PickupCarton.model_validate(
+            {
+                "invoice_id": uuid.uuid4(),
+                "invoice_number": "INV-2026-0001",
+                "customer_name": None,
+                "packed_by_name": "Kavitha S",
+                "out_scanned_at": None,
+                "exit_scanned_at": None,
+                "exit_scanned_by_name": None,
+            }
+        )
+        assert carton.invoice_number == "INV-2026-0001"
+        assert not hasattr(carton, "sku")
+
+    async def test_the_service_does_not_select_columns_the_model_dropped(self):
+        """Belt and braces: the query and the model have to agree both ways."""
+        import inspect
+
+        from app.services import pickup as pickup_service
+
+        source = inspect.getsource(pickup_service.cartons)
+        assert "i.sku" not in source
+        assert "i.units" not in source

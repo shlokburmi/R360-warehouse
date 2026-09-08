@@ -45,8 +45,13 @@ class PickupCarton(BaseModel):
 
     invoice_id: UUID
     invoice_number: str
-    sku: str
-    units: int
+    # No sku/units. 0036_invoice_flow_simplified made both nullable on
+    # `invoices` — what is inside a carton is Admin's separate ERP's concern —
+    # and every invoice created since is null on both. Declaring them required
+    # here made FastAPI refuse to serialise its own response: registering a
+    # collecting vehicle answered 500, and so did opening any pickup, for every
+    # invoice the current flow can produce. The batch's own carton model
+    # (packing.py `Carton`) was updated at the time; this one was missed.
     customer_name: Optional[str] = None
     packed_by_name: Optional[str] = None
     out_scanned_at: Optional[datetime] = None

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { ApiError, get } from '@/lib/api'
 import { useErrorText } from '@/hooks/useErrorText'
+import { useAuth } from '@/hooks/useAuth'
 import { Banner, Card, Spinner } from '@/components/ui'
 import type { MyBadge } from '@/types'
 
@@ -24,10 +25,27 @@ export function MyBadgeQr({ bare = false }: { bare?: boolean }) {
   const errorText = useErrorText()
   const [fullscreen, setFullscreen] = useState(false)
 
+  const { me } = useAuth()
+
+  // Only packers, invoice matchers and admins ever hold one
+  // (fn_badge_holder_guard). For everyone else there is nothing to fetch and
+  // nothing to ask an Admin for, so saying so beats a 404 rendered as a
+  // warning about a badge they are not supposed to have.
+  const canHold = me?.can_hold_badge ?? false
+
   const badge = useQuery({
     queryKey: ['badges', 'mine'],
     queryFn: () => get<MyBadge>('/badges/mine'),
+    enabled: canHold,
   })
+
+  if (!canHold) {
+    return (
+      <Banner tone="info" title={t('badge.not_for_role')}>
+        {t('badge.not_for_role_body')}
+      </Banner>
+    )
+  }
 
   if (badge.isLoading) return <Spinner label={t('badge.loading_mine')} />
 

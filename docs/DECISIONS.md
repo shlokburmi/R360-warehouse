@@ -880,3 +880,50 @@ The acceptance is read back off the resolved exception (`details ->>
 'declared_box_count'`), not stored on the gate entry. A column would have to be
 invalidated by hand every time the guard re-declares the count, and the one that
 got forgotten would wave a number through that nobody had accepted.
+
+**A button a role can see but the API will refuse is worse than no button.**
+`/me` returned one list, `allowed_pages`, doing two different jobs: what gets a
+navigation pill, and what the app will open. Both were then compared against
+role checks written independently inside each page, and nothing checked either
+against the API's own `require_roles`. Auditing all 101 routes against all seven
+roles (`scripts/e2e_role_access.py` — the API side turned out to be exactly
+right, 721/721) against what each screen actually draws turned up seven places
+where they disagreed, all in the same direction:
+
+* Ops Manager had the whole *Gate entry* page, where the visitor lookup, the
+  vendor proposal, the ID-photo ticket and the entry itself are all guard-only.
+  Registering a truck is the guard's act at the gate, and CONTROL POINT 1's
+  point is that the person who registers is not the person who decides — so the
+  page is gone from their navigation rather than the guard being widened.
+* Ops Manager had every action on *Pickup* and the count form on *Loading*, both
+  guard-only, and the box-count form on the truck page. Those pages stay for the
+  visibility PRD §8 grants Ops Manager; the buttons are now the guard's.
+* Invoice Matcher had *Packing*, whose two endpoints are a packer's own queue and
+  her own badge confirmation. The handover step §7 describes is the badge scan on
+  the matching page, which they already had.
+* Every truck card opened the box-counting page regardless of role, so for an
+  offloader — whose landing page that list is — every truck led to "this page is
+  for someone else". Cards now lead where the signed-in role can actually go, or
+  are not tappable.
+* Admin, whose navigation is deliberately oversight-only, was refused the pages
+  those oversight screens link *into*.
+
+So `allowed_pages` and `nav_pages` are now separate: Admin can open everything
+(the API accepts admin everywhere by design) while keeping a five-item nav, and
+the table in `meta.py` carries the rule it has to satisfy — a role only gets a
+page whose actions the API will accept from them.
+
+**Nothing had ever asked the API for the shape of its own answers.** Registering
+a collecting vehicle answered HTTP 500, and so did opening any pickup, for every
+invoice the current flow can produce: `PickupCarton` still required the `sku` and
+`units` that 0036 stopped collecting, so FastAPI refused to serialise its own
+response. The batch's equivalent model was updated at the time; this one was
+missed, and no test looked. The pytest suite drives Postgres, so a response model
+is invisible to it; the e2e scripts covered a version of the packing API that
+0036 had already removed, and had been failing at sign-in since the seed grew
+per-account passwords, so nobody was running them.
+
+`scripts/e2e_full_flow.py` replaces them: the whole process end to end over real
+HTTP, each step as the role whose button it is, and a pass that hits every read
+each screen performs against the rows the run just created. A response model
+stricter than its own data now fails there instead of in someone's hand.

@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
-import { get } from '@/lib/api'
-import { Card, EmptyState, Spinner } from '@/components/ui'
+import { ApiError, get } from '@/lib/api'
+import { useErrorText } from '@/hooks/useErrorText'
+import { Banner, Card, EmptyState, Spinner } from '@/components/ui'
 
 /**
  * PRD §5.10 — Reports.
@@ -59,12 +60,23 @@ function download(filename: string, csv: string) {
   const link = document.createElement('a')
   link.href = url
   link.download = filename
+  // Attached to the document and revoked on the next tick, rather than clicked
+  // detached and revoked immediately: a detached anchor is ignored outright by
+  // some mobile browsers, and revoking in the same turn can cancel a download
+  // that had not started reading the blob yet. Either way the operator taps
+  // Export and nothing arrives.
+  link.style.display = 'none'
+  document.body.appendChild(link)
   link.click()
-  URL.revokeObjectURL(url)
+  window.setTimeout(() => {
+    link.remove()
+    URL.revokeObjectURL(url)
+  }, 0)
 }
 
 export function ReportsPage() {
   const { t } = useTranslation()
+  const errorText = useErrorText()
   const [active, setActive] = useState<ReportKey>('vendor-accuracy')
   const report = REPORTS.find((r) => r.key === active)!
 
@@ -117,6 +129,12 @@ export function ReportsPage() {
       >
         {data.isLoading ? (
           <Spinner />
+        ) : data.isError ? (
+          /* Without this a refused or dropped request renders as "no data",
+             which reads as "the warehouse did nothing today". */
+          <Banner tone="warn" title={errorText(data.error as ApiError).title}>
+            {(data.error as ApiError)?.hint}
+          </Banner>
         ) : rows.length === 0 ? (
           <EmptyState title={t('reports.no_data')} />
         ) : (

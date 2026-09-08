@@ -62,7 +62,26 @@ def anon_key():
     )
 
 
-def login(client, email, password="Warehouse@123"):
+# Every seeded account has its own password (supabase/seed.sql). A single
+# default was true only of the first seed and left this script failing at
+# sign-in, which is a needlessly confusing place to start debugging.
+SEED_PASSWORDS = {
+    "guard@r360.local": "Guard@2026!",
+    "boopathi@r360.local": "OpsMgr@2026!",
+    "opsbackup@r360.local": "B@ckupAdm!n2026#Xk",
+    "offload@r360.local": "Offload@2026!",
+    "inbound@r360.local": "Inbound@2026!",
+    "store@r360.local": "Store@2026!",
+    "match1@r360.local": "Match1@2026!",
+    "match2@r360.local": "Match2@2026!",
+    "pack1@r360.local": "Pack1@2026!",
+    "pack2@r360.local": "Pack2@2026!",
+    "admin@r360.local": "Adm!n#2026$Xk9Qz",
+}
+
+
+def login(client, email, password=None):
+    password = password or SEED_PASSWORDS[email]
     r = client.post(
         f"{SUPA}/auth/v1/token?grant_type=password",
         headers={"apikey": ANON, "Content-Type": "application/json"},

@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
-import { get } from '@/lib/api'
-import { Card, EmptyState, Spinner } from '@/components/ui'
+import { ApiError, get } from '@/lib/api'
+import { useErrorText } from '@/hooks/useErrorText'
+import { Banner, Card, EmptyState, Spinner } from '@/components/ui'
 import type { StockRow } from '@/types'
 
 const ZONES = [
@@ -22,6 +23,7 @@ const ZONES = [
  */
 export function StockPage() {
   const { t } = useTranslation()
+  const errorText = useErrorText()
   const [sku, setSku] = useState('')
   const [zone, setZone] = useState('')
 
@@ -76,6 +78,13 @@ export function StockPage() {
 
       {stock.isLoading ? (
         <Spinner />
+      ) : stock.isError ? (
+        /* Otherwise a refused or dropped request looks exactly like an empty
+           warehouse, which is the one answer nobody should ever be given by
+           accident. */
+        <Banner tone="warn" title={errorText(stock.error as ApiError).title}>
+          {(stock.error as ApiError)?.hint}
+        </Banner>
       ) : bySku.size === 0 ? (
         <EmptyState
           title={t('stock.nothing_yet')}

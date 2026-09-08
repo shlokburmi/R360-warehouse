@@ -18,7 +18,7 @@ import type { GateEntry } from '@/types'
  */
 export function EntriesPage() {
   const { t } = useTranslation()
-  const { me } = useAuth()
+  const { me, can } = useAuth()
   const errorText = useErrorText()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -63,10 +63,25 @@ export function EntriesPage() {
 
   const isGuard = me?.role === 'security_guard'
   const isOps = me?.role === 'admin' || me?.role === 'ops_manager'
-  const isOffloader = me?.role === 'offloading'
   // Box/unit sticker scanning moved to packer in the role split — offloading
   // now only does reconciliation (CONTROL POINT 4).
   const isPacker = me?.role === 'packer'
+
+  /**
+   * Where tapping this truck should go for whoever is signed in.
+   *
+   * Every row used to open the box-counting page regardless of role, which for
+   * an offloader — whose landing page this is — meant every truck on the screen
+   * led to "this page is for someone else". A card with nowhere useful to go is
+   * better left un-tappable than tappable into a refusal.
+   */
+  const detailFor = (entry: GateEntry): string | null => {
+    if (can('box-counting')) return `/entries/${entry.id}/boxes`
+    if (can('reconciliation') && entry.status === 'offloaded') {
+      return `/entries/${entry.id}/reconciliation`
+    }
+    return null
+  }
 
   return (
     <div className="space-y-4">
@@ -93,8 +108,11 @@ export function EntriesPage() {
           // The whole card is a "view details" target — the specific action
           // links/buttons inside stop propagation so their own destination
           // wins instead of this one.
-          className="cursor-pointer"
-          onClick={() => navigate(`/entries/${entry.id}/boxes`)}
+          className={detailFor(entry) ? 'cursor-pointer' : undefined}
+          onClick={() => {
+            const to = detailFor(entry)
+            if (to) navigate(to)
+          }}
         >
           {entry.declared_box_count !== null && (
             <p className="mb-3 text-base text-slate-600 dark:text-slate-400">
@@ -137,7 +155,11 @@ export function EntriesPage() {
                 </Link>
               )}
 
-            {entry.status === 'offloaded' && (isOffloader || isOps) && (
+            {/* CONTROL POINT 4 is the inbound team's count — the API accepts
+                the submission from offloading (and admin) only, so this is
+                theirs. Ops Manager can still open the page from the card to
+                see where a count stands. */}
+            {entry.status === 'offloaded' && can('reconciliation') && (
               <Link to={`/entries/${entry.id}/reconciliation`} className="btn-primary flex-1">
                 {t('entries.verify_counts')}
               </Link>

@@ -185,11 +185,15 @@ with your name against it, and the code is not.
 
 ```bash
 cd backend && source .venv/bin/activate
-pytest                          # 166 tests; skips cleanly with no database
-python scripts/e2e_workflow.py  # 45 checks over real HTTP; needs uvicorn running
-python scripts/e2e_admin.py     # 41 checks over real HTTP
-python scripts/e2e_retention.py # 14 checks against real Supabase Storage
+pytest                            # 175 tests; skips cleanly with no database
+python scripts/e2e_full_flow.py   # 114 checks: the whole process over real HTTP
+python scripts/e2e_role_access.py # 721 checks: every route against every role
+python scripts/e2e_admin.py       # 40 checks over real HTTP
+python scripts/e2e_retention.py   # 14 checks against real Supabase Storage
 ```
+
+The two flow scripts need `uvicorn` running and the local stack up. Sign-in uses
+the per-account passwords in `supabase/seed.sql`.
 
 The tests run against a real Postgres, because what they test *is* the database:
 triggers, constraints and RLS policies. `test_control_points.py` asserts that
@@ -206,15 +210,30 @@ every cycle, logged "retrying next cycle", and stayed silent. A job that catches
 its own exceptions to stay alive looks identical to a job with nothing to do, so
 it needs a test that calls it.
 
-The three scripts cover what only becomes true outside the database.
-`e2e_workflow.py`: that the four Phase 5 gates are wired onto routes with the
-right role guards, and that each refusal arrives as a sentence an operator can
-act on.
+The scripts cover what only becomes true outside the database.
+
+`e2e_full_flow.py` walks the entire process — truck registered, approved,
+admitted, counted, stickered, scanned, closed, reconciled, shelved; carton
+invoiced, assigned, packed, batched, out-scanned, counted, released, loaded and
+driven out — with each step performed by the role whose button it is. It exists
+because a control point can hold perfectly in Postgres while the route in front
+of it is unreachable: the last thing it caught was `POST /pickups` answering 500
+for every invoice the current flow can produce, because a response model still
+required the `sku` that 0036 stopped collecting.
+
+`e2e_role_access.py` is the other half: it points every route at a nonexistent id
+as all seven roles and records whether the answer was "not your role" or
+something else, then compares that against the intended access matrix. The
+frontend decides which buttons to draw from the same matrix (`/me`'s
+`nav_pages`), so a disagreement here is a button somebody can press that can only
+ever answer 403 — which on a warehouse floor is indistinguishable from a broken
+app. Nothing is created, so it is safe to run against a live stack.
+
 `e2e_admin.py`: that `require_admin` is genuinely wired onto the routes, and that
 an account created on that screen can actually sign in. `e2e_retention.py`: that
 an identity photo really leaves Supabase Storage — the one thing a retention job
-has to do, and the half a database test cannot see. Neither is idempotent, so
-`supabase db reset` afterwards.
+has to do, and the half a database test cannot see. Those two are not idempotent,
+so `supabase db reset` afterwards.
 
 Each test creates the rows it needs and rolls them back, so the suite is
 independent of whatever state the database happens to be in. That matters more
@@ -252,7 +271,8 @@ backend/app/
   worker.py            SLA escalation, email, photo retention — separate process
   services/retention.py identity photos are destroyed at 180 days, not just hidden
   services/loading.py  the guard's carton count and Admin's decision on it
-  scripts/e2e_workflow.py the Phase 5 outbound flow over real HTTP
+  scripts/e2e_full_flow.py the whole process over real HTTP, role by role
+  scripts/e2e_role_access.py every route against every role
   scripts/e2e_admin.py the Admin flow over real HTTP
 frontend/src/
   lib/offlineQueue.ts  IndexedDB scan queue, idempotent replay

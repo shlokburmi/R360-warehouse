@@ -233,9 +233,11 @@ export function ApprovalsPage() {
  */
 function CartonCountApprovals() {
   const { t } = useTranslation()
+  const errorText = useErrorText()
   const queryClient = useQueryClient()
   const [rejecting, setRejecting] = useState<string | null>(null)
   const [note, setNote] = useState('')
+  const [error, setError] = useState<ApiError | null>(null)
 
   const pending = useQuery({
     queryKey: ['loading', 'pending'],
@@ -254,9 +256,14 @@ function CartonCountApprovals() {
     onSuccess: () => {
       setRejecting(null)
       setNote('')
+      setError(null)
       void queryClient.invalidateQueries({ queryKey: ['loading'] })
       void queryClient.invalidateQueries({ queryKey: ['batches'] })
     },
+    // Previously silent. A refused decision — an already-decided batch, a lost
+    // session — left the card exactly as it was, which is indistinguishable
+    // from a button that does nothing.
+    onError: (err) => setError(err as ApiError),
   })
 
   if (!pending.data?.length) return null
@@ -264,6 +271,12 @@ function CartonCountApprovals() {
   return (
     <>
       <h2 className="pt-2 text-xl font-black">{t('loading.pending_title')}</h2>
+
+      {error && (
+        <Banner tone="bad" title={errorText(error).title}>
+          {error.hint}
+        </Banner>
+      )}
 
       {pending.data.map((approval) => (
         <Card
@@ -362,9 +375,11 @@ function CartonCountApprovals() {
  */
 function ExitApprovals() {
   const { t } = useTranslation()
+  const errorText = useErrorText()
   const queryClient = useQueryClient()
   const [holding, setHolding] = useState<string | null>(null)
   const [note, setNote] = useState('')
+  const [error, setError] = useState<ApiError | null>(null)
 
   const waiting = useQuery({
     queryKey: ['pickups', 'awaiting-exit'],
@@ -385,8 +400,12 @@ function ExitApprovals() {
     onSuccess: () => {
       setHolding(null)
       setNote('')
+      setError(null)
       void queryClient.invalidateQueries({ queryKey: ['pickups'] })
     },
+    // As above: a truck waiting at a gate is the worst place to swallow a
+    // refusal, because the operator's next move is to press it again.
+    onError: (err) => setError(err as ApiError),
   })
 
   if (!waiting.data?.length) return null
@@ -394,6 +413,12 @@ function ExitApprovals() {
   return (
     <>
       <h2 className="pt-2 text-xl font-black">{t('exitapproval.title')}</h2>
+
+      {error && (
+        <Banner tone="bad" title={errorText(error).title}>
+          {error.hint}
+        </Banner>
+      )}
 
       {waiting.data.map((pickup) => (
         <Card
