@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BrowserMultiFormatReader } from '@zxing/browser'
 import { DecodeHintType, BarcodeFormat } from '@zxing/library'
+import { noCameraReasonKey } from '@/lib/camera'
 
 type Props = {
   onScan: (code: string) => void
@@ -465,7 +466,7 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
       {status === 'unavailable' && (
         <div className="rounded-xl bg-warn-bg p-4 text-warn dark:bg-warn-darkbg dark:text-warn-dark">
           <p className="font-bold">{t('scanner.unavailable')}</p>
-          <p className="mt-1 text-base">{t('scanner.unavailable_hint')}</p>
+          <p className="mt-1 text-base">{t(noCameraReasonKey())}</p>
         </div>
       )}
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { readSetting, writeSetting } from '@/lib/deviceStorage'
 
 const STORAGE_KEY = 'r360-theme'
 
@@ -15,11 +16,11 @@ const STORAGE_KEY = 'r360-theme'
  * the control in, and both screens need to read and write the same value.
  */
 export function useTheme() {
-  const [dark, setDark] = useState(() => localStorage.getItem(STORAGE_KEY) === 'dark')
+  const [dark, setDark] = useState(() => readSetting(STORAGE_KEY) === 'dark')
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
-    localStorage.setItem(STORAGE_KEY, dark ? 'dark' : 'light')
+    writeSetting(STORAGE_KEY, dark ? 'dark' : 'light')
   }, [dark])
 
   return { dark, setDark, toggle: () => setDark((d) => !d) }

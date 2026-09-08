@@ -1,11 +1,11 @@
-fastapi==0.115.6
+fastapi==0.141.1
 uvicorn[standard]==0.34.0
 pydantic==2.10.4
 pydantic-settings==2.7.0
 sqlalchemy[asyncio]==2.0.36
 asyncpg==0.30.0
-pyjwt[crypto]==2.10.1
-cryptography==44.0.0
+pyjwt[crypto]==2.13.0
+cryptography==50.0.1
 httpx==0.28.1
-python-multipart==0.0.20
+python-multipart==0.0.32
 segno==1.6.6

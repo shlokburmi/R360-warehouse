@@ -97,5 +97,18 @@ def get_settings() -> Settings:
             )
         if not settings.supabase_jwt_secret or len(settings.supabase_jwt_secret) < 32:
             raise RuntimeError("supabase_jwt_secret is missing or too short.")
+        # SQLAlchemy's echo prints every statement *with its parameters*, which
+        # here means visitor mobiles, names and badge codes into the platform's
+        # log stream — the one place the audit-log redaction in 0013 cannot
+        # reach. Debug is a local switch; in production it is a data leak.
+        if settings.debug:
+            raise RuntimeError(
+                "DEBUG must be false in production: SQL echo would log visitor "
+                "mobiles, names and badge codes."
+            )
+        # A wildcard origin with credentials is rejected by browsers anyway, so
+        # the only thing it can do is look like a policy while being none.
+        if "*" in settings.cors_origins:
+            raise RuntimeError("CORS_ORIGINS must name the exact origins in production.")
 
     return settings

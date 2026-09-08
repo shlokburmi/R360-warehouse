@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { noCameraReasonKey } from '@/lib/camera'
 import { UnreadableFile, coverCropBox, cropRegion, filesToPages, isPdf } from '@/lib/pageImages'
 import {
   GUIDE_BOX,
@@ -491,7 +492,11 @@ export function OrderNoScanner({ invoiceNumber, onConfirm, busy = false }: Props
       {phase === 'nocamera' && source === 'camera' && (
         <div className="rounded-xl bg-warn-bg p-4 text-warn dark:bg-warn-darkbg dark:text-warn-dark">
           <p className="font-bold">{t('orderno.no_camera')}</p>
-          <p className="mt-1 text-base">{t('orderno.type_instead')}</p>
+          <p className="mt-1 text-base">
+            {noCameraReasonKey() === 'scanner.needs_https'
+              ? t('scanner.needs_https')
+              : t('orderno.type_instead')}
+          </p>
         </div>
       )}
 

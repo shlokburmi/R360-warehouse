@@ -927,3 +927,84 @@ per-account passwords, so nobody was running them.
 HTTP, each step as the role whose button it is, and a pass that hits every read
 each screen performs against the rows the run just created. A response model
 stricter than its own data now fails there instead of in someone's hand.
+
+## Part E — Security review
+
+A full pass over the deployed surface, not the diff: authentication, the role
+model, secrets, injection, storage, headers, dependencies, and what each layer
+does when the one above it is wrong. Most of it held up — the JWT path pins one
+algorithm per branch, RLS is `force`d and the API refuses to boot against a
+superuser connection, both storage buckets are private with mime allowlists and
+a write-only drop box for identity photos, no dynamic SQL takes a value from
+user input, and there is not a single `dangerouslySetInnerHTML` in the
+frontend. Five things did not.
+
+**§E1. An Ops Manager could make themselves Admin.** 0033 moved the `profiles`
+write policy to `is_ops_manager()` so they could add and edit staff. `role` is a
+column on that row, and neither the policy nor `update_staff` said anything
+about it, so "edit staff" quietly included "grant yourself everything Admin
+has": password reset on every account (account takeover, including of Admins),
+the audit history, and both halves of CONTROL POINT 5. Confirmed over HTTP —
+`PATCH /admin/staff/{own id} {"role":"admin"}` answered 200 and `/me` came back
+as `admin`. 0039 makes role grants Admin-only in a trigger, with the same rule
+mirrored in the API so the refusal reads as a sentence; staff CRUD stays exactly
+where 0033 put it. Writes with no signed-in actor (the seed, migrations, the
+worker) are unaffected, or the seed could not create the first Admin.
+
+**§E2. `DELETE` was missing from the CORS allowlist.** `/admin/staff/{id}` is a
+route the Staff screen calls, and a method absent from `allow_methods` fails at
+the preflight — the request never leaves the browser, so it surfaces as "no
+connection" rather than as a refusal. It worked in development only because the
+Vite dev server proxies the API onto the app's own origin; in production
+(Vercel → Render) it is cross-origin, so *Delete staff* had never worked there.
+A functional bug found by reading a security setting.
+
+**§E3. The identity-photo path was reflected into a privileged request.**
+`view_identity_photo` interpolated its `path` query parameter into a URL that is
+then POSTed *with the service-role key*, and httpx collapses `../` while
+building a URL — so `path=../../list/identity-photos` re-points that privileged
+request at a different storage endpoint. Ops/Admin-gated and read-only in
+practice, but it is a service-role credential aimed by an untrusted string. The
+path is now matched against the exact shape the upload ticket mints.
+
+**§E4. Postgres DETAIL was being returned to clients.** On a unique violation
+DETAIL spells out the conflicting values — `Key (badge_code)=(BDG-…) already
+exists` — and a badge code is the one value in this system that is never
+supposed to leave the database (§CC2, and 0013 redacts it from the audit log for
+the same reason). MESSAGE was written for the operator; DETAIL was written for
+whoever reads the logs, and that is where it stays now.
+
+**§E5. The post-login redirect was unvalidated.** `Login` sent the user to
+`location.state.from.pathname`, which is derived from the URL they arrived on —
+so a link to `https://<app>/\evil.example` normalises to a pathname of
+`//evil.example`, and `<Navigate to>` treats that as a protocol-relative URL:
+an open redirect off the back of a real login page, which is the convincing half
+of a phishing flow. React Router has an advisory open for the same class
+(GHSA-wrjc-x8rr-h8h6) with no fix in 6.x, so the check belongs at the call site
+regardless of the version underneath: one leading slash, no backslashes.
+
+Two production guards were added at boot alongside the existing superuser check:
+`DEBUG` is refused in production, because SQLAlchemy's echo prints every
+statement *with its parameters* — visitor mobiles, names and badge codes — into
+the platform log stream, the one place 0013's redaction cannot reach; and
+`CORS_ORIGINS` may not be `*`, which with credentials is rejected by browsers
+anyway and so can only look like a policy while being none.
+
+**§E6. Dependencies.** `pdfjs-dist` 5.6.205 had a HIGH advisory for arbitrary
+JavaScript execution from a crafted PDF (GHSA-hq66-cqwq-w95j) — and this app
+opens PDFs that arrive from outside, a vendor's delivery challan, in the origin
+that holds the session token. Upgraded to 6.3.289, which is also why
+`pageImages.ts` now imports the *legacy* build: pdf.js 6's default build opens
+with `if (typeof Iterator.prototype.join !== "function")` at module scope and
+throws outright on any engine without the `Iterator` global (Chrome <122,
+Safari <18.4), where the legacy build carries the polyfills. The Python side had
+two HIGH advisories in the authentication path itself (PyJWT: a public-key JWK
+accepted as an HMAC secret, and an algorithm allow-list bypass through
+`PyJWKClient` — this app accepts both HS256 and asymmetric tokens, which is
+exactly the mixed-family case those describe), plus DoS advisories in Starlette
+and python-multipart. All of it is now on versions OSV reports clean.
+
+React Router's two advisories have no fix in 6.x and the practical exposure is
+§E5 (fixed at the call site) plus an SSR path this app does not have, so the
+major upgrade is a decision to take on its own merits rather than under an
+advisory.

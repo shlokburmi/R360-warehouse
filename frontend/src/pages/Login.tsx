@@ -24,6 +24,28 @@ import {
  * error), because the sign-in path is the last place worth introducing new
  * moving parts for a visual refresh.
  */
+/**
+ * Where to go after signing in — and only ever somewhere inside this app.
+ *
+ * The value comes from wherever the user was sent to /login from, which is
+ * derived from the URL they arrived on, so it is attacker-influenced: a link to
+ * `https://<app>/\\evil.example` normalises to a pathname of `//evil.example`,
+ * and `<Navigate to="//evil.example">` is a protocol-relative URL — an open
+ * redirect off the back of a legitimate login page, which is the more
+ * convincing half of a phishing flow. React Router has an advisory open for the
+ * same class (GHSA-wrjc-x8rr-h8h6, unfixed in 6.x), so the check belongs at the
+ * call site regardless of the version underneath.
+ *
+ * One leading slash, no backslashes, nothing else.
+ */
+function landingPath(location: { state?: unknown }): string {
+  const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname
+  if (typeof from !== 'string') return '/'
+  if (!from.startsWith('/')) return '/'
+  if (from.startsWith('//') || from.includes('\\')) return '/'
+  return from
+}
+
 export function LoginPage() {
   const { t } = useTranslation()
   const { session, signIn } = useAuth()
@@ -34,8 +56,7 @@ export function LoginPage() {
   const [busy, setBusy] = useState(false)
 
   if (session) {
-    const from = (location.state as { from?: { pathname: string } })?.from?.pathname ?? '/'
-    return <Navigate to={from} replace />
+    return <Navigate to={landingPath(location)} replace />
   }
 
   async function submit(event: FormEvent) {

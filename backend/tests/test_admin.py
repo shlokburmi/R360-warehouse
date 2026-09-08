@@ -317,15 +317,22 @@ class TestAccountChanges:
         """Losing every Admin is only recoverable with a psql prompt, which is
         the thing this screen exists to make unnecessary."""
         admin_id = badge_holders["admin"]["id"]
-        await act_as(db, badge_holders["ops"]["id"])
 
         # The seeded stack has several admins (boopathi, the backup and
         # matching accounts, admin@r360.local). Demote every one of them
         # except admin_id, so it genuinely is the last one left.
+        #
+        # Done with no signed-in actor: since 0039 a role change by anyone who
+        # is not an Admin is refused by fn_role_grant_guard, and this is setup
+        # rather than the thing under test — which is the service's own
+        # last-Admin-standing guard, below.
+        await db.execute(text("select set_config('request.jwt.claims', '', true)"))
         await db.execute(
             text("update profiles set role = 'packer' where role = 'admin' and id <> :id"),
             {"id": admin_id},
         )
+
+        await act_as(db, badge_holders["ops"]["id"])
 
         with pytest.raises(AppError) as err:
             await admin_service.update_staff(

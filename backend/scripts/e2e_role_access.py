@@ -210,6 +210,13 @@ checks = {"pass": 0, "fail": 0}
 failures = []
 
 
+def ok(label, cond, extra=""):
+    checks["pass" if cond else "fail"] += 1
+    print(f"  [{'PASS' if cond else 'FAIL'}] {label}")
+    if not cond:
+        failures.append(f"{label} <- {extra}")
+
+
 def anon_key():
     if os.environ.get("SUPABASE_ANON_KEY"):
         return os.environ["SUPABASE_ANON_KEY"]
@@ -261,6 +268,47 @@ def main():
                     )
                 cells.append(("ok " if good else "BAD") + ("·" if refused else "✓"))
             print(f"{method[:4]:4} {path[:55]:55} " + " ".join(f"{c:>5}" for c in cells))
+
+        # ------------------------------------------------------------------
+        # A role guard on a route is not the whole story. These are the three
+        # places where the *shape* of a request decided who could do what, and
+        # each one was exploitable when it was found.
+        print("\nSecurity invariants")
+
+        me = client.get(f"{API}/me", headers=tokens["ops_manager"]).json()
+        r = client.patch(f"{API}/admin/staff/{me['id']}", headers=tokens["ops_manager"],
+                         json={"role": "admin"})
+        ok("an Ops Manager cannot promote themselves to Admin (0039)",
+           r.status_code == 403, f"{r.status_code} {r.text[:200]}")
+        after = client.get(f"{API}/me", headers=tokens["ops_manager"]).json()
+        ok("and their role is unchanged", after["role"] == "ops_manager", str(after["role"]))
+
+        r = client.patch(f"{API}/admin/staff/{me['id']}", headers=tokens["ops_manager"],
+                         json={"full_name": after["full_name"]})
+        ok("but staff edits still work for them (0033 is not rolled back)",
+           r.status_code == 200, f"{r.status_code} {r.text[:200]}")
+
+        r = client.post(f"{API}/admin/staff", headers=tokens["ops_manager"],
+                        json={"full_name": "Smuggled Admin", "employee_code": "EMP-ZZ8",
+                              "role": "admin", "mobile": "9999999998",
+                              "email": "smuggled@r360.local"})
+        ok("nor create one instead", r.status_code == 403, f"{r.status_code} {r.text[:200]}")
+
+        r = client.request(
+            "OPTIONS", f"{API}/admin/staff/{NIL}",
+            headers={"Origin": "http://localhost:5173",
+                     "Access-Control-Request-Method": "DELETE",
+                     "Access-Control-Request-Headers": "authorization"},
+        )
+        ok("DELETE survives the CORS preflight (the Staff screen deletes cross-origin)",
+           r.status_code == 200 and "DELETE" in r.headers.get("access-control-allow-methods", ""),
+           f"{r.status_code} {r.headers.get('access-control-allow-methods')}")
+
+        r = client.get(f"{API}/uploads/identity-photo/view",
+                       params={"path": "../../list/identity-photos"},
+                       headers=tokens["admin"])
+        ok("a traversal path is refused before it reaches storage",
+           r.status_code == 422 and "bad_path" in r.text, f"{r.status_code} {r.text[:200]}")
 
     print(f"\n{checks['pass']} passed, {checks['fail']} failed")
     if failures:

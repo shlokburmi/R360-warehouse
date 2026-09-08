@@ -81,11 +81,19 @@ app = FastAPI(
     redoc_url=None,
 )
 
+# DELETE belongs here: /admin/staff/{id} is a real route the Staff screen calls,
+# and a method missing from this list fails at the preflight — the request never
+# leaves the browser, so it presents as "no connection" rather than as a refusal.
+# It only ever worked locally because the Vite dev server proxies the API onto
+# the app's own origin; in production (Vercel → Render) it is cross-origin.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
+    # Auth is a bearer token, not a cookie, so credentials are not needed for
+    # this app to work — but it stays on because it forces the middleware to
+    # echo an exact origin rather than "*", which is the behaviour we want.
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
 

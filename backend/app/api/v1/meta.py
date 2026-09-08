@@ -1,5 +1,6 @@
 """Session, master data, notifications and photo uploads."""
 
+import re
 import secrets
 from datetime import date, datetime
 from typing import Dict, List, Optional
@@ -550,14 +551,34 @@ async def damage_photo_ticket(
     return await _signed_upload(settings, "damage-photos", path)
 
 
+# The shape identity_photo_ticket() mints: "<10 digits>/<8 digits>-<12 hex>.jpg".
+# Anything else is refused rather than passed through — see view_identity_photo.
+_PHOTO_PATH_RE = re.compile(r"^[0-9]{10}/[0-9]{8}-[0-9a-f]{12}\.jpg$")
+
+
 @router.get("/uploads/identity-photo/view")
 async def view_identity_photo(
-    path: str = Query(min_length=3),
+    path: str = Query(min_length=3, max_length=64),
     settings: Settings = Depends(get_settings),
     user: CurrentUser = Depends(require_ops_manager),
 ):
     """Short-lived signed link to a stored ID photo. Ops and Admin only —
-    PRD §8 Data Privacy / DPDP Act 2023."""
+    PRD §8 Data Privacy / DPDP Act 2023.
+
+    `path` is checked against the exact shape this API mints before it is used,
+    because what follows is a request carrying the service-role key and httpx
+    collapses "../" while building the URL: an unchecked path like
+    `../../list/identity-photos` re-points that privileged POST at a different
+    storage endpoint entirely. Validating the shape is cheaper than reasoning
+    about which endpoints happen to be harmless.
+    """
+    if not _PHOTO_PATH_RE.match(path):
+        raise AppError(
+            "That is not an identity photo path.",
+            code="bad_path",
+            http_status=422,
+        )
+
     if not settings.supabase_service_role_key:
         raise AppError("Storage is not configured.", code="storage_unconfigured", http_status=503)
 

@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { get } from '@/lib/api'
+import { newUuid } from '@/lib/ids'
 import { Banner, Card, Field } from '@/components/ui'
 import { CameraCapture } from '@/components/CameraCapture'
 import type { VisitorLookup } from '@/types'
@@ -25,7 +26,7 @@ export type PersonDraft = {
 }
 
 export const blankPerson = (role: PersonDraft['visitor_role']): PersonDraft => ({
-  key: crypto.randomUUID(),
+  key: newUuid(),
   full_name: '',
   mobile: '',
   visitor_role: role,

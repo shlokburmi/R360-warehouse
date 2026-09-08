@@ -206,9 +206,38 @@ async def _create_auth_user(
     return UUID(user_id)
 
 
+def _only_admin_grants_roles(actor_role: str, role: Optional[str]) -> None:
+    """Assigning a role is Admin's, even though staff CRUD is Ops Manager's.
+
+    0033 moved the `profiles` write policy to Ops Manager so they could add and
+    edit staff. `role` is a column on that row, so without this an Ops Manager
+    could PATCH their own record to `admin` — which hands them password reset on
+    every account, the audit history, and both halves of CONTROL POINT 5. The
+    database refuses it too (fn_role_grant_guard, 0039); this exists so the
+    refusal arrives as a sentence instead of a policy violation.
+    """
+    if role is None or actor_role == "admin":
+        return
+    raise AppError(
+        "Only an Admin can decide what role an account holds.",
+        code="not_permitted",
+        http_status=403,
+        hint=(
+            "You can add staff, edit their details and activate or deactivate "
+            "them. Ask an Admin to set the role."
+        ),
+    )
+
+
 async def create_staff(
-    conn: AsyncConnection, settings: Settings, payload: StaffCreate
+    conn: AsyncConnection,
+    settings: Settings,
+    payload: StaffCreate,
+    actor_role: str = "admin",
 ) -> StaffCreated:
+    # Creating an Admin is the same grant as promoting one to Admin, and
+    # create_staff hands back a working password — so it is gated the same way.
+    _only_admin_grants_roles(actor_role, payload.role)
     # Check the employee code before creating the account, not after. The auth
     # user is created outside this transaction and cannot be rolled back with
     # it, so a unique violation on the profile insert would leave an orphaned
@@ -344,8 +373,14 @@ async def update_staff(
     actor_id: UUID,
     profile_id: UUID,
     payload: StaffUpdate,
+    actor_role: str = "admin",
 ) -> StaffOut:
     current = await _get_staff(conn, profile_id)
+
+    # Only when the role would actually change: an Ops Manager editing a name
+    # should not be refused for re-sending the role the account already has.
+    if payload.role is not None and payload.role != current.role:
+        _only_admin_grants_roles(actor_role, payload.role)
 
     fields: Dict[str, Any] = {}
     if payload.full_name is not None:

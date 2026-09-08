@@ -3,6 +3,7 @@ import { initReactI18next } from 'react-i18next'
 
 import en from './en.json'
 import kn from './kn.json'
+import { readSetting, writeSetting } from '@/lib/deviceStorage'
 
 /**
  * Two languages, chosen at sign-in and remembered.
@@ -31,7 +32,7 @@ export type LanguageCode = (typeof LANGUAGES)[number]['code']
 const STORAGE_KEY = 'r360.lang'
 
 export function storedLanguage(): LanguageCode {
-  const saved = localStorage.getItem(STORAGE_KEY)
+  const saved = readSetting(STORAGE_KEY)
   return saved === 'kn' || saved === 'en' ? saved : 'en'
 }
 
@@ -47,7 +48,7 @@ export function applyLanguage(code: LanguageCode): void {
 }
 
 export async function setLanguage(code: LanguageCode): Promise<void> {
-  localStorage.setItem(STORAGE_KEY, code)
+  writeSetting(STORAGE_KEY, code)
   applyLanguage(code)
   await i18next.changeLanguage(code)
 }

@@ -38,29 +38,73 @@ export function isPdf(file: File): boolean {
   return file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
 }
 
+/**
+ * pdf.js calls `Promise.withResolvers()`, which is Chrome 119 / Safari 17.4 /
+ * Firefox 121 and newer — and neither its modern nor its legacy build ships a
+ * polyfill for it (checked in 5.6 and 6.3). On anything older the PDF path
+ * threw a TypeError, which `filesToPages` below could only report as "this file
+ * is unreadable" — a challan that is perfectly readable, on a phone the rest of
+ * the app runs on happily.
+ *
+ * A few lines here is cheaper than telling a matcher to update their browser.
+ */
+function ensurePromiseWithResolvers(): void {
+  const P = Promise as unknown as { withResolvers?: unknown }
+  if (typeof P.withResolvers === 'function') return
+  P.withResolvers = function withResolvers<T>() {
+    let resolve!: (value: T | PromiseLike<T>) => void
+    let reject!: (reason?: unknown) => void
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res
+      reject = rej
+    })
+    return { promise, resolve, reject }
+  }
+}
+
+
 async function renderPdf(
   file: File,
   onPage?: (n: number, total: number) => void,
 ): Promise<HTMLCanvasElement[]> {
   // Dynamically imported: pdf.js is ~424KB plus a 1.2MB worker, and a guard
   // scanning boxes at a gate must not download a PDF engine to do it.
-  const pdfjs = await import('pdfjs-dist')
+  ensurePromiseWithResolvers()
+  // The *legacy* build, deliberately. pdf.js 6's default build opens with
+  // `if (typeof Iterator.prototype.join !== "function")` at module scope, which
+  // throws outright on any engine without the Iterator global — Chrome below
+  // 122, Safari below 18.4 — so importing it is what fails, before a single
+  // page is parsed. The legacy build carries the core-js polyfills for exactly
+  // that and imports cleanly (verified on a runtime that has neither), which is
+  // the difference between "PDF challans work on this phone" and not.
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
   // Served from our own origin rather than a CDN, so this keeps working on a
-  // warehouse network with no route to the internet.
+  // warehouse network with no route to the internet. The worker has to come
+  // from the same build family as the module above.
   pdfjs.GlobalWorkerOptions.workerSrc = '/tesseract/pdf.worker.min.mjs'
 
-  const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise
-  const total = Math.min(doc.numPages, PDF_MAX_PAGES)
-  const pages: HTMLCanvasElement[] = []
+  // The file being parsed here arrived from outside — a vendor's delivery
+  // challan, opened by whoever is standing at the matching station — so the
+  // parser version matters. pdf.js 5.6.x had an arbitrary-code-execution bug
+  // reachable through a crafted PDF (GHSA-hq66-cqwq-w95j); 6.2.108 fixed it and
+  // dropped the `isEvalSupported` escape hatch along with the eval path it
+  // guarded, which is why there is nothing to switch off here any more. Keep
+  // this dependency current.
+  const task = pdfjs.getDocument({ data: await file.arrayBuffer() })
 
-  for (let n = 1; n <= total; n++) {
-    onPage?.(n, total)
-    const page = await doc.getPage(n)
-    const base = page.getViewport({ scale: 1 })
-    const viewport = page.getViewport({ scale: PDF_RENDER_WIDTH / base.width })
-    const canvas = document.createElement('canvas')
-    canvas.width = Math.round(viewport.width)
-    canvas.height = Math.round(viewport.height)
+  try {
+    const doc = await task.promise
+    const total = Math.min(doc.numPages, PDF_MAX_PAGES)
+    const pages: HTMLCanvasElement[] = []
+
+    for (let n = 1; n <= total; n++) {
+      onPage?.(n, total)
+      const page = await doc.getPage(n)
+      const base = page.getViewport({ scale: 1 })
+      const viewport = page.getViewport({ scale: PDF_RENDER_WIDTH / base.width })
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.round(viewport.width)
+      canvas.height = Math.round(viewport.height)
     // `background` is not cosmetic. A PDF page is transparent wherever nothing is
     // drawn, and transparent composites to black on a fresh canvas — which would
     // give white-on-black and read as a blank page. pdf.js has this option
@@ -69,12 +113,18 @@ async function renderPdf(
     //
     // `canvas` rather than `canvasContext`: in pdf.js v5 the context form is kept
     // only for backwards compatibility.
-    await page.render({ canvas, viewport, background: '#ffffff' }).promise
-    pages.push(canvas)
-  }
+      await page.render({ canvas, viewport, background: '#ffffff' }).promise
+      pages.push(canvas)
+    }
 
-  void doc.destroy()
-  return pages
+    return pages
+  } finally {
+    // In pdf.js v6 `destroy()` moved to the loading task — it is what tears the
+    // worker down, and the document proxy only has `cleanup()`. Doing it in a
+    // `finally` also releases the worker when a malformed PDF throws halfway,
+    // which the old call site did not.
+    void task.destroy()
+  }
 }
 
 async function loadImage(file: File): Promise<HTMLCanvasElement> {

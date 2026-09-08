@@ -229,3 +229,114 @@ class TestWarehouseStaff:
             )
         ).mappings().one()
         assert row["status"] == "pending_approval"
+
+
+class TestRoleGrantsAreAdminOnly:
+    """0039. Staff CRUD is Ops Manager's; deciding what role an account holds
+    is not.
+
+    0033 moved `profiles_admin_all` to is_ops_manager() so an Ops Manager could
+    add and edit staff. `role` is a column on that row, so "edit staff"
+    silently included "promote yourself to Admin" — which hands over password
+    reset on every account, the audit history, and both halves of CONTROL
+    POINT 5, i.e. exactly what 0033 said it was not extending. Confirmed over
+    HTTP before the fix: PATCH /admin/staff/{own id} {"role":"admin"} → 200.
+    """
+
+    async def test_ops_manager_cannot_promote_themselves(self, db, people):
+        await as_authenticated(db, people["ops_manager"])
+        async with rejected(db, containing="Only an Admin can change what role"):
+            await db.execute(
+                text("update profiles set role = 'admin' where id = :id"),
+                {"id": people["ops_manager"]},
+            )
+        await as_postgres(db)
+
+        assert (
+            await db.execute(
+                text("select role::text from profiles where id = :id"),
+                {"id": people["ops_manager"]},
+            )
+        ).scalar_one() == "ops_manager"
+
+    async def test_ops_manager_cannot_promote_anyone_else_either(self, db, people):
+        """The self-promotion case is the obvious one; making a *colleague* an
+        Admin and borrowing their account is the same escalation with a step in
+        between."""
+        await as_authenticated(db, people["ops_manager"])
+        async with rejected(db, containing="Only an Admin can change what role"):
+            await db.execute(
+                text("update profiles set role = 'admin' where id = :id"),
+                {"id": people["packer"]},
+            )
+        await as_postgres(db)
+
+    async def test_ops_manager_cannot_create_an_admin(self, db, people):
+        await as_authenticated(db, people["ops_manager"])
+        async with rejected(db, containing="Only an Admin can create an Admin"):
+            await db.execute(
+                text(
+                    """
+                    insert into profiles (id, full_name, role, employee_code)
+                    values (:id, 'Smuggled Admin', 'admin', :code)
+                    """
+                ),
+                {"id": str(uuid.uuid4()), "code": f"EMP-X{uuid.uuid4().hex[:3].upper()}"},
+            )
+        await as_postgres(db)
+
+    async def test_ops_manager_keeps_the_staff_edits_0033_granted(self, db, people):
+        """The fix has to be narrow: everything else on the Staff screen is
+        still theirs, or 0039 would be a rollback of 0033 rather than a
+        correction to it."""
+        await as_authenticated(db, people["ops_manager"])
+        await db.execute(
+            text("update profiles set full_name = 'Kavitha S.' where id = :id"),
+            {"id": people["packer"]},
+        )
+        await db.execute(
+            text("update profiles set is_active = false where id = :id"),
+            {"id": people["packer"]},
+        )
+        await as_postgres(db)
+
+        row = (
+            await db.execute(
+                text("select full_name, is_active from profiles where id = :id"),
+                {"id": people["packer"]},
+            )
+        ).mappings().one()
+        assert row["full_name"] == "Kavitha S."
+        assert row["is_active"] is False
+
+    async def test_an_admin_can_still_grant_roles(self, db, people):
+        await as_authenticated(db, people["admin"])
+        await db.execute(
+            text("update profiles set role = 'ops_manager' where id = :id"),
+            {"id": people["packer"]},
+        )
+        await as_postgres(db)
+
+        assert (
+            await db.execute(
+                text("select role::text from profiles where id = :id"),
+                {"id": people["packer"]},
+            )
+        ).scalar_one() == "ops_manager"
+
+    async def test_the_seed_and_migrations_are_unaffected(self, db, people):
+        """auth_role() is null when nobody is signed in — a migration, the seed,
+        the worker. The guard has to let those through, or the seed could not
+        create the first Admin and there would be no way into the system."""
+        await as_postgres(db)
+        await db.execute(text("select set_config('request.jwt.claims', '', true)"))
+        await db.execute(
+            text("update profiles set role = 'admin' where id = :id"),
+            {"id": people["packer"]},
+        )
+        assert (
+            await db.execute(
+                text("select role::text from profiles where id = :id"),
+                {"id": people["packer"]},
+            )
+        ).scalar_one() == "admin"

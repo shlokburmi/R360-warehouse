@@ -64,7 +64,7 @@ async def create_staff(
     201 with a body rather than 204: the password is the only reason the Admin
     is on this screen, and it does not exist anywhere else afterwards.
     """
-    return await admin_service.create_staff(conn, settings, payload)
+    return await admin_service.create_staff(conn, settings, payload, actor_role=user.role)
 
 
 @router.patch("/staff/{profile_id}", response_model=StaffOut)
@@ -74,7 +74,9 @@ async def update_staff(
     conn: AsyncConnection = Depends(get_db),
     user: CurrentUser = Depends(require_ops_manager),
 ):
-    return await admin_service.update_staff(conn, UUID(user.id), profile_id, payload)
+    return await admin_service.update_staff(
+        conn, UUID(user.id), profile_id, payload, actor_role=user.role
+    )
 
 
 @router.post("/staff/{profile_id}/reset-password", response_model=PasswordReset)

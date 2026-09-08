@@ -106,7 +106,8 @@
     "unavailable_hint": "Type the sticker code below instead.",
     "sticker_code": "Sticker code",
     "hint_steady": "Hold it steady, centred, and well lit.",
-    "hint_reposition": "Still not finding it — try moving it a little closer or farther, or type the code below."
+    "hint_reposition": "Still not finding it — try moving it a little closer or farther, or type the code below.",
+    "needs_https": "This page is not on a secure (https) address, so the browser will not give it the camera. Open the app over https, or type the code instead."
   },
   "errors": {
     "generic": "Something went wrong.",

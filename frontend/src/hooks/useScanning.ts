@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { ApiError, post } from '@/lib/api'
+import { newUuid } from '@/lib/ids'
 import { deviceLabel, enqueue, newScanId } from '@/lib/offlineQueue'
 import type { ScanResult } from '@/types'
 
@@ -71,7 +72,7 @@ export function useScanning(contextId: string, scanType: ScanContext) {
   const settledCodes = useRef<Set<string>>(new Set())
 
   const push = useCallback((item: Omit<ScanFeedback, 'id' | 'at'>) => {
-    const id = crypto.randomUUID()
+    const id = newUuid()
     setFeedback((current) => [
       { ...item, id, at: Date.now() },
       // Keep a short visible history. Enough to notice a run of rejects, not so

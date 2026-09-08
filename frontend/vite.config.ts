@@ -17,7 +17,7 @@ export default defineConfig({
       // that only touched the backend. 'prompt' surfaces UpdatePrompt.tsx
       // instead, so reloading is something she chooses between tasks.
       registerType: 'prompt',
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon.svg', 'icon-192.png', 'icon-512.png'],
       manifest: {
         name: 'R360 Warehouse',
         short_name: 'Warehouse',
@@ -27,9 +27,19 @@ export default defineConfig({
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',
+        // These two are real files in public/ (they were declared here for a
+        // while without existing, which on Android gives the installed app a
+        // blank icon and costs the richer install prompt). `maskable` is what
+        // stops Android drawing its own white circle behind the artwork.
         icons: [
           { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
+          {
+            src: 'icon-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
         ],
       },
       workbox: {

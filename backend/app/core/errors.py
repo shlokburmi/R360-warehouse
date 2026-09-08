@@ -22,8 +22,11 @@ _SQLSTATE_MAP: Dict[str, Any] = {
     "23514": (status.HTTP_409_CONFLICT, "control_point_failed"),   # check_violation
     "23001": (status.HTTP_409_CONFLICT, "immutable_record"),       # restrict_violation
     "23505": (status.HTTP_409_CONFLICT, "duplicate"),              # unique_violation
-    "23503": (status.HTTP_422_UNPROCESSABLE_ENTITY, "invalid_reference"),
-    "23502": (status.HTTP_422_UNPROCESSABLE_ENTITY, "missing_field"),
+    # 422 by number rather than by name: Starlette renamed the constant to
+    # HTTP_422_UNPROCESSABLE_CONTENT (RFC 9110) and deprecated the old one, and
+    # the wire value is what this module is actually about.
+    "23503": (422, "invalid_reference"),
+    "23502": (422, "missing_field"),
     "42501": (status.HTTP_403_FORBIDDEN, "not_permitted"),         # insufficient_privilege
     "P0001": (status.HTTP_409_CONFLICT, "business_rule"),          # raise_exception
     "57014": (status.HTTP_504_GATEWAY_TIMEOUT, "query_timeout"),
@@ -125,9 +128,18 @@ def install_error_handlers(app: FastAPI) -> None:
         # Postgres prefixes messages when they bubble through PL/pgSQL contexts;
         # keep only the first line, which is the one the trigger wrote.
         clean = (message or "").split("\n")[0].strip()
-        log.info("Business rule refusal (%s) on %s: %s", sqlstate, request.url.path, clean)
+        log.info(
+            "Business rule refusal (%s) on %s: %s%s",
+            sqlstate, request.url.path, clean, f" | {detail}" if detail else "",
+        )
 
+        # Postgres DETAIL is logged but not returned. On a unique violation it
+        # spells out the conflicting values — "Key (badge_code)=(BDG-…) already
+        # exists" — and a badge code is the one value in this system that is
+        # never supposed to leave the database (DECISIONS.md §CC2). The MESSAGE
+        # above is what was written for the operator; DETAIL was written for
+        # whoever reads the logs.
         return JSONResponse(
             status_code=http_status,
-            content=_payload(code, clean, hint, detail=detail),
+            content=_payload(code, clean, hint),
         )

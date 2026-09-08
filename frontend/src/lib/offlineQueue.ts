@@ -1,5 +1,6 @@
 import { del, get as idbGet, set as idbSet } from 'idb-keyval'
 import { ApiError, post } from './api'
+import { newUuid } from './ids'
 
 /**
  * Offline scan queue (PRD §6, <1% data loss).
@@ -65,7 +66,7 @@ export async function enqueue(scan: QueuedScan): Promise<void> {
 }
 
 export function newScanId(): string {
-  return crypto.randomUUID()
+  return newUuid()
 }
 
 export function deviceLabel(): string {

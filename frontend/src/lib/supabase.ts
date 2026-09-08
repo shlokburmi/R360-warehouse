@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { removeSetting } from '@/lib/deviceStorage'
 
 const url = import.meta.env.VITE_SUPABASE_URL
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -65,6 +66,6 @@ export async function forceLocalSignOut(): Promise<void> {
   } catch {
     // Best-effort — local cleanup below happens either way.
   }
-  window.localStorage.removeItem('r360-warehouse-auth')
+  removeSetting('r360-warehouse-auth')
   forcedSignOutListeners.forEach((listener) => listener())
 }

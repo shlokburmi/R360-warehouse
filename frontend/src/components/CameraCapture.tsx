@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { noCameraReasonKey } from '@/lib/camera'
 import { post } from '@/lib/api'
 
 type Props = {
@@ -147,7 +148,11 @@ export function CameraCapture({ mobile, onUploaded }: Props) {
             {status === 'denied' ? t('scanner.permission_blocked') : t('scanner.unavailable')}
           </p>
           <p className="mt-1 text-base">
-            {status === 'denied' ? t('scanner.permission_hint') : t('person.photo_gallery_fallback_hint')}
+            {status === 'denied'
+              ? t('scanner.permission_hint')
+              : noCameraReasonKey() === 'scanner.needs_https'
+                ? t('scanner.needs_https')
+                : t('person.photo_gallery_fallback_hint')}
           </p>
         </div>
         {/* The one honest fallback: if the camera itself cannot be reached,

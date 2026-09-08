@@ -185,9 +185,9 @@ with your name against it, and the code is not.
 
 ```bash
 cd backend && source .venv/bin/activate
-pytest                            # 168 tests; skips cleanly with no database
+pytest                            # 174 tests; skips cleanly with no database
 python scripts/e2e_full_flow.py   # 134 checks: the whole process over real HTTP
-python scripts/e2e_role_access.py # 721 checks: every route against every role
+python scripts/e2e_role_access.py # 727 checks: every route against every role
 python scripts/e2e_admin.py       # 40 checks over real HTTP
 python scripts/e2e_retention.py   # 14 checks against real Supabase Storage
 ```
@@ -249,6 +249,72 @@ access control — `test_rls.py`, `test_storeman_putaway_empties_the_box_under_r
 and `test_guard_can_register_and_scan_under_rls` — explicitly `set role
 authenticated` first.
 
+## Devices and browsers
+
+The floor runs this on mid-range Android phones, so the app is built for one and
+degrades rather than breaks on anything older: touch targets are 56px, the
+layout wraps instead of scrolling sideways, the safe-area inset is respected,
+and every camera surface has a typed fallback next to it.
+
+What it needs, and what happens below that:
+
+| | Floor | Below it |
+|---|---|---|
+| The app itself | Chrome/WebView 80, Safari 14 (es2020) | — |
+| QR scanning | any camera, **served over https** | the code can be typed |
+| Order-No OCR from the camera | same | photograph-and-upload, or type it |
+| Reading a challan **PDF** | Chrome 119 / Safari 17.4 | reported as unreadable; photograph it instead |
+| Installed as an app (PWA) | Android Chrome, iOS 16.4+ | it still works in a browser tab |
+
+Two things are worth knowing because they look like faults and are not:
+
+**The camera needs https.** `navigator.mediaDevices` only exists in a secure
+context, so on `http://<laptop-ip>:5173` — which is how `vite --host` serves a
+phone on the office wifi — the browser withholds the camera entirely. The app
+now says so instead of reporting "no camera on this device" about a phone that
+plainly has one. `localhost` is exempt; a LAN address is not.
+
+**Ids and stored preferences have fallbacks.** `crypto.randomUUID` is also
+secure-context-only (and Chrome 92+), and it minted every scan's idempotency
+key — over http it threw and took the scanning loop with it. `localStorage`
+throws outright, not returns null, in a private window or a WebView with site
+data blocked, and the theme and language are read before the first render, so
+that crashed at boot. Both are wrapped now (`lib/ids.ts`, `lib/deviceStorage.ts`).
+
+## Security posture
+
+The short version: authentication is Supabase-issued JWTs verified with one
+algorithm pinned per branch; authorisation is checked three times over
+(navigation, `require_roles` on the route, RLS in the database, which is
+`force`d and which the API refuses to boot without); both photo buckets are
+private with mime allowlists, and identity photos are a write-only drop box that
+the guard who fills it cannot read back; badge codes never leave the database and
+are redacted from the audit log; identity photos are destroyed at 180 days by a
+worker that holds the only credential able to delete them.
+
+`docs/DECISIONS.md` Part E is the review that produced that summary, including
+the five things it found — an Ops Manager who could make themselves Admin, a
+`DELETE` that could never pass CORS, an unvalidated path reflected into a
+service-role request, Postgres DETAIL leaking conflicting values to clients, and
+an unvalidated post-login redirect — and what was done about each.
+
+Two things a reader should know are *not* done:
+
+- **No Content-Security-Policy.** It is the biggest remaining hardening step and
+  the one that cannot be written from inside this repo: `connect-src` has to name
+  the real API and Supabase origins, which live in deployment environment
+  variables. A starting point, with those substituted in and set in
+  `frontend/vercel.json`: `default-src 'self'; connect-src 'self' <api-origin>
+  <supabase-origin> wss://<supabase-host>; img-src 'self' data: blob:;
+  script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline';
+  worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'`. Test it
+  against the OCR and scanning pages before shipping it — those are the parts a
+  wrong policy breaks silently.
+- **No application-level rate limiting.** Sign-in goes straight to Supabase,
+  which has its own limits; the API itself will answer as fast as it is asked.
+  Fine behind a warehouse's own network, worth revisiting if it is ever exposed
+  more widely.
+
 ## How it is put together
 
 ```
@@ -272,7 +338,8 @@ backend/app/
   services/retention.py identity photos are destroyed at 180 days, not just hidden
   services/loading.py  the guard's carton count and Admin's decision on it
   scripts/e2e_full_flow.py the whole process over real HTTP, role by role
-  scripts/e2e_role_access.py every route against every role
+  scripts/e2e_role_access.py every route against every role, plus the
+                       security invariants that are about request shape
   scripts/e2e_admin.py the Admin flow over real HTTP
 frontend/src/
   lib/offlineQueue.ts  IndexedDB scan queue, idempotent replay

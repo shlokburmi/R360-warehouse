@@ -219,13 +219,18 @@ class TestRoleIsolation:
     async def test_user_cannot_promote_themselves(self, db, actors):
         """A guard who could set their own role to admin would defeat CP1.
 
-        The self-update policy lets someone edit their own row (name, mobile) but
-        pins `role` to its current value in the WITH CHECK, so this is refused
-        outright rather than silently updating nothing.
+        Two independent things now refuse this, and the message says which one
+        got there first. The self-update policy lets someone edit their own row
+        (name, mobile) but pins `role` to its current value in its WITH CHECK;
+        since 0039 a BEFORE trigger also refuses any role change by a non-Admin,
+        and being a trigger it answers before the policy is ever evaluated. The
+        assertion is on the trigger's wording for that reason — the policy is
+        still there underneath it, and test_role_split.py covers the Ops Manager
+        case the trigger was written for.
         """
         await as_authenticated(db, actors["guard"])
 
-        async with rejected(db, containing="row-level security"):
+        async with rejected(db, containing="Only an Admin can change what role"):
             await db.execute(
                 text("update profiles set role = 'admin' where id = :id"),
                 {"id": actors["guard"]},

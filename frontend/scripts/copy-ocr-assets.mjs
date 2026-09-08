@@ -31,7 +31,10 @@ const files = [
   // runtime. Same reasoning as the Tesseract assets: served from our own origin
   // so a warehouse with no wifi can still open a challan, and copied rather than
   // committed so the version is pinned by package.json.
-  ['node_modules/pdfjs-dist/build/pdf.worker.min.mjs', 'pdf.worker.min.mjs'],
+  // The legacy worker, matching the legacy module pageImages.ts imports: the
+  // default build throws at import time on any engine without the Iterator
+  // global (Chrome <122, Safari <18.4).
+  ['node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs', 'pdf.worker.min.mjs'],
   // The traineddata. `best_int` (3.1MB) rather than the 10MB standard model:
   // this only ever reads a 16-character alphanumeric run, and the accuracy
   // difference on that does not pay for 7MB on a warehouse phone.
