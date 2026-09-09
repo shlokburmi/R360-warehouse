@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { noCameraReasonKey } from '@/lib/camera'
+import { markBusy } from '@/lib/appBusy'
 import { UnreadableFile, coverCropBox, cropRegion, filesToPages, isPdf } from '@/lib/pageImages'
 import {
   GUIDE_BOX,
@@ -233,6 +234,15 @@ export function OrderNoScanner({ invoiceNumber, onConfirm, busy = false }: Props
     },
     [],
   )
+
+  // Hold off a PWA auto-update while there is something here a reload would
+  // throw away: an OCR pass running, or a read sitting on screen that nobody
+  // has confirmed yet. `reading` and `review` are exactly those two — the
+  // rest of the time this component holds nothing worth protecting.
+  useEffect(() => {
+    if (phase !== 'reading' && phase !== 'review') return
+    return markBusy()
+  }, [phase])
 
       /** Apply an OCR result to the review state. Shared so both paths judge alike. */
   function present(text: string, conf: number | null, image: HTMLCanvasElement) {

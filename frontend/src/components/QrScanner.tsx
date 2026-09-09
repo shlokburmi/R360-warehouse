@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BrowserMultiFormatReader } from '@zxing/browser'
 import { DecodeHintType, BarcodeFormat } from '@zxing/library'
+import { markBusy } from '@/lib/appBusy'
 import { noCameraReasonKey } from '@/lib/camera'
 
 type Props = {
@@ -73,6 +74,15 @@ export function QrScanner({ onScan, debounceMs = 5000, paused = false }: Props) 
   useEffect(() => {
     onScanRef.current = onScan
   }, [onScan])
+
+  // A live camera means someone is aiming this at a sticker or a badge right
+  // now, so a PWA auto-update holds off until they are done — reloading the
+  // page out from under an aimed scanner is the same class of interruption
+  // that made the old always-reload behaviour unusable.
+  useEffect(() => {
+    if (status !== 'running') return
+    return markBusy()
+  }, [status])
 
   const handleCode = useCallback(
     (code: string) => {

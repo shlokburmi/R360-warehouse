@@ -8,11 +8,6 @@
     "wrong_role_body": "You are signed in as {{role}}. Ask Ops if you need access.",
     "try_again": "Try again"
   },
-  "update": {
-    "available": "A new version is ready.",
-    "hint": "Finish what you're doing, then reload to update.",
-    "reload": "Reload now"
-  },
   "notifications": {
     "title": "Notifications",
     "empty": "Nothing new",
