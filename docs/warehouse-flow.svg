@@ -1,0 +1,294 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1580" height="1934" viewBox="0 0 1580 1934"
+     role="img" aria-label="How the R360 warehouse process works, from a truck arriving at the gate to an order leaving it, showing the ten hard stops that can refuse it">
+  <defs>
+    <marker id="tip" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6.5" markerHeight="6.5" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="#c9cec9"/>
+    </marker>
+  </defs>
+  <rect width="1580" height="1934" fill="#ffffff"/>
+
+  <text x="40" y="58" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="12" font-weight="600" fill="#5b6670" text-anchor="start" letter-spacing="0.14em">R360 WAREHOUSE · HOW IT WORKS</text>
+  <text x="40" y="100" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="34" font-weight="600" fill="#14181b" text-anchor="start">Gate to Gate</text>
+  <text x="40" y="126" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="13.5" font-weight="400" fill="#5b6670" text-anchor="start">A truck arrives and nothing about it is taken on trust. Ten points compare two numbers that came from two different people — and refuse to go on when they disagree.</text>
+    <rect x="1436" y="66" width="10" height="10" rx="2" fill="#1a7268"/>
+  <text x="1452" y="75" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#5b6670" text-anchor="start">Offloading</text>
+  <rect x="1360" y="66" width="10" height="10" rx="2" fill="#ab3f79"/>
+  <text x="1376" y="75" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#5b6670" text-anchor="start">Packer</text>
+  <rect x="1249" y="66" width="10" height="10" rx="2" fill="#6a4fb6"/>
+  <text x="1265" y="75" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#5b6670" text-anchor="start">Ops Manager</text>
+  <rect x="1180" y="66" width="10" height="10" rx="2" fill="#2f6fb0"/>
+  <text x="1196" y="75" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#5b6670" text-anchor="start">Guard</text>
+  <line x1="40" y1="134" x2="1540" y2="134" stroke="#14181b" stroke-width="1.6"/>
+
+  <text x="40" y="172" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="15" font-weight="600" fill="#14181b" text-anchor="start" letter-spacing="0.08em">GOODS IN</text>
+  <text x="170" y="172" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" font-weight="400" fill="#5b6670" text-anchor="start">truck arrives → receiving complete</text>
+  <text x="840" y="172" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="15" font-weight="600" fill="#14181b" text-anchor="start" letter-spacing="0.08em">GOODS OUT</text>
+  <text x="985" y="172" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" font-weight="400" fill="#5b6670" text-anchor="start">invoice scanned → vehicle leaves</text>
+
+  <rect x="40" y="196" width="700" height="62" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="40" y="196" width="5" height="62" fill="#2f6fb0"/>
+  <text x="58" y="216" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="11" font-weight="600" fill="#5b6670" text-anchor="start">01</text>
+  <text x="86" y="216" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="10" font-weight="600" fill="#2f6fb0" text-anchor="start" letter-spacing="0.1em">GUARD</text>
+  <text x="58" y="235" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="600" fill="#14181b" text-anchor="start">Registers the truck at the gate</text>
+  <text x="58" y="251" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">Vehicle, driver, mobile, ID photo, vendor, PO — under two minutes</text>
+  <line x1="390.0" y1="258" x2="390.0" y2="270" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="40" y="273" width="700" height="52" rx="3" fill="#fdf1ea" stroke="#c2410c" stroke-width="1.2"/>
+  <rect x="40" y="273" width="5" height="52" fill="#c2410c"/>
+  <text x="58" y="295" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="13" font-weight="600" fill="#c2410c" text-anchor="start">CP1</text>
+  <text x="126" y="295" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14" font-weight="600" fill="#14181b" text-anchor="start">Ops approves before the barrier opens</text>
+  <text x="58" y="313" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">The guard who filed it cannot approve it. Silence escalates at 15 and 30 minutes — it never auto-approves.</text>
+  <line x1="390.0" y1="325" x2="390.0" y2="337" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="40" y="340" width="700" height="62" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="40" y="340" width="5" height="62" fill="#2f6fb0"/>
+  <text x="58" y="360" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="11" font-weight="600" fill="#5b6670" text-anchor="start">02</text>
+  <text x="86" y="360" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="10" font-weight="600" fill="#2f6fb0" text-anchor="start" letter-spacing="0.1em">GUARD</text>
+  <text x="58" y="379" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="600" fill="#14181b" text-anchor="start">Opens the gate</text>
+  <text x="58" y="395" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">Time in is stamped on the entry</text>
+  <line x1="390.0" y1="402" x2="390.0" y2="414" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="40" y="417" width="700" height="62" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="40" y="417" width="5" height="62" fill="#2f6fb0"/>
+  <text x="58" y="437" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="11" font-weight="600" fill="#5b6670" text-anchor="start">03</text>
+  <text x="86" y="437" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="10" font-weight="600" fill="#2f6fb0" text-anchor="start" letter-spacing="0.1em">GUARD</text>
+  <text x="58" y="456" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="600" fill="#14181b" text-anchor="start">Counts the big boxes on the truck</text>
+  <text x="58" y="472" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">The declared number that everything downstream is checked against</text>
+  <line x1="390.0" y1="479" x2="390.0" y2="491" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="40" y="494" width="700" height="62" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="40" y="494" width="5" height="62" fill="#6a4fb6"/>
+  <text x="58" y="514" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="11" font-weight="600" fill="#5b6670" text-anchor="start">04</text>
+  <text x="86" y="514" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="10" font-weight="600" fill="#6a4fb6" text-anchor="start" letter-spacing="0.1em">OPS</text>
+  <text x="58" y="533" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="600" fill="#14181b" text-anchor="start">Issues exactly that many stickers</text>
+  <text x="58" y="549" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">One QR per box. If the count disagrees with the PO, nothing is issued.</text>
+  <line x1="390.0" y1="556" x2="390.0" y2="568" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="40" y="571" width="700" height="62" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="40" y="571" width="5" height="62" fill="#ab3f79"/>
+  <text x="58" y="591" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="11" font-weight="600" fill="#5b6670" text-anchor="start">05</text>
+  <text x="86" y="591" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="10" font-weight="600" fill="#ab3f79" text-anchor="start" letter-spacing="0.1em">PACKER</text>
+  <text x="58" y="610" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="600" fill="#14181b" text-anchor="start">Applies and scans every box sticker</text>
+  <text x="58" y="626" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">A second scan of the same sticker is rejected, not counted twice</text>
+  <line x1="390.0" y1="633" x2="390.0" y2="645" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="40" y="648" width="700" height="52" rx="3" fill="#fdf1ea" stroke="#c2410c" stroke-width="1.2"/>
+  <rect x="40" y="648" width="5" height="52" fill="#c2410c"/>
+  <text x="58" y="670" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="13" font-weight="600" fill="#c2410c" text-anchor="start">CP2</text>
+  <text x="126" y="670" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14" font-weight="600" fill="#14181b" text-anchor="start">Scanned must equal issued</text>
+  <text x="58" y="688" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">One short and the boxes cannot move inside.</text>
+  <line x1="390.0" y1="700" x2="390.0" y2="712" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="40" y="715" width="700" height="62" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="40" y="715" width="5" height="62" fill="#6a4fb6"/>
+  <text x="58" y="735" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="11" font-weight="600" fill="#5b6670" text-anchor="start">06</text>
+  <text x="86" y="735" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="10" font-weight="600" fill="#6a4fb6" text-anchor="start" letter-spacing="0.1em">OPS</text>
+  <text x="58" y="754" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="600" fill="#14181b" text-anchor="start">Issues unit stickers</text>
+  <text x="58" y="770" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">One per product box, taken from the PO quantity</text>
+  <line x1="390.0" y1="777" x2="390.0" y2="789" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="40" y="792" width="700" height="62" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="40" y="792" width="5" height="62" fill="#ab3f79"/>
+  <text x="58" y="812" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="11" font-weight="600" fill="#5b6670" text-anchor="start">07</text>
+  <text x="86" y="812" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="10" font-weight="600" fill="#ab3f79" text-anchor="start" letter-spacing="0.1em">PACKER</text>
+  <text x="58" y="831" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="600" fill="#14181b" text-anchor="start">Scans each product box into its big box</text>
+  <text x="58" y="847" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">Over-scan is refused outright; under-scan holds the box</text>
+  <line x1="390.0" y1="854" x2="390.0" y2="866" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="40" y="869" width="700" height="52" rx="3" fill="#fdf1ea" stroke="#c2410c" stroke-width="1.2"/>
+  <rect x="40" y="869" width="5" height="52" fill="#c2410c"/>
+  <text x="58" y="891" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="13" font-weight="600" fill="#c2410c" text-anchor="start">CP3</text>
+  <text x="126" y="891" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14" font-weight="600" fill="#14181b" text-anchor="start">Units scanned must equal the PO quantity</text>
+  <text x="58" y="909" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">A held box goes to Ops with its scans kept as evidence.</text>
+  <line x1="390.0" y1="921" x2="390.0" y2="933" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="40" y="936" width="700" height="62" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="40" y="936" width="5" height="62" fill="#ab3f79"/>
+  <text x="58" y="956" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="11" font-weight="600" fill="#5b6670" text-anchor="start">08</text>
+  <text x="86" y="956" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="10" font-weight="600" fill="#ab3f79" text-anchor="start" letter-spacing="0.1em">PACKER</text>
+  <text x="58" y="975" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="600" fill="#14181b" text-anchor="start">Answers the damage check, closes the box</text>
+  <text x="58" y="991" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">“None” is a valid answer; leaving it blank is not</text>
+  <line x1="390.0" y1="998" x2="390.0" y2="1010" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="40" y="1013" width="700" height="62" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="40" y="1013" width="5" height="62" fill="#ab3f79"/>
+  <text x="58" y="1033" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="11" font-weight="600" fill="#5b6670" text-anchor="start">09</text>
+  <text x="86" y="1033" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="10" font-weight="600" fill="#ab3f79" text-anchor="start" letter-spacing="0.1em">PACKER</text>
+  <text x="58" y="1052" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="600" fill="#14181b" text-anchor="start">Finishes offloading</text>
+  <text x="58" y="1068" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">Every box now closed, held or rejected</text>
+  <line x1="390.0" y1="1075" x2="390.0" y2="1087" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="40" y="1090" width="700" height="62" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="40" y="1090" width="5" height="62" fill="#1a7268"/>
+  <text x="58" y="1110" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="11" font-weight="600" fill="#5b6670" text-anchor="start">10</text>
+  <text x="86" y="1110" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="10" font-weight="600" fill="#1a7268" text-anchor="start" letter-spacing="0.1em">OFFLOADING</text>
+  <text x="58" y="1129" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="600" fill="#14181b" text-anchor="start">Files their own independent count</text>
+  <text x="58" y="1145" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">Typed before the warehouse figure is revealed</text>
+  <line x1="390.0" y1="1152" x2="390.0" y2="1164" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="40" y="1167" width="700" height="52" rx="3" fill="#fdf1ea" stroke="#c2410c" stroke-width="1.2"/>
+  <rect x="40" y="1167" width="5" height="52" fill="#c2410c"/>
+  <text x="58" y="1189" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="13" font-weight="600" fill="#c2410c" text-anchor="start">CP4</text>
+  <text x="126" y="1189" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14" font-weight="600" fill="#14181b" text-anchor="start">Their count must equal the warehouse&#x27;s</text>
+  <text x="58" y="1207" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">Disagree and the entry stays open, with an exception against the vendor.</text>
+  <line x1="390.0" y1="1219" x2="390.0" y2="1231" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="220" y="1234" width="340" height="38" rx="19" fill="#e8f3ed" stroke="#1a6d4b" stroke-width="1.2"/>
+  <text x="390.0" y="1258" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14" font-weight="600" fill="#1a6d4b" text-anchor="middle" letter-spacing="0.02em">Receiving complete</text>
+  <rect x="40" y="1318" width="700" height="136" rx="3" fill="#ffffff" stroke="#e9ece9" stroke-width="1"/>
+  <text x="58" y="1344" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="12" font-weight="600" fill="#5b6670" text-anchor="start" letter-spacing="0.12em">WHAT THIS APP DOES NOT TRACK</text>
+  <text x="58" y="1370" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" font-weight="400" fill="#14181b" text-anchor="start">Which rack goods are shelved on. Putaway was removed — receiving</text>
+  <text x="58" y="1392" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" font-weight="400" fill="#14181b" text-anchor="start">ends at CP4, and where cartons sit afterwards is the floor&#x27;s business.</text>
+  <text x="58" y="1414" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" font-weight="400" fill="#14181b" text-anchor="start">What is inside a carton. That belongs to the separate ERP.</text>
+  <rect x="40" y="1474" width="700" height="136" rx="3" fill="#ffffff" stroke="#e9ece9" stroke-width="1"/>
+  <text x="58" y="1500" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="12" font-weight="600" fill="#5b6670" text-anchor="start" letter-spacing="0.12em">WHERE THE RULES LIVE</text>
+  <text x="58" y="1526" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" font-weight="400" fill="#14181b" text-anchor="start">Every orange bar is a trigger in the database, not a check in the app.</text>
+  <text x="58" y="1548" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" font-weight="400" fill="#14181b" text-anchor="start">The same refusal happens from the app, a script or a psql prompt —</text>
+  <text x="58" y="1570" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" font-weight="400" fill="#14181b" text-anchor="start">which is what makes “zero manual overrides” a property, not a policy.</text>
+  <rect x="840" y="196" width="700" height="62" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="840" y="196" width="5" height="62" fill="#ab3f79"/>
+  <text x="858" y="216" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="11" font-weight="600" fill="#5b6670" text-anchor="start">01</text>
+  <text x="886" y="216" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="10" font-weight="600" fill="#ab3f79" text-anchor="start" letter-spacing="0.1em">PACKER</text>
+  <text x="858" y="235" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="600" fill="#14181b" text-anchor="start">Photographs the invoice</text>
+  <text x="858" y="251" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">OCR reads the Order No (CP002458380_0001) and creates the invoice from it</text>
+  <line x1="1190.0" y1="258" x2="1190.0" y2="270" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="840" y="273" width="700" height="62" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="840" y="273" width="5" height="62" fill="#ab3f79"/>
+  <text x="858" y="293" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="11" font-weight="600" fill="#5b6670" text-anchor="start">02</text>
+  <text x="886" y="293" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="10" font-weight="600" fill="#ab3f79" text-anchor="start" letter-spacing="0.1em">PACKER</text>
+  <text x="858" y="312" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="600" fill="#14181b" text-anchor="start">Hands the carton to a packing lady</text>
+  <text x="858" y="328" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">By scanning her badge off her own About Me screen</text>
+  <line x1="1190.0" y1="335" x2="1190.0" y2="347" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="840" y="350" width="700" height="52" rx="3" fill="#fdf1ea" stroke="#c2410c" stroke-width="1.2"/>
+  <rect x="840" y="350" width="5" height="52" fill="#c2410c"/>
+  <text x="858" y="372" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="13" font-weight="600" fill="#c2410c" text-anchor="start">A1 · CP5</text>
+  <text x="926" y="372" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14" font-weight="600" fill="#14181b" text-anchor="start">The packer must be a second person</text>
+  <text x="858" y="390" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">You cannot assign a carton to yourself, and the badge has to be live.</text>
+  <line x1="1190.0" y1="402" x2="1190.0" y2="414" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="840" y="417" width="700" height="62" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="840" y="417" width="5" height="62" fill="#ab3f79"/>
+  <text x="858" y="437" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="11" font-weight="600" fill="#5b6670" text-anchor="start">03</text>
+  <text x="886" y="437" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="10" font-weight="600" fill="#ab3f79" text-anchor="start" letter-spacing="0.1em">PACKING LADY</text>
+  <text x="858" y="456" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="600" fill="#14181b" text-anchor="start">Packs it and scans her own badge</text>
+  <text x="858" y="472" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">That scan is the permanent record of who packed this order</text>
+  <line x1="1190.0" y1="479" x2="1190.0" y2="491" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="840" y="494" width="700" height="52" rx="3" fill="#fdf1ea" stroke="#c2410c" stroke-width="1.2"/>
+  <rect x="840" y="494" width="5" height="52" fill="#c2410c"/>
+  <text x="858" y="516" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="13" font-weight="600" fill="#c2410c" text-anchor="start">A2</text>
+  <text x="926" y="516" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14" font-weight="600" fill="#14181b" text-anchor="start">The pack is recorded against the assignee</text>
+  <text x="858" y="534" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">Someone else&#x27;s badge closing the carton is refused.</text>
+  <line x1="1190.0" y1="546" x2="1190.0" y2="558" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="840" y="561" width="700" height="62" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="840" y="561" width="5" height="62" fill="#6a4fb6"/>
+  <text x="858" y="581" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="11" font-weight="600" fill="#5b6670" text-anchor="start">04</text>
+  <text x="886" y="581" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="10" font-weight="600" fill="#6a4fb6" text-anchor="start" letter-spacing="0.1em">OPS</text>
+  <text x="858" y="600" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="600" fill="#14181b" text-anchor="start">Plans a batch from packed cartons</text>
+  <text x="858" y="616" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">Planned before scanning, so the two numbers stay independent</text>
+  <line x1="1190.0" y1="623" x2="1190.0" y2="635" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="840" y="638" width="700" height="62" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="840" y="638" width="5" height="62" fill="#6a4fb6"/>
+  <text x="858" y="658" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="11" font-weight="600" fill="#5b6670" text-anchor="start">05</text>
+  <text x="886" y="658" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="10" font-weight="600" fill="#6a4fb6" text-anchor="start" letter-spacing="0.1em">OPS</text>
+  <text x="858" y="677" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="600" fill="#14181b" text-anchor="start">Out-scans every carton in the batch</text>
+  <text x="858" y="693" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">One tap or one scan per carton</text>
+  <line x1="1190.0" y1="700" x2="1190.0" y2="712" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="840" y="715" width="700" height="52" rx="3" fill="#fdf1ea" stroke="#c2410c" stroke-width="1.2"/>
+  <rect x="840" y="715" width="5" height="52" fill="#c2410c"/>
+  <text x="858" y="737" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="13" font-weight="600" fill="#c2410c" text-anchor="start">CP6</text>
+  <text x="926" y="737" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14" font-weight="600" fill="#14181b" text-anchor="start">Every carton planned must be scanned</text>
+  <text x="858" y="755" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">One missing and the batch will not complete.</text>
+  <line x1="1190.0" y1="767" x2="1190.0" y2="779" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="840" y="782" width="700" height="62" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="840" y="782" width="5" height="62" fill="#2f6fb0"/>
+  <text x="858" y="802" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="11" font-weight="600" fill="#5b6670" text-anchor="start">06</text>
+  <text x="886" y="802" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="10" font-weight="600" fill="#2f6fb0" text-anchor="start" letter-spacing="0.1em">GUARD</text>
+  <text x="858" y="821" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="600" fill="#14181b" text-anchor="start">Counts the cartons on the bay</text>
+  <text x="858" y="837" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">The system&#x27;s figure appears only after the guard commits to theirs</text>
+  <line x1="1190.0" y1="844" x2="1190.0" y2="856" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="840" y="859" width="700" height="62" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="840" y="859" width="5" height="62" fill="#6a4fb6"/>
+  <text x="858" y="879" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="11" font-weight="600" fill="#5b6670" text-anchor="start">07</text>
+  <text x="886" y="879" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="10" font-weight="600" fill="#6a4fb6" text-anchor="start" letter-spacing="0.1em">OPS</text>
+  <text x="858" y="898" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="600" fill="#14181b" text-anchor="start">Decides that count</text>
+  <text x="858" y="914" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">The guard who counted cannot approve it</text>
+  <line x1="1190.0" y1="921" x2="1190.0" y2="933" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="840" y="936" width="700" height="52" rx="3" fill="#fdf1ea" stroke="#c2410c" stroke-width="1.2"/>
+  <rect x="840" y="936" width="5" height="52" fill="#c2410c"/>
+  <text x="858" y="958" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="13" font-weight="600" fill="#c2410c" text-anchor="start">A4</text>
+  <text x="926" y="958" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14" font-weight="600" fill="#14181b" text-anchor="start">No release without an approved count</text>
+  <text x="858" y="976" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">And no vehicle leaves without a recorded approval.</text>
+  <line x1="1190.0" y1="988" x2="1190.0" y2="1000" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="840" y="1003" width="700" height="62" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="840" y="1003" width="5" height="62" fill="#6a4fb6"/>
+  <text x="858" y="1023" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="11" font-weight="600" fill="#5b6670" text-anchor="start">08</text>
+  <text x="886" y="1023" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="10" font-weight="600" fill="#6a4fb6" text-anchor="start" letter-spacing="0.1em">OPS</text>
+  <text x="858" y="1042" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="600" fill="#14181b" text-anchor="start">Releases the batch</text>
+  <text x="858" y="1058" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">The cartons are now waiting for collection</text>
+  <line x1="1190.0" y1="1065" x2="1190.0" y2="1077" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="840" y="1080" width="700" height="62" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="840" y="1080" width="5" height="62" fill="#2f6fb0"/>
+  <text x="858" y="1100" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="11" font-weight="600" fill="#5b6670" text-anchor="start">09</text>
+  <text x="886" y="1100" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="10" font-weight="600" fill="#2f6fb0" text-anchor="start" letter-spacing="0.1em">GUARD</text>
+  <text x="858" y="1119" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="600" fill="#14181b" text-anchor="start">Registers the vehicle and loads it</text>
+  <text x="858" y="1135" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">Each carton scanned onto the truck</text>
+  <line x1="1190.0" y1="1142" x2="1190.0" y2="1154" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="840" y="1157" width="700" height="52" rx="3" fill="#fdf1ea" stroke="#c2410c" stroke-width="1.2"/>
+  <rect x="840" y="1157" width="5" height="52" fill="#c2410c"/>
+  <text x="858" y="1179" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="13" font-weight="600" fill="#c2410c" text-anchor="start">CP7</text>
+  <text x="926" y="1179" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14" font-weight="600" fill="#14181b" text-anchor="start">Every released carton verified aboard</text>
+  <text x="858" y="1197" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">One missing and the gate stays shut.</text>
+  <line x1="1190.0" y1="1209" x2="1190.0" y2="1221" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="840" y="1224" width="700" height="62" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="840" y="1224" width="5" height="62" fill="#2f6fb0"/>
+  <text x="858" y="1244" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="11" font-weight="600" fill="#5b6670" text-anchor="start">10</text>
+  <text x="886" y="1244" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="10" font-weight="600" fill="#2f6fb0" text-anchor="start" letter-spacing="0.1em">GUARD</text>
+  <text x="858" y="1263" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="600" fill="#14181b" text-anchor="start">Requests permission to leave</text>
+  <line x1="1190.0" y1="1286" x2="1190.0" y2="1298" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="840" y="1301" width="700" height="62" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="840" y="1301" width="5" height="62" fill="#6a4fb6"/>
+  <text x="858" y="1321" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="11" font-weight="600" fill="#5b6670" text-anchor="start">11</text>
+  <text x="886" y="1321" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="10" font-weight="600" fill="#6a4fb6" text-anchor="start" letter-spacing="0.1em">OPS</text>
+  <text x="858" y="1340" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="600" fill="#14181b" text-anchor="start">Approves the exit</text>
+  <text x="858" y="1356" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">Or holds it with a reason, which lands back on the guard&#x27;s screen</text>
+  <line x1="1190.0" y1="1363" x2="1190.0" y2="1375" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="840" y="1378" width="700" height="62" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="840" y="1378" width="5" height="62" fill="#2f6fb0"/>
+  <text x="858" y="1398" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="11" font-weight="600" fill="#5b6670" text-anchor="start">12</text>
+  <text x="886" y="1398" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="10" font-weight="600" fill="#2f6fb0" text-anchor="start" letter-spacing="0.1em">GUARD</text>
+  <text x="858" y="1417" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="600" fill="#14181b" text-anchor="start">Opens the gate</text>
+  <text x="858" y="1433" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#5b6670" text-anchor="start">Time out is stamped; the vehicle leaves</text>
+  <line x1="1190.0" y1="1440" x2="1190.0" y2="1452" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="1020" y="1455" width="340" height="38" rx="19" fill="#e8f3ed" stroke="#1a6d4b" stroke-width="1.2"/>
+  <text x="1190.0" y="1479" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="14" font-weight="600" fill="#1a6d4b" text-anchor="middle" letter-spacing="0.02em">Order dispatched</text>
+  <line x1="40" y1="1652" x2="1540" y2="1652" stroke="#c9cec9" stroke-width="1"/>
+  <text x="40" y="1686" font-family="'SF Mono',Menlo,Monaco,'Courier New',monospace" font-size="12" font-weight="600" fill="#c2410c" text-anchor="start" letter-spacing="0.12em">WHEN A HARD STOP REFUSES</text>
+  <rect x="40" y="1712" width="350" height="56" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="40" y="1712" width="4" height="56" fill="#c2410c"/>
+  <text x="56" y="1736" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="13.5" font-weight="600" fill="#14181b" text-anchor="start">Goods are held</text>
+  <text x="56" y="1754" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#5b6670" text-anchor="start">The box, or the whole entry, stops where it is</text>
+  <line x1="395" y1="1740" x2="412" y2="1740" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="420" y="1712" width="350" height="56" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="420" y="1712" width="4" height="56" fill="#c2410c"/>
+  <text x="436" y="1736" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="13.5" font-weight="600" fill="#14181b" text-anchor="start">Exception logged</text>
+  <text x="436" y="1754" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#5b6670" text-anchor="start">Against the vendor and the PO, naming who found it</text>
+  <line x1="775" y1="1740" x2="792" y2="1740" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="800" y="1712" width="350" height="56" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="800" y="1712" width="4" height="56" fill="#c2410c"/>
+  <text x="816" y="1736" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="13.5" font-weight="600" fill="#14181b" text-anchor="start">Ops is alerted</text>
+  <text x="816" y="1754" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#5b6670" text-anchor="start">In-app and by email, to every Ops Manager</text>
+  <line x1="1155" y1="1740" x2="1172" y2="1740" stroke="#c9cec9" stroke-width="1.6" marker-end="url(#tip)"/>
+  <rect x="1180" y="1712" width="350" height="56" rx="3" fill="#ffffff" stroke="#c9cec9" stroke-width="1"/>
+  <rect x="1180" y="1712" width="4" height="56" fill="#c2410c"/>
+  <text x="1196" y="1736" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="13.5" font-weight="600" fill="#14181b" text-anchor="start">Ops decides, in writing</text>
+  <text x="1196" y="1754" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#5b6670" text-anchor="start">Every outcome needs a note. There is no “dismiss”.</text>
+  <rect x="40.0" y="1794" width="288.8" height="76" rx="3" fill="#ffffff" stroke="#e9ece9" stroke-width="1"/>
+  <text x="54.0" y="1817" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" font-weight="600" fill="#14181b" text-anchor="start">Accept short</text>
+  <text x="54.0" y="1833" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#5b6670" text-anchor="start">Scanned units enter stock; the gap</text>
+  <text x="54.0" y="1847" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#5b6670" text-anchor="start">is logged against the vendor</text>
+  <rect x="342.8" y="1794" width="288.8" height="76" rx="3" fill="#ffffff" stroke="#e9ece9" stroke-width="1"/>
+  <text x="356.8" y="1817" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" font-weight="600" fill="#14181b" text-anchor="start">Recount</text>
+  <text x="356.8" y="1833" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#5b6670" text-anchor="start">The box reopens and its stickers</text>
+  <text x="356.8" y="1847" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#5b6670" text-anchor="start">are reissued; the first attempt</text>
+  <text x="356.8" y="1861" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#5b6670" text-anchor="start">stays in the trail</text>
+  <rect x="645.6" y="1794" width="288.8" height="76" rx="3" fill="#ffffff" stroke="#e9ece9" stroke-width="1"/>
+  <text x="659.6" y="1817" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" font-weight="600" fill="#14181b" text-anchor="start">Reject box</text>
+  <text x="659.6" y="1833" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#5b6670" text-anchor="start">Nothing enters. The full quantity</text>
+  <text x="659.6" y="1847" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#5b6670" text-anchor="start">is recorded as rejected</text>
+  <rect x="948.4000000000001" y="1794" width="288.8" height="76" rx="3" fill="#ffffff" stroke="#e9ece9" stroke-width="1"/>
+  <text x="962.4000000000001" y="1817" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" font-weight="600" fill="#14181b" text-anchor="start">Approve &amp; proceed</text>
+  <text x="962.4000000000001" y="1833" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#5b6670" text-anchor="start">Whole entry: the discrepancy is</text>
+  <text x="962.4000000000001" y="1847" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#5b6670" text-anchor="start">accepted and the blocked step</text>
+  <text x="962.4000000000001" y="1861" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#5b6670" text-anchor="start">continues</text>
+  <rect x="1251.2" y="1794" width="288.8" height="76" rx="3" fill="#ffffff" stroke="#e9ece9" stroke-width="1"/>
+  <text x="1265.2" y="1817" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" font-weight="600" fill="#14181b" text-anchor="start">Reject &amp; return</text>
+  <text x="1265.2" y="1833" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#5b6670" text-anchor="start">The goods go back with the</text>
+  <text x="1265.2" y="1847" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#5b6670" text-anchor="start">vehicle; the gate entry is</text>
+  <text x="1265.2" y="1861" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#5b6670" text-anchor="start">cancelled</text>
+  <text x="40" y="1896" font-family="'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#5b6670" text-anchor="start">A control point cannot be approved away: where CP2&#x27;s unscanned stickers or CP4&#x27;s disagreeing counts are what hold the goods, the app refuses the approval and names what will actually clear it.</text>
+</svg>

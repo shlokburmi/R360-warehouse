@@ -32,7 +32,12 @@ CONTROL POINT 4.
 
 ---
 
-## The eleven hard stops
+![The whole process, gate to gate](warehouse-flow.png)
+
+*One-page version of everything below: `docs/warehouse-flow.png`, redrawn from
+`warehouse-flow.svg`.*
+
+## The ten hard stops
 
 Nothing in this list can be overridden from the application. Each is enforced in
 the database, which is what makes "zero manual overrides" (PRD §11) a property
@@ -49,8 +54,12 @@ rather than a policy.
 | **CP7** | Gate exit | Every released carton must be verified onto the vehicle | `fn_pickup_guard` (0018) |
 | **A1** | Packing assignment | A carton goes to a named packer, who is not the verifier, holds a live badge, and is not already packing something closed | `fn_packing_assignment_guard` (0017) |
 | **A2** | Packing attribution | The pack must be recorded against the person it was assigned to | `fn_packing_matches_assignment` (0017) |
-| **A3** | Product reconciliation | Product boxes scanned into a carton must equal what the invoice promises | `fn_packing_units_complete` (0019) |
 | **A4** | Outbound approvals | A batch is not released without an approved carton count; a vehicle does not leave without a recorded Admin approval | `fn_batch_release_guard`, `fn_pickup_guard` (0018) |
+
+A3 is missing from that list on purpose: it counted product boxes into a carton,
+and 0036 removed product-level tracking from packing along with the trigger that
+enforced it. The lettering keeps the gap rather than renumbering, so a reference
+to A4 written last year still means A4.
 
 CP1–CP7 are PRD §4. A1–A4 were added in Phase 5, after walking the process
 aloud surfaced four steps the floor had always performed and the software had
