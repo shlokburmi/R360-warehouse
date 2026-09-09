@@ -159,7 +159,8 @@
     "wrong_status": "This is not at the right stage for that.",
     "unknown_order_no": "No invoice is booked against that order yet.",
     "ambiguous_order_no": "More than one invoice is booked against that order.",
-    "bad_request": "That request was not valid."
+    "bad_request": "That request was not valid.",
+    "validation": "Please check the numbers on this screen."
   },
   "person": {
     "driver": "Driver",
@@ -352,7 +353,8 @@
     "received_not_packed": "Received, not packed",
     "submitted": "Counts submitted",
     "waiting_inbound": "Waiting for the inbound team's count",
-    "waiting_inbound_body": "CONTROL POINT 4 compares the warehouse's own figure against an independent count entered by the offloading team."
+    "waiting_inbound_body": "CONTROL POINT 4 compares the warehouse's own figure against an independent count entered by the offloading team.",
+    "counted_against": "Checked against {{n}} — rescan since. Submit again to re-check."
   },
   "matching": {
     "title": "Invoice Matching",

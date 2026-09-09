@@ -266,6 +266,10 @@ class ReconcileLineOut(BaseModel):
     warehouse_count: int
     inbound_count: Optional[int] = None
     matched: Optional[bool] = None
+    # The warehouse figure the stored `matched` was computed against. Equal to
+    # warehouse_count unless something was scanned after the count was filed —
+    # which is exactly when the screen needs to explain itself.
+    counted_against: Optional[int] = None
 
 
 class ReconcileOut(BaseModel):

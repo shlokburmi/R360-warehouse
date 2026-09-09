@@ -179,6 +179,8 @@ export type ReconcileLine = {
   warehouse_count: number
   inbound_count: number | null
   matched: boolean | null
+  /** The warehouse figure the stored `matched` was computed against. */
+  counted_against: number | null
 }
 
 export type Reconciliation = {

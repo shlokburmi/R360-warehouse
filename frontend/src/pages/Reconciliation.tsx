@@ -38,15 +38,36 @@ export function ReconciliationPage() {
     queryFn: () => get<Reconciliation>(`/entries/${entryId}/reconciliation`),
   })
 
+  const lines = reconciliation.data?.lines ?? []
+
   // CONTROL POINT 4 answers 409 on a mismatch with the compared lines and the
   // exception code, which is exactly what the page needs to show.
+  // Every line that has a number on screen, whether it was typed just now or
+  // read back from a previous submission — not just what is in `counts`.
+  //
+  // Building the payload from `counts` alone meant a page that already had
+  // counts saved sent `lines: []` the moment Submit was pressed without
+  // retyping them, and the API answered with pydantic's own words about a list
+  // that should have at least one item. Re-submitting is a legitimate act here:
+  // `reconcile()` refiles both figures and recomputes the match, which is the
+  // recount loop `inbound_update`'s policy exists to allow (0005_rls.sql).
+  const payloadLines = () =>
+    lines
+      .map((line) => {
+        const typed = counts[line.purchase_order_line_id]
+        const value = typed !== undefined && typed !== '' ? Number(typed) : line.inbound_count
+        return value === null || value === undefined || Number.isNaN(value)
+          ? null
+          : { purchase_order_line_id: line.purchase_order_line_id, inbound_count: value }
+      })
+      .filter((line): line is { purchase_order_line_id: string; inbound_count: number } =>
+        line !== null,
+      )
+
   const submit = useMutation({
     mutationFn: () =>
       postControlPoint<Reconciliation>(`/entries/${entryId}/reconciliation`, {
-        lines: Object.entries(counts).map(([lineId, value]) => ({
-          purchase_order_line_id: lineId,
-          inbound_count: Number(value),
-        })),
+        lines: payloadLines(),
       }),
     onSuccess: (result) => {
       setError(null)
@@ -87,7 +108,6 @@ export function ReconciliationPage() {
   if (reconciliation.isLoading) return <Spinner />
   if (!reconciliation.data) return <Banner tone="bad" title={t('recon.none')} />
 
-  const lines = reconciliation.data.lines
   const allEntered = lines.every(
     (line) => counts[line.purchase_order_line_id] !== undefined || line.inbound_count !== null,
   )
@@ -131,6 +151,17 @@ export function ReconciliationPage() {
                 <p className="label">{t('recon.warehouse')}</p>
                 <p className="text-2xl font-black tabular-nums">{line.warehouse_count}</p>
                 <p className="text-xs text-slate-500">{t('recon.from_scans')}</p>
+                {/* The comparison on file was made against a different warehouse
+                    figure — something was scanned after this count was filed.
+                    Without saying so, the screen shows two equal numbers and
+                    still calls them mismatched. */}
+                {line.counted_against !== null &&
+                  line.counted_against !== undefined &&
+                  line.counted_against !== line.warehouse_count && (
+                    <p className="mt-1 text-xs font-semibold text-warn dark:text-warn-dark">
+                      {t('recon.counted_against', { n: line.counted_against })}
+                    </p>
+                  )}
               </div>
               <div>
                 <p className="label">{t('recon.your_count')}</p>
@@ -183,8 +214,19 @@ export function ReconciliationPage() {
           // whether the first one registered. A *mismatch* still
           // leaves it pressable, because that is the recount loop
           // `inbound_update`'s policy exists to allow (0005_rls.sql).
-          disabled={!allEntered || submit.isPending || reconciliation.data.all_matched}
-          onClick={() => submit.mutate()}
+          disabled={
+            !allEntered ||
+            submit.isPending ||
+            reconciliation.data.all_matched ||
+            payloadLines().length === 0
+          }
+          onClick={() => {
+            // Belt and braces behind the `disabled` above: an empty submission
+            // can only ever be refused, so it is not worth the round trip or
+            // the error it would put on screen.
+            if (payloadLines().length === 0) return
+            submit.mutate()
+          }}
         >
           {reconciliation.data.all_matched
             ? t('recon.submitted')

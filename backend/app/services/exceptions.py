@@ -418,7 +418,16 @@ async def reconciliation_view(conn: AsyncConnection, entry_id: UUID) -> Dict[str
             select pol.id as purchase_order_line_id, pol.sku, pol.description,
                    pol.expected_units,
                    coalesce(wc.total_units, 0)::int as warehouse_count,
-                   ir.inbound_count, ir.matched
+                   ir.inbound_count, ir.matched,
+                   -- The warehouse figure the stored comparison actually used.
+                   -- `matched` is a generated column over the snapshot written
+                   -- at filing time, while `warehouse_count` above is live from
+                   -- the scan ledger. Scan one more unit after a count is filed
+                   -- and the two disagree: the screen shows equal numbers and
+                   -- the flag still says mismatched, with no way to see why.
+                   -- CONTROL POINT 4's trigger reads the same stored flag, so
+                   -- the fix is to show what it compared, not to change it.
+                   ir.warehouse_count as counted_against
               from gate_entries ge
               join purchase_order_lines pol on pol.purchase_order_id = ge.purchase_order_id
               left join (
