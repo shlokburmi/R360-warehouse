@@ -48,10 +48,20 @@ export function ApprovalsPage() {
         approve,
         note: approve ? note || null : note,
       }),
-    onSuccess: () => {
+    onSuccess: (_decided, { id }) => {
       setRejecting(null)
       setNote('')
       setError(null)
+      // Drop the decided entry from the cached queue *now*, rather than
+      // leaving the card on screen until a refetch comes back. The decision
+      // is already committed at this point — waiting on a second round trip
+      // before anything visibly happens is what made approving read as
+      // "nothing happened", especially on a slow connection or a cold
+      // backend. The invalidate below still runs, so the authoritative list
+      // arrives right behind this; it just no longer gates the feedback.
+      queryClient.setQueryData<GateEntry[]>(['pending-approvals'], (current) =>
+        current?.filter((entry) => entry.id !== id),
+      )
       void queryClient.invalidateQueries({ queryKey: ['pending-approvals'] })
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
     },
@@ -211,7 +221,14 @@ export function ApprovalsPage() {
                   disabled={decide.isPending}
                   onClick={() => decide.mutate({ id: entry.id, approve: true })}
                 >
-                  {t('approvals.approve')}
+                  {/* Says so while the request is in flight. Disabling alone
+                      left a tap with no visible acknowledgement at all,
+                      which on a slow connection is indistinguishable from a
+                      button that did nothing — and the operator's next move
+                      is to press it again. */}
+                  {decide.isPending && decide.variables?.id === entry.id
+                    ? t('approvals.approving')
+                    : t('approvals.approve')}
                 </button>
               </div>
             )}
@@ -253,10 +270,16 @@ function CartonCountApprovals() {
         approve,
         note: approve ? note || null : note,
       }),
-    onSuccess: () => {
+    onSuccess: (_decided, { batchId }) => {
       setRejecting(null)
       setNote('')
       setError(null)
+      // Same reasoning as the gate queue above: clear the decided row from
+      // the cache immediately so the card goes away on the tap, not on the
+      // refetch that follows it.
+      queryClient.setQueryData<LoadApproval[]>(['loading', 'pending'], (current) =>
+        current?.filter((approval) => approval.batch_id !== batchId),
+      )
       void queryClient.invalidateQueries({ queryKey: ['loading'] })
       void queryClient.invalidateQueries({ queryKey: ['batches'] })
     },
@@ -397,10 +420,15 @@ function ExitApprovals() {
         approve,
         note: approve ? null : note,
       }),
-    onSuccess: () => {
+    onSuccess: (_decided, { pickupId }) => {
       setHolding(null)
       setNote('')
       setError(null)
+      // A truck at the gate with the engine running is the worst place to
+      // make someone wait on a refetch before the screen acknowledges them.
+      queryClient.setQueryData<Pickup[]>(['pickups', 'awaiting-exit'], (current) =>
+        current?.filter((pickup) => pickup.pickup_id !== pickupId),
+      )
       void queryClient.invalidateQueries({ queryKey: ['pickups'] })
     },
     // As above: a truck waiting at a gate is the worst place to swallow a

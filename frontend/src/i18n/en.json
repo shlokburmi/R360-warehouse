@@ -270,6 +270,7 @@
     "none": "Nothing waiting",
     "none_hint": "Every truck at the gate has been decided.",
     "approve": "Approve",
+    "approving": "Approving…",
     "reject": "Reject",
     "confirm_reject": "Confirm reject",
     "reject_reason": "Why is this being rejected? (required)",
