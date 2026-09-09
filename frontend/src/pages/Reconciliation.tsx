@@ -59,7 +59,27 @@ export function ReconciliationPage() {
       void queryClient.invalidateQueries({ queryKey: ['reconciliation', entryId] })
       void queryClient.invalidateQueries({ queryKey: ['entry', entryId] })
     },
-    onError: (err) => setError(err as ApiError),
+    // Same reconciliation the sticker sheets need (BoxCounting.tsx): a lost
+    // reply is not proof the counts were not recorded, and on a cold backend
+    // the reply is exactly what gets lost. Reporting failure for a submission
+    // that landed is worse than useless here — it sits directly above this
+    // page's own "Counts match — ready for putaway", so the operator is told
+    // both that it failed and that it worked.
+    onError: async (err) => {
+      const apiError = err as ApiError
+
+      if (apiError?.isOffline) {
+        await queryClient.invalidateQueries({ queryKey: ['reconciliation', entryId] })
+        const refreshed = queryClient.getQueryData<Reconciliation>(['reconciliation', entryId])
+        if (refreshed?.all_matched) {
+          setError(null)
+          void queryClient.invalidateQueries({ queryKey: ['entry', entryId] })
+          return
+        }
+      }
+
+      setError(apiError)
+    },
   })
 
   if (reconciliation.isLoading) return <Spinner />
