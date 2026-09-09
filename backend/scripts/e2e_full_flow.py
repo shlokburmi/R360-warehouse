@@ -152,7 +152,9 @@ def main():
         print("1. Guard registers the truck (PRD §5.1)")
         r = client.get(f"{API}/vendors", headers=who["guard"])
         ok("vendor list loads", r.status_code == 200, r.text[:200])
-        # /vendors only ever returns active ones, so the first is fine.
+        # Without include_pending, /vendors returns confirmed vendors only, so
+        # the first is fine — a guard-proposed, still-unconfirmed one cannot
+        # appear here and be picked by accident.
         vendor = r.json()[0]
 
         r = client.get(

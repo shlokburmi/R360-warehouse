@@ -293,6 +293,7 @@
     "vendor": "Vendor",
     "select_vendor": "Select vendor…",
     "add_new_vendor": "+ Add new vendor",
+    "vendor_pending": "awaiting approval",
     "new_vendor_name": "New vendor name",
     "new_vendor_mobile": "Vendor contact number (optional)",
     "new_vendor_hint": "This truck can proceed right away. The Ops Manager confirms the vendor when they decide this entry.",

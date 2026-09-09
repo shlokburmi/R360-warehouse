@@ -187,21 +187,42 @@ async def me(user: CurrentUser = Depends(get_current_user)):
 @router.get("/vendors")
 async def list_vendors(
     q: Optional[str] = Query(default=None),
+    include_pending: bool = Query(
+        default=False,
+        description=(
+            "Also return vendors a guard has proposed but nobody has confirmed yet "
+            "(is_active = false). The gate entry form needs these; nothing else does."
+        ),
+    ),
     conn: AsyncConnection = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
+    """Vendors for a picker.
+
+    `include_pending` exists because guard_propose_vendor (0025) deliberately
+    inserts an *unconfirmed* row — `is_active = false`, confirmed later as a
+    side effect of Ops approving the gate entry that names it. Filtering those
+    out unconditionally meant the guard who had just proposed a vendor could
+    never select it: the form set the new id, no matching option existed, and
+    the select rendered blank. So the one screen that has to see a pending
+    vendor asks for it, and every other caller keeps the confirmed-only list
+    it already relied on.
+
+    `is_active` is returned either way so the caller can label a pending row
+    rather than presenting it as established master data.
+    """
     rows = await conn.execute(
         text(
             """
-            select id, code, name from vendors
-             where is_active
+            select id, code, name, is_active from vendors
+             where (is_active or cast(:include_pending as boolean))
                and (cast(:q as text) is null or name ilike '%' || cast(:q as text) || '%'
                      or code ilike '%' || cast(:q as text) || '%')
-             order by name
+             order by is_active desc, name
              limit 100
             """
         ),
-        {"q": q},
+        {"q": q, "include_pending": include_pending},
     )
     return [dict(r) for r in rows.mappings()]
 

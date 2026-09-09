@@ -143,7 +143,9 @@ export type WarehouseException = {
   resolved_at: string | null
 }
 
-export type Vendor = { id: string; code: string; name: string }
+/** `is_active` is false for a guard-proposed vendor Ops has not confirmed yet
+ * (0025). Optional because only the gate form asks for those. */
+export type Vendor = { id: string; code: string; name: string; is_active?: boolean }
 
 export type PurchaseOrder = {
   id: string

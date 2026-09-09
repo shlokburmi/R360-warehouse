@@ -63,9 +63,13 @@ export function GateEntryPage() {
     onError: (err) => setError(err as ApiError),
   })
 
+  // `include_pending`: a vendor this guard just proposed is deliberately
+  // `is_active = false` until Ops confirms it by approving this same entry, and
+  // the default vendor list filters those out — so without this the guard could
+  // save a new vendor and then not find it in the list they were sent back to.
   const vendors = useQuery({
-    queryKey: ['vendors'],
-    queryFn: () => get<Vendor[]>('/vendors'),
+    queryKey: ['vendors', 'with-pending'],
+    queryFn: () => get<Vendor[]>('/vendors?include_pending=true'),
   })
 
   const purchaseOrders = useQuery({
@@ -251,7 +255,13 @@ export function GateEntryPage() {
               <option value="">{t('gate.select_vendor')}</option>
               {vendors.data?.map((vendor) => (
                 <option key={vendor.id} value={vendor.id}>
-                  {vendor.name}
+                  {/* A just-proposed vendor is selectable but labelled, so the
+                      guard can file against it without it reading as
+                      established master data — Ops confirms it by approving
+                      this entry. */}
+                  {vendor.is_active === false
+                    ? `${vendor.name} — ${t('gate.vendor_pending')}`
+                    : vendor.name}
                 </option>
               ))}
               <option value="__new__">{t('gate.add_new_vendor')}</option>
