@@ -134,7 +134,34 @@ export function BoxCountingPage() {
       void queryClient.invalidateQueries({ queryKey: ['box-progress', entryId] })
       void queryClient.invalidateQueries({ queryKey: ['exceptions'] })
     },
-    onError: (err) => setError(err as ApiError),
+    // A failed *response* is not proof the sheet was not issued. This POST is
+    // not idempotent, and on a slow connection or a cold backend the reply can
+    // be lost after the server already committed the sheet — while
+    // `already_issued` says outright that one exists. Either way the honest
+    // move is to go and look before reporting failure: showing a red banner
+    // over a sheet that had in fact been created is exactly what produced
+    // "it errors, and then shows me the QR codes anyway".
+    onError: async (err) => {
+      const apiError = err as ApiError
+      const mayHaveLanded = apiError?.isOffline || apiError?.code === 'already_issued'
+
+      if (mayHaveLanded) {
+        await queryClient.invalidateQueries({ queryKey: ['entry', entryId] })
+        await queryClient.invalidateQueries({ queryKey: ['sheets', entryId] })
+
+        const refreshed = queryClient.getQueryData<GateEntry>(['entry', entryId])
+        if ((refreshed?.issued_box_sticker_count ?? 0) > 0) {
+          // The stickers exist. That is the outcome the operator asked for,
+          // so it is not an error — and the sheet renders on its own from
+          // the refetched queries above.
+          setError(null)
+          void queryClient.invalidateQueries({ queryKey: ['box-progress', entryId] })
+          return
+        }
+      }
+
+      setError(apiError)
+    },
   })
 
   // CONTROL POINT 2 answers 409 with a full body on mismatch, so the refusal

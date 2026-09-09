@@ -86,7 +86,28 @@ export function UnitScanningPage() {
       void queryClient.invalidateQueries({ queryKey: ['sheets', entryId] })
       void queryClient.invalidateQueries({ queryKey: ['entry', entryId] })
     },
-    onError: (err) => setError(err as ApiError),
+    // Same reconciliation the box sheet needs (BoxCounting.tsx): this POST is
+    // not idempotent, so a lost reply on a slow connection or a cold backend
+    // can report failure for a sheet that was in fact issued, and
+    // `already_issued` says one exists outright. Check before reporting a
+    // failure the operator can see is untrue the moment the sheet appears.
+    onError: async (err) => {
+      const apiError = err as ApiError
+      const mayHaveLanded = apiError?.isOffline || apiError?.code === 'already_issued'
+
+      if (mayHaveLanded) {
+        await queryClient.invalidateQueries({ queryKey: ['sheets', entryId] })
+        await queryClient.invalidateQueries({ queryKey: ['entry', entryId] })
+
+        const refreshed = queryClient.getQueryData<StickerSheet[]>(['sheets', entryId])
+        if (refreshed?.some((s) => s.sticker_type === 'unit')) {
+          setError(null)
+          return
+        }
+      }
+
+      setError(apiError)
+    },
   })
 
   const finish = useMutation({
