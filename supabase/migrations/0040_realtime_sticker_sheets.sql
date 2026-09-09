@@ -24,4 +24,24 @@
 -- PO is hundreds of inserts in a single transaction — a changefeed storm to
 -- announce a fact the sheet row already carries.
 
-alter publication supabase_realtime add table sticker_sheets;
+-- Guarded rather than a bare `alter publication ... add table`, which is not
+-- re-runnable: adding a table that is already a member fails outright with
+-- 42710 ("already member of publication"), and there is no
+-- `add table if not exists` for publications. These migrations get pasted
+-- into the SQL editor by hand, where re-running one is completely normal —
+-- and a hard error on an already-correct database looks like a failure
+-- rather than the no-op it actually is. Every other repeatable statement in
+-- this repo is written the same way (`drop policy if exists`, `create or
+-- replace function`); this is that same property for a publication.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+     where pubname = 'supabase_realtime'
+       and schemaname = 'public'
+       and tablename = 'sticker_sheets'
+  ) then
+    alter publication supabase_realtime add table sticker_sheets;
+  end if;
+end;
+$$;
