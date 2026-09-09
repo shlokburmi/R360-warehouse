@@ -40,7 +40,6 @@ ACCOUNTS = {
     "security_guard": ("guard@r360.local", "Guard@2026!"),
     "ops_manager": ("boopathi@r360.local", "OpsMgr@2026!"),
     "offloading": ("offload@r360.local", "Offload@2026!"),
-    "warehouse_staff": ("store@r360.local", "Store@2026!"),
     "invoice_matcher": ("match1@r360.local", "Match1@2026!"),
     "packer": ("pack1@r360.local", "Pack1@2026!"),
     "admin": ("admin@r360.local", "Adm!n#2026$Xk9Qz"),
@@ -52,7 +51,6 @@ OPS = {"ops_manager", "admin"}
 ADMIN = {"admin"}
 PACKER = {"packer", "admin"}
 MATCHER = {"packer", "invoice_matcher", "admin"}
-STORE = {"warehouse_staff", "admin"}
 OFFLOAD = {"offloading", "admin"}
 
 NIL = str(uuid.UUID(int=0))
@@ -126,16 +124,6 @@ ROUTES = [
     # ---- reconciliation (CP4): the inbound team
     ("GET", f"/entries/{NIL}/reconciliation", None, ALL),
     ("POST", f"/entries/{NIL}/reconciliation", {"lines": []}, OFFLOAD),
-
-    # ---- putaway and stock: warehouse staff
-    ("GET", "/putaway/queue", None, ALL),
-    ("GET", "/locations", None, ALL),
-    ("GET", "/locations/resolve?code=A-01-01-01-01", None, ALL),
-    ("GET", f"/boxes/{NIL}/putaway", None, ALL),
-    ("GET", f"/boxes/{NIL}/putaway/history", None, ALL),
-    ("GET", "/stock", None, ALL),
-    ("POST", f"/boxes/{NIL}/putaway",
-     {"location_code": "A-01-01-01-01", "units": 1, "disposition": "stock"}, STORE),
 
     # ---- matching and packing
     ("POST", "/badges/resolve", {"badge_code": "BDG-NOPE"}, MATCHER),

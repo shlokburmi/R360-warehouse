@@ -23,12 +23,12 @@ this repo, so here is the mapping:
 | carton going out to a customer | an `invoice` plus its `packing_record` |
 | batch | `batches` — a group of packed cartons released together |
 
-Roles were consolidated from eight down to four: `security_guard`, `offloading`,
-`packer`, `admin`. Admin now does everything the old `ops_manager` and
-`invoice_matcher` roles did (approvals, sticker issuance, invoice matching,
-provisioning, badge issue); offloading now does everything the old `inbound`
-and `warehouse_staff` roles did (reconciliation, putaway). See DECISIONS.md
-§CE1 for the security tradeoff this collapses.
+Six roles: `security_guard`, `ops_manager`, `offloading`, `invoice_matcher`,
+`packer`, `admin` (0022-0023 reintroduced the middle three after an earlier
+consolidation — see DECISIONS.md §CE1/§CH1 for the tradeoff that collapses).
+A seventh, `warehouse_staff`, was retired with the putaway step in 0042: the
+app no longer tracks where cartons are shelved, so receiving now ends at
+CONTROL POINT 4.
 
 ---
 
@@ -43,7 +43,7 @@ rather than a policy.
 | **CP1** | Gate entry | Admin must approve before the gate opens, and the guard who filed it cannot approve it | `fn_gate_entry_guard` (0004) |
 | **CP2** | Box count | Box stickers scanned must equal stickers issued | `fn_gate_entry_guard` (0004) |
 | **CP3** | Unit count | Units scanned into a box must equal the PO quantity | `fn_box_transition_guard`, `fn_scan_apply` (0004) |
-| **CP4** | Inbound reconciliation | Warehouse count must equal the offloading team's independently-entered count before putaway | `fn_putaway_guard` (0007) |
+| **CP4** | Inbound reconciliation | Warehouse count must equal the offloading team's independently-entered count before the entry closes | `fn_gate_entry_guard` (0004) |
 | **CP5** | Packing | Invoice verified by one person, packed by a different one | `fn_packing_guard` (0009) |
 | **CP6** | Out-scan | Every carton assigned to a batch must be physically scanned | `fn_batch_release_guard` (0018) |
 | **CP7** | Gate exit | Every released carton must be verified onto the vehicle | `fn_pickup_guard` (0018) |
@@ -82,8 +82,8 @@ flowchart TD
     J1 --> J2["Admin decides:<br/>accept short / recount / reject"]
     J -- yes --> K["Damage check answered,<br/>box closed"]
     K --> L{"CP4<br/>inbound count matches?"}
-    L -- no --> L1["Putaway blocked"]
-    L -- yes --> M["Offloading team shelve to racks.<br/>Damaged units only to a Q rack"]
+    L -- no --> L1["Entry stays open.<br/>Exception logged"]
+    L -- yes --> M["Receiving complete"]
 ```
 
 ### Step by step
@@ -98,9 +98,7 @@ flowchart TD
 | 6 | Admin | *Scan units* | Generates unit stickers, one per product box, from the PO quantity |
 | 7 | Packer | *Scan units* | Scans each product box into its big box. **CP3.** Over-scan is refused outright; under-scan holds the box |
 | 8 | Admin | *Exceptions* | Decides a held box: `accept short`, `recount`, or `reject`. Scanned units are kept as evidence either way |
-| 9 | Offloading Team | *Verify inbound counts* | **CP4.** Their own system's count against the warehouse's |
-| 10 | Offloading Team | *Putaway* | Scans a rack code. A box may be split across racks; damaged units only into a quarantine (`Q-`) rack |
-| 11 | Offloading Team | *Stock* | Where everything ended up, grouped by SKU |
+| 9 | Offloading Team | *Verify inbound counts* | **CP4.** Their own system's count against the warehouse's. This is the last step of the inbound process: agreeing counts close the entry, a mismatch holds it open and raises an exception |
 
 ---
 
@@ -108,7 +106,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["Admin scans the invoice.<br/>App shows which rack the stock is on"] --> B["Admin confirms the match<br/>and scans THEIR OWN badge"]
+    A["Packer scans the invoice.<br/>OCR reads the Order No"] --> B["Hands it to a different packer<br/>by scanning her badge"]
     B --> C["Lead scans the PACKER'S<br/>badge card to assign the carton"]
     C --> D{"A1<br/>different person?<br/>live badge?<br/>a packer?"}
     D -- no --> D1["Refused while the lead<br/>is still holding the card"]
@@ -140,7 +138,7 @@ flowchart TD
 | Step | Who | Screen | Notes |
 |---|---|---|---|
 | 11a | Admin | *Invoices* | Books the invoice against a received PO line — SKU is derived from the line, never typed — and prints its carton sticker (family `CTN-`, DECISIONS.md §CC1 update). Reissuing voids the old code |
-| 12 | Admin | *Matching* | Scans the carton sticker, or types the invoice number if the sticker is unavailable; the page says which rack the stock is on. Confirms, then scans **their own** badge. A packer's badge is refused here |
+| 12 | Packer | *Matching* | Photographs the invoice; OCR reads the Order No and creates the invoice from it. Hands the carton to a *different* packing lady by scanning her badge — that handover is the second person CONTROL POINT 5 requires |
 | 13 | Admin or packer | *Packing* | Scans the **packer's badge card** to assign the carton. **A1.** Reassignment keeps both records, so "who had it at 14:20" stays answerable |
 | 14 | Packing Lady | *Packing → My cartons* | Scans each product box into the carton. **A3.** A double scan, a big-box sticker, a wrong-SKU product and a box that never arrived are each refused with a distinct message |
 | 15 | Packing Lady | same page | Confirms with **her own** badge. **CP5** (verifier ≠ packer) and **A2** (packer = assignee) |
@@ -164,18 +162,21 @@ re-checks the role, and RLS re-checks it again in the database.
 
 | Role | Pages |
 |---|---|
-| Security Guard | Gate Entry, Trucks, Pickup, Carton Count |
-| Offloading Team | Exceptions, Putaway, Stock, Reconciliation |
-| Packing Lady | Box counting, Scan units, Exceptions, Packing |
-| Admin | everything operational — dashboard, approvals, stickers, scanning, exceptions, reports, reconciliation, putaway, stock, matching, packing, out-scan, pickup, carton count — plus **Staff** |
+| Security Guard | Gate Entry, Trucks, Box counting, Loading, Pickup |
+| Ops Manager | Dashboard, Approvals, Trucks, Exceptions, Reports, Out-scan, Loading, Pickup, Staff |
+| Offloading Team | Trucks, Reconciliation, Exceptions |
+| Invoice Matcher | Matching, Exceptions |
+| Packing Lady | Trucks, Box counting, Scan units, Matching, Packing, Exceptions |
+| Admin | everything operational, plus **Staff** — their navigation is deliberately the short oversight list, but every page opens |
 
-Roles were consolidated from eight down to these four (DECISIONS.md §CE1).
-Admin absorbs what used to be the separate Ops Manager and Invoice Matcher
-roles; Offloading Team absorbs what used to be the separate Inbound Team and
-Warehouse Staff roles. Packers apply and scan both box and unit stickers at
-intake (Guard still only declares the count), in addition to their outbound
-packing job — so receiving and dispatch now sit in the same pair of hands,
-which DECISIONS.md §CG6 records as a deliberate tradeoff.
+`warehouse_staff` was retired with putaway (0042) and is not in this table:
+nothing in the app needs it any more. An account still holding the role keeps
+its login and sees only About me until an Admin reassigns it.
+
+Packers apply and scan both box and unit stickers at intake (the Guard still
+only declares the count), in addition to their outbound packing job — so
+receiving and dispatch sit in the same pair of hands, which DECISIONS.md §CG6
+records as a deliberate tradeoff.
 
 Provisioning accounts and issuing badges stay Admin-only, but that is no longer
 a capability withheld from a narrower Ops tier — Admin now also approves gates

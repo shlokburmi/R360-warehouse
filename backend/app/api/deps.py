@@ -167,6 +167,7 @@ require_ops_manager = require_roles("ops_manager")
 # capture/verify (CONTROL POINT 5 first half) and the matching-stage unit scan.
 require_invoice_matcher = require_roles("invoice_matcher")
 
-# Warehouse Staff, carved out of Offloading: putaway only. Offloading keeps
-# inbound reconciliation (CONTROL POINT 4) and receiving.
-require_warehouse_staff = require_roles("warehouse_staff")
+# No require_warehouse_staff: putaway was that role's only step, and it was
+# retired in 0042_retire_putaway.sql. The label above stays so an account still
+# holding the role renders as "Warehouse Staff" rather than a raw enum value,
+# until an Admin reassigns or deactivates it.

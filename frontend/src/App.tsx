@@ -17,11 +17,9 @@ import { BoxCountingPage } from '@/pages/BoxCounting'
 import { UnitScanningPage } from '@/pages/UnitScanning'
 import { ExceptionsPage } from '@/pages/Exceptions'
 import { ReconciliationPage } from '@/pages/Reconciliation'
-import { PutawayPage } from '@/pages/Putaway'
 import { InvoiceMatchingPage } from '@/pages/InvoiceMatching'
 import { PackingPage } from '@/pages/Packing'
 import { BatchesPage } from '@/pages/Batches'
-import { StockPage } from '@/pages/Stock'
 import { PickupPage } from '@/pages/Pickup'
 import { ReportsPage } from '@/pages/Reports'
 import { AdminPage } from '@/pages/Admin'
@@ -137,7 +135,6 @@ function Home() {
     admin: '/dashboard',
     ops_manager: '/dashboard',
     offloading: '/entries',
-    warehouse_staff: '/putaway',
     invoice_matcher: '/invoice-matching',
     packer: '/packing',
   }
@@ -206,22 +203,6 @@ function Shell() {
         element={
           <Protected page="reconciliation">
             <ReconciliationPage />
-          </Protected>
-        }
-      />
-      <Route
-        path="/putaway"
-        element={
-          <Protected page="putaway">
-            <PutawayPage />
-          </Protected>
-        }
-      />
-      <Route
-        path="/stock"
-        element={
-          <Protected page="stock">
-            <StockPage />
           </Protected>
         }
       />

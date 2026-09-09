@@ -14,7 +14,6 @@ from app.api.v1 import (
     meta,
     packing,
     pickup,
-    putaway,
     reports,
     warehouse,
 )
@@ -71,10 +70,9 @@ app = FastAPI(
     version="1.0.0",
     description=(
         "Warehouse operations for Reward360 bank service platforms. "
-        "Phase 1: gate entry, box counting, unit scanning, inbound reconciliation. "
-        "Phase 2: putaway and rack locations. "
-        "Phase 3: invoice matching, packing attribution, out-scan and batch release. "
-        "Phase 4: pickup verification and gate exit."
+        "Inbound: gate entry, box counting, unit scanning, inbound reconciliation. "
+        "Outbound: invoice matching, packing attribution, out-scan, batch release, "
+        "pickup verification and gate exit."
     ),
     lifespan=lifespan,
     docs_url=None if settings.is_production else "/docs",
@@ -103,7 +101,6 @@ api = APIRouter(prefix=settings.api_prefix)
 api.include_router(meta.router)
 api.include_router(gate.router)
 api.include_router(warehouse.router)
-api.include_router(putaway.router)
 api.include_router(packing.router)
 api.include_router(pickup.router)
 api.include_router(reports.router)

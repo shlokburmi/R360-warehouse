@@ -71,8 +71,6 @@ ALL_PAGES: List[str] = [
     "box-counting",
     "unit-scanning",
     "reconciliation",
-    "putaway",
-    "stock",
     "invoice-matching",
     "packing",
     "batches",
@@ -125,14 +123,16 @@ PAGE_ACCESS: Dict[str, List[str]] = {
         "admin", "about-me",
     ],
     # Offloading no longer scans goods in — packers do (see scans_insert in
-    # 0019) — and no longer shelves goods either, now that warehouse_staff is
-    # its own role again. Reconciliation (CONTROL POINT 4) and receiving stay.
+    # 0019). Reconciliation (CONTROL POINT 4) is what the role is for, and since
+    # putaway was retired (0042) it is the last step of the inbound process.
     #
     # "entries" is how they get to a truck to reconcile it: it is their landing
     # page (App.tsx), so without it they had a screen with no way back to it.
     "offloading": ["entries", "reconciliation", "exceptions", "about-me"],
-    # Carved back out of offloading: putaway only.
-    "warehouse_staff": ["putaway", "stock", "exceptions", "about-me"],
+    # No "warehouse_staff" entry: putaway was that role's only step and was
+    # retired in 0042. An account still holding the role falls through to the
+    # empty default below — it can sign in and see nothing but About me, which
+    # is the honest state until an Admin reassigns it.
     # Invoice Matching, reintroduced: matching, plus the exceptions anyone can
     # raise. Not "packing": /packing/assigned-to-me and /invoices/pack are the
     # packer's own queue and her own badge confirmation, and the API refuses
@@ -165,7 +165,11 @@ PAGE_ACCESS: Dict[str, List[str]] = {
 
 @router.get("/me", response_model=MeOut)
 async def me(user: CurrentUser = Depends(get_current_user)):
-    nav = PAGE_ACCESS.get(user.role, [])
+    # A role with no entry — `warehouse_staff`, retired with putaway in 0042 —
+    # still gets About me. Someone whose role was retired under them should be
+    # able to sign in, see who the app thinks they are and sign out again,
+    # rather than meet a wall of "this page is for someone else".
+    nav = PAGE_ACCESS.get(user.role, ["about-me"])
     return MeOut(
         id=user.id,
         full_name=user.full_name,

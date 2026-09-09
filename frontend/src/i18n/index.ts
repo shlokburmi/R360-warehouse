@@ -59,7 +59,7 @@ void i18next.use(initReactI18next).init({
   fallbackLng: 'en',
   interpolation: { escapeValue: false },
   // A missing Kannada key falls back to the English string rather than showing
-  // the raw key. An operator seeing "putaway.scan_location" learns nothing; the
+  // the raw key. An operator seeing "boxcount.scan_sticker" learns nothing; the
   // English words at least name the thing in front of them.
   returnEmptyString: false,
 })

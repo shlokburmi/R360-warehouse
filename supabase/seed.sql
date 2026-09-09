@@ -81,7 +81,8 @@ begin
 end;
 $$;
 
--- Seven roles: security_guard, ops_manager, offloading, warehouse_staff,
+-- Seven roles: security_guard, ops_manager, offloading, warehouse_staff
+-- (retired with putaway in 0042, kept so its retirement stays testable),
 -- invoice_matcher, packer, admin — reintroduced from the four-role
 -- consolidation at the user's request (see 0023_role_split.sql). Boopathi is
 -- the Ops Manager named as the document contact in the PRD itself.
@@ -93,6 +94,10 @@ select seed_user('boopathi@r360.local', 'Boopathi',       'ops_manager',     'EM
 select seed_user('opsbackup@r360.local','Ramesh Iyer',    'admin',           'EMP-O02', '9876500003', 'B@ckupAdm!n2026#Xk');
 select seed_user('offload@r360.local',  'Arun Prasad',    'offloading',      'EMP-F01', '9876500004', 'Offload@2026!');
 select seed_user('inbound@r360.local',  'Divya Nair',     'offloading',      'EMP-I01', '9876500005', 'Inbound@2026!');
+-- EMP-W01 keeps its `warehouse_staff` role and its login: putaway was retired
+-- (0042) but an account cannot be un-created, and the tests use this one to
+-- prove the retired role now grants nothing. It reaches About me and nothing
+-- else.
 select seed_user('store@r360.local',    'Mahesh Rao',     'warehouse_staff', 'EMP-W01', '9876500006', 'Store@2026!');
 select seed_user('match1@r360.local',   'Lakshmi Devi',   'invoice_matcher', 'EMP-M01', '9876500007', 'Match1@2026!');
 select seed_user('match2@r360.local',   'Priya Menon',    'invoice_matcher', 'EMP-M02', '9876500008', 'Match2@2026!');
@@ -126,25 +131,9 @@ insert into vendors (code, name, contact_mobile) values
   ('BHARAT-G', 'Bharat General Supplies',    '9812300004')
 on conflict (code) do nothing;
 
--- ---------------------------------------------------------------------------
--- Storage locations — Z-AA-RR-LL-BB (DECISIONS.md §6)
--- Zone A fast-moving, B bulk, C high-value cage, Q quarantine.
--- ---------------------------------------------------------------------------
-
-insert into locations (code, description)
-select
-  format('%s-%s-%s-%s-01', z.zone, lpad(a::text, 2, '0'), lpad(r::text, 2, '0'), lpad(l::text, 2, '0')),
-  z.label
-from (values ('A', 'Fast moving'), ('B', 'Bulk storage'), ('C', 'High value cage')) as z(zone, label),
-     generate_series(1, 3) a,
-     generate_series(1, 4) r,
-     generate_series(1, 3) l
-on conflict (code) do nothing;
-
-insert into locations (code, description) values
-  ('Q-01-01-01-01', 'Quarantine — damaged / disputed goods'),
-  ('Q-01-01-01-02', 'Quarantine — pending Ops decision')
-on conflict (code) do nothing;
+-- No storage locations. Racks were master data for the putaway step, retired in
+-- 0042_retire_putaway.sql — `locations` keeps its historical rows and nothing
+-- writes to it any more.
 
 -- ---------------------------------------------------------------------------
 -- Purchase orders

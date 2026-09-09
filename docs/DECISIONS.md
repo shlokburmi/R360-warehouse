@@ -221,7 +221,14 @@ on the frontend is the matching half, treating 409 as data rather than an error.
 
 ---
 
-## Part C — Phase 2: putaway
+## Part C — Phase 2: putaway *(retired, 0042)*
+
+> **This part is history.** Putaway was removed from the app at the user's
+> request — see §E7. The reasoning below is kept because it is the record of
+> what was decided and why, and because §C1's shape (a control point deciding
+> whether a *later* step may happen) is now carried by CONTROL POINT 4 alone.
+> Nothing in this section describes the app as it stands.
+
 
 ### C1. Putaway is blocked until inbound reconciliation passes
 
@@ -1008,3 +1015,41 @@ React Router's two advisories have no fix in 6.x and the practical exposure is
 §E5 (fixed at the call site) plus an SSR path this app does not have, so the
 major upgrade is a decision to take on its own merits rather than under an
 advisory.
+
+### E7. Putaway is removed
+
+**Decision: the app stops tracking where cartons are shelved.** Requested
+directly, and the shape of the removal was chosen with three questions: the
+Stock screen goes with it, the Warehouse Staff role is retired, and the tables
+stay.
+
+*Stock goes because it cannot do otherwise.* `v_stock_by_location` read
+`putaways` and nothing else. With no putaways being written, the screen could
+only ever show what was shelved before today — a stock report frozen at a date,
+which is worse than no stock report. Rebuilding it from receiving instead would
+have been a new report, not a removal.
+
+*The role goes because it had one job.* `warehouse_staff` was carved out of
+Offloading in 0023 for putaway alone. What remains for it is nothing, so it is
+gone from the assignable roles, the navigation and every guard. Its enum value
+stays — Postgres cannot drop one, and rows reference it — and the seeded EMP-W01
+account keeps its login and reaches About me, which is the honest state until an
+Admin reassigns it. `PAGE_ACCESS` now defaults an unmapped role to `about-me`
+rather than to nothing, so a role retired under someone does not present them
+with a wall of "this page is for someone else".
+
+*The tables stay because §7 says so.* "Nothing is ever deleted" applies to a
+feature being retired as much as to a row being corrected. `putaways` and
+`locations` keep their rows, their SELECT policies and their audit triggers;
+0042 drops every path that *writes* to them, so the history is frozen rather
+than erased, and the migration is reversible in a way a `drop table` would not
+be.
+
+Two consequences worth naming. CONTROL POINT 4 used to be described as "the
+counts must agree before putaway"; with no putaway to block, what it actually
+gates is whether the truck's paperwork closes — it is now the last step of the
+inbound process, and every message that said "putaway is blocked" says that
+instead. And the `emptied` box status was only ever reachable through a
+completed putaway, so it is now a status nothing can set;
+`fn_box_transition_guard` still refuses a direct write to it, which is the
+correct end state rather than a gap.

@@ -109,17 +109,17 @@ Packer cannot approve a truck at the gate.
 4. **Empty boxes** are moved to an outside storage rack (a physical step,
    nothing for the app to check here).
 5. **Inbound Reconciliation** — The separate inbound-tracking team's numbers
-   are matched against what the warehouse recorded. Both must agree before
-   goods can be shelved.
-6. **Putaway** — Warehouse Staff move goods to their assigned racks.
-7. **Invoice Matching** — the product is physically matched to its invoice,
+   are matched against what the warehouse recorded. Both must agree before the
+   truck's paperwork closes. This is where receiving ends: the app does not
+   track which rack goods are shelved on (putaway was removed in 0042).
+6. **Invoice Matching** — the product is physically matched to its invoice,
    confirmed by scanning every unit, then the badge scan.
-8. **Packing** — the packer scans every box into a carton and confirms with
+7. **Packing** — the packer scans every box into a carton and confirms with
    her own badge, permanently linking her to that order.
-9. **Out-Scan & Release** — Ops Manager scans every finished carton before
+8. **Out-Scan & Release** — Ops Manager scans every finished carton before
    it's released for pickup. A batch cannot be released with even one carton
    missing.
-10. **Pickup & Gate Exit** — Guard verifies every released carton is
+9. **Pickup & Gate Exit** — Guard verifies every released carton is
     physically present, registers who is collecting them, and the truck can
     only leave once the Ops Manager approves the exit.
 

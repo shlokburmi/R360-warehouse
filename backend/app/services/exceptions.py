@@ -202,7 +202,7 @@ async def _check_general_resolution(
             http_status=422,
             hint=(
                 "Re-enter the inbound count on the reconciliation page, or reject "
-                "and return the goods. Putaway stays blocked until the two agree."
+                "and return the goods. The entry stays open until the two agree."
             ),
         )
 
@@ -442,11 +442,11 @@ async def reconciliation_view(conn: AsyncConnection, entry_id: UUID) -> Dict[str
     if not lines:
         message = "No purchase order lines to reconcile."
     elif all_matched:
-        message = "Counts match — ready for putaway"
+        message = "Counts match — receiving is complete"
     elif any(line["inbound_count"] is None for line in lines):
         message = "Waiting for the inbound team's counts."
     else:
-        message = "Counts do not match. Cannot proceed to putaway."
+        message = "Counts do not match. The entry cannot be closed."
 
     return {
         "gate_entry_id": entry_id,
@@ -459,8 +459,11 @@ async def reconciliation_view(conn: AsyncConnection, entry_id: UUID) -> Dict[str
 async def reconcile(
     conn: AsyncConnection, entry_id: UUID, payload: ReconcileIn
 ) -> Dict[str, Any]:
-    """Inbound team enters their own count. A mismatch blocks putaway and raises
-    an exception; it is never silently reconciled to the warehouse figure."""
+    """Inbound team enters their own count. A mismatch holds the entry open and
+    raises an exception; it is never silently reconciled to the warehouse
+    figure. Since putaway was retired (0042) this is the last step of the
+    inbound process, so it is what decides whether the truck's paperwork
+    closes."""
     view = await reconciliation_view(conn, entry_id)
     warehouse_by_line = {str(l["purchase_order_line_id"]): l for l in view["lines"]}
 
@@ -542,8 +545,8 @@ async def reconcile(
             exception_id=row["id"],
         )
 
-        # Returned rather than raised: the route answers 409 and putaway stays
-        # blocked either way, but the exception record must survive the request.
+        # Returned rather than raised: the route answers 409 and the entry stays
+        # open either way, but the exception record must survive the request.
         result["message"] = f"Inbound count doesn't match. {detail_lines}"
         result["exception_code"] = row["exception_code"]
         return result
@@ -553,6 +556,6 @@ async def reconcile(
             text("update gate_entries set status = 'reconciled' where id = :id"),
             {"id": str(entry_id)},
         )
-        result["message"] = "Counts match — ready for putaway"
+        result["message"] = "Counts match — receiving is complete"
 
     return result

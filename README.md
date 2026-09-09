@@ -7,11 +7,14 @@ attributable to a named person at a recorded time.
 **Stack:** FastAPI · React + TypeScript · Supabase (Postgres, Auth, Storage) ·
 Render · Vercel
 
-**All five phases are implemented and verified running.** Gate entry, Admin
-approval, box counting, unit scanning, inbound reconciliation, putaway, rack
-locations, stock lookup, invoice matching, packing attribution, out-scan, batch
-release, pickup verification, gate exit, exceptions, dashboard and reports —
-plus staff provisioning and badge issue, which were SQL jobs until Phase 5.
+**The whole process is implemented and verified running.** Gate entry, Ops
+approval, box counting, unit scanning, inbound reconciliation, invoice matching,
+packing attribution, out-scan, batch release, pickup verification, gate exit,
+exceptions, dashboard and reports — plus staff provisioning and badge issue.
+
+Putaway, rack locations and the stock lookup were removed in 0042 at the user's
+request: the app no longer tracks where cartons are shelved, so receiving ends
+at CONTROL POINT 4 (see DECISIONS.md §E7).
 
 **Eleven hard stops are enforced by the database** — the seven control points in
 PRD §4, plus the four outbound gates added in Phase 5 (packing assignment,
@@ -71,20 +74,22 @@ superuser.
 
 ### Demo accounts
 
-Password for all: `Warehouse@123`
+Each account has its own password — they are in `supabase/seed.sql` next to
+the account, and in `supabase/manual/production_staff_accounts.sql` for a real
+deployment. There is no single shared one.
 
-Four roles now: `security_guard`, `offloading`, `packer`, `admin`. Admin
-absorbs what used to be the separate Ops Manager and Invoice Matching roles
-(approvals, sticker issuance, invoice matching); offloading absorbs what used
-to be the separate Inbound Team and Warehouse Staff roles (reconciliation,
-putaway).
+Six roles: `security_guard`, `ops_manager`, `offloading`, `invoice_matcher`,
+`packer`, `admin`. A seventh, `warehouse_staff`, was retired with putaway
+(0042) — `store@r360.local` still exists and still signs in, but the role now
+grants nothing beyond About me.
 
 | Email | Role |
 |---|---|
 | `guard@r360.local` | Security Guard |
-| `boopathi@r360.local`, `opsbackup@r360.local` | Admin (approvals) |
-| `offload@r360.local`, `inbound@r360.local`, `store@r360.local` | Offloading Team |
-| `match1@r360.local`, `match2@r360.local` | Admin (invoice matching) |
+| `boopathi@r360.local` | Ops Manager · `opsbackup@r360.local` Admin |
+| `offload@r360.local`, `inbound@r360.local` | Offloading Team |
+| `store@r360.local` | Warehouse Staff — *retired role, kept to prove it grants nothing* |
+| `match1@r360.local`, `match2@r360.local` | Invoice Matcher |
 | `pack1@r360.local`, `pack2@r360.local` | Packing |
 | `admin@r360.local` | Admin |
 
@@ -134,45 +139,30 @@ whole point of CONTROL POINT 1 is that one person cannot do both halves.
    Deliberately scan only 8 of 10 to see the box held and an exception raised.
 8. **Admin** → *Exceptions* → accept short / recount / reject.
 9. **Offloader** (`offload@r360.local`) → *Verify inbound counts*. Enter a
-   wrong number to see putaway blocked.
-10. **Offloader** → *Putaway*. The boxes appear only now, because step 9 had
-    to pass first. Scan or type a rack code (`A-01-01-01-01`), place part of a
-    box, then the rest — splitting across racks is allowed. Try
-    `Q-01-01-01-01` to watch good stock be refused from a quarantine rack.
-11. **Offloader** → *Stock*. Where everything ended up, grouped by SKU.
-    Separately, as **Admin** → *Invoices*: book a new invoice against
-    PO-2026-0001's `PWB-10K` line and print its carton sticker — this is a
-    printed QR now (family `CTN-`), not just the typed invoice number.
-12. **Admin** (`match1@r360.local`) → *Matching*. Scan the carton sticker you
-    just printed, or type `INV-2026-0001` if you skip printing one; the page
-    tells you which rack the stock is on. Confirm the match, then scan your
-    badge. Try a packer's badge to see it refused.
-13. **Admin or packer** → *Packing*. The verified invoice appears. Scan the
-    packer's badge card to **assign** the carton to her — try the Admin's own
-    badge to see it refused, because the person who checked the goods cannot also
-    pack them (CP5). Reassigning to a second packer keeps both records, so "who
-    had it at 14:20" stays answerable.
-14. **Packer** (`pack1@r360.local`) → the carton is in *My cartons*. Scan each
-    product box into it. Scan one twice to see it rejected, scan the big box's
-    sticker to see the wrong-sticker refusal, and try to close the carton one box
-    short — refused, because packed must equal promised. Then scan the last box
-    and confirm with your badge.
-15. **Admin** → *Out-Scan*. Select packed cartons, create a batch, then scan each
+   wrong number to see the entry held open and an exception raised, then the
+   right one. This is the last step of receiving — putaway was retired in 0042.
+10. **Packer** (`pack1@r360.local`) → *Matching*. Photograph the invoice; OCR
+    reads the Order No and creates the invoice from it. Then scan a *different*
+    packing lady's badge to hand the carton over — try your own to see it
+    refused, because the person handing it over cannot also pack it (CP5).
+11. **Packer B** (`pack2@r360.local`) → *Packing*. The carton is in her queue.
+    Scan her own badge to confirm she packed it.
+12. **Ops** → *Out-Scan*. Select packed cartons, create a batch, then scan each
     carton's invoice label. Try completing with one unscanned to see CP6 stop it,
     then complete. Now try to release — refused: nobody has counted the cartons.
-16. **Guard** → *Carton Count*. Type how many cartons are physically on the bay.
+13. **Guard** → *Carton Count*. Type how many cartons are physically on the bay.
     The system's number appears only after you commit to yours. Enter a wrong
     number to see the mismatch flagged, then send it to Admin.
-17. **Admin** → *Approvals*. The count is at the top. Approve it (try as the
+14. **Ops** → *Approvals*. The count is at the top. Approve it (try as the
     guard who counted — refused), then release the batch.
-18. **Guard** → *Pickup*. The released batch appears. Register the collecting
+15. **Guard** → *Pickup*. The released batch appears. Register the collecting
     vehicle — note that the driver from step 1 is recognised and not
     re-photographed. Scan cartons onto the vehicle; try verifying with one still
     missing to see CP7 refuse, then load the last one and verify.
-19. **Guard** → *Request permission to leave*. The gate does not open yet.
-20. **Admin** → *Approvals*. Hold the vehicle with a reason and watch it come back
+16. **Guard** → *Request permission to leave*. The gate does not open yet.
+17. **Ops** → *Approvals*. Hold the vehicle with a reason and watch it come back
     to the guard's screen with that reason on it. Then approve.
-21. **Guard** → *Open gate*. Time out is stamped, and the vehicle leaves.
+18. **Guard** → *Open gate*. Time out is stamped, and the vehicle leaves.
 
 Separately, as **Admin** → *Staff*: add a packer, note the temporary password,
 sign in as them. Issue their badge and print the card. Reissue it and watch the
@@ -185,9 +175,9 @@ with your name against it, and the code is not.
 
 ```bash
 cd backend && source .venv/bin/activate
-pytest                            # 174 tests; skips cleanly with no database
-python scripts/e2e_full_flow.py   # 134 checks: the whole process over real HTTP
-python scripts/e2e_role_access.py # 727 checks: every route against every role
+pytest                            # 167 tests; skips cleanly with no database
+python scripts/e2e_full_flow.py   # 122 checks: the whole process over real HTTP
+python scripts/e2e_role_access.py # 582 checks: every route against every role
 python scripts/e2e_admin.py       # 40 checks over real HTTP
 python scripts/e2e_retention.py   # 14 checks against real Supabase Storage
 ```
@@ -198,7 +188,7 @@ the per-account passwords in `supabase/seed.sql`.
 The tests run against a real Postgres, because what they test *is* the database:
 triggers, constraints and RLS policies. `test_control_points.py` asserts that
 each hard stop in PRD §4 is refused by the database rather than by application
-code, `test_putaway.py`, `test_packing.py` and `test_pickup.py` cover Phases 2-4,
+code, `test_packing.py` and `test_pickup.py` cover the outbound half,
 and `test_rls.py` assumes each role's identity the same way a request does and
 checks what it can and cannot see. `test_admin.py` is mostly about read paths
 that must *not* exist — including the one through the audit log, which is where
@@ -245,8 +235,8 @@ One caveat worth knowing: most of these tests connect as the table owner, so RLS
 is bypassed and they are testing triggers, not policies. That is deliberate —
 but it means a policy gap can hide behind a green suite. Two of the bugs found
 while bringing this up were exactly that shape, so the tests that matter for
-access control — `test_rls.py`, `test_storeman_putaway_empties_the_box_under_rls`
-and `test_guard_can_register_and_scan_under_rls` — explicitly `set role
+access control — `test_rls.py`, `test_role_split.py` and
+`test_guard_can_register_and_scan_under_rls` — explicitly `set role
 authenticated` first.
 
 ## Devices and browsers
@@ -319,7 +309,7 @@ Two things a reader should know are *not* done:
 
 ```
 supabase/migrations/   0001-0006 schema, audit, control points, RLS, storage
-                       0007      putaway
+                       0007      putaway (retired by 0042)
                        0008-0009 packing, batches, out-scan
                        0010      badge protection + view security
                        0011-0012 pickup, gate exit
@@ -328,6 +318,8 @@ supabase/migrations/   0001-0006 schema, audit, control points, RLS, storage
                        0015      order-no OCR
                        0016-0019 packing assignment, carton count and exit
                                  approvals, product-sticker reconciliation
+                       0039      role grants are Admin-only
+                       0042      putaway retired
 backend/app/
   db/session.py        RLS-aware transaction — the important file
   core/errors.py       Postgres refusals → messages a guard can act on

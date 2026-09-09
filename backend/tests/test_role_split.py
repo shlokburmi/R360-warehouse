@@ -7,6 +7,10 @@ one now has: what it can do that its old stand-in role could not, and what it
 still cannot do. Every test connects as `authenticated` with a role's JWT
 claims — the same mechanism app/db/session.py uses per request — because the
 guarantee under test is that RLS enforces this independently of the API.
+
+`warehouse_staff` has since been retired along with putaway (0042). Its enum
+value and the seeded EMP-W01 account both still exist — an account cannot be
+un-created — so it stays fixtured here, now to prove it grants nothing.
 """
 
 import uuid
@@ -161,74 +165,67 @@ class TestOpsManager:
         assert row["status"] == "approved"
 
 
-class TestWarehouseStaff:
-    """Putaway, carved back out of Offloading.
+class TestRetiredPutaway:
+    """0042. Putaway is gone, and with it the role that existed to do it.
 
-    The positive case — a warehouse_staff account putting a reconciled box
-    away under RLS — is already covered by
-    test_putaway.py::TestPutawayAccess::test_storeman_putaway_empties_the_box_under_rls
-    (the "storeman" actor there is EMP-W01, now warehouse_staff). What that
-    file did not have before this split is a check that Offloading — which
-    could putaway before 0023_role_split.sql — no longer can.
+    What is left to check is that the door is actually shut: `putaways` keeps
+    its rows and its SELECT policy (PRD §7 — a retired feature's history is
+    still history), and nothing can write to it any more. The role that used to
+    is checked with it, because "the API no longer offers it" and "the database
+    no longer allows it" are different claims.
     """
 
-    async def test_offloading_can_no_longer_putaway(self, db, gate_entry, actors):
-        from tests.test_putaway import _closed_box, _location, _reconcile
+    async def test_nobody_can_write_a_putaway_any_more(self, db, people):
+        for who in ("warehouse_staff", "offloading", "admin"):
+            await as_authenticated(db, people[who])
+            async with rejected(db):
+                await db.execute(
+                    text(
+                        """
+                        insert into putaways
+                          (box_id, location_id, purchase_order_line_id, units,
+                           disposition, moved_by)
+                        select b.id, l.id, b.purchase_order_line_id, 1, 'stock', :who
+                          from boxes b cross join locations l limit 1
+                        """
+                    ),
+                    {"who": people[who]},
+                )
+            await as_postgres(db)
 
-        box_id, units = await _closed_box(db, gate_entry, actors)
-        await _reconcile(db, gate_entry, actors)
-        location = await _location(db)
-
-        line_id = (
-            await db.execute(
-                text("select purchase_order_line_id from boxes where id = :id"), {"id": box_id}
-            )
-        ).scalar_one()
-
-        await as_authenticated(db, actors["offloader"])
-        async with rejected(db, containing="row-level security"):
-            await db.execute(
-                text(
-                    """
-                    insert into putaways
-                      (box_id, location_id, purchase_order_line_id, units, disposition, moved_by)
-                    values (:box, :loc, :line, :u, 'stock', :who)
-                    """
-                ),
-                {
-                    "box": box_id,
-                    "loc": location["id"],
-                    "line": line_id,
-                    "u": units,
-                    "who": actors["offloader"],
-                },
-            )
+    async def test_the_history_is_still_readable(self, db, people):
+        """Retired, not deleted. A row that was shelved last month is still a
+        row that was shelved last month."""
+        await as_authenticated(db, people["offloading"])
+        await db.execute(text("select count(*) from putaways"))
+        await db.execute(text("select count(*) from locations"))
         await as_postgres(db)
 
-    async def test_warehouse_staff_cannot_reconcile(self, db, people, pending_entry):
-        """CONTROL POINT 4 stays Offloading's, not Warehouse Staff's — the two
-        duties that were folded into one role during consolidation split
-        apart again, each to its own role.
+    async def test_the_views_that_drove_the_screen_are_gone(self, db):
+        for view in ("v_putaway_queue", "v_box_putaway_status", "v_stock_by_location"):
+            assert (
+                await db.execute(
+                    text("select to_regclass(:v)"), {"v": f"public.{view}"}
+                )
+            ).scalar_one() is None, f"{view} still exists"
 
-        Same no-op-not-error shape as the packer/gate-entry case above: the
-        RLS USING clause on gate_entries_update_reconcile matches nothing for
-        this role, so the UPDATE silently changes zero rows.
-        """
-        await as_authenticated(db, people["warehouse_staff"])
-        await db.execute(
-            text(
-                "update gate_entries set status = 'reconciled' where id = :id"
-            ),
-            {"id": pending_entry},
-        )
-        await as_postgres(db)
+    async def test_a_box_can_no_longer_be_emptied(self, db, people):
+        """`emptied` was only ever reachable through a completed putaway. The
+        status stays in the enum — Postgres cannot drop one, and old rows may
+        hold it — but nothing can set it now, which is the correct end state
+        rather than a gap."""
+        box_id = (
+            await db.execute(text("select id from boxes limit 1"))
+        ).scalar_one_or_none()
+        if box_id is None:
+            pytest.skip("No boxes in this database to try it on")
 
-        row = (
+        await as_authenticated(db, people["offloading"])
+        async with rejected(db):
             await db.execute(
-                text("select status from gate_entries where id = :id"), {"id": pending_entry}
+                text("update boxes set status = 'emptied' where id = :id"), {"id": box_id}
             )
-        ).mappings().one()
-        assert row["status"] == "pending_approval"
+        await as_postgres(db)
 
 
 class TestRoleGrantsAreAdminOnly:

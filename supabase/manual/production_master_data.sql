@@ -1,5 +1,5 @@
 -- production_master_data.sql — ONE-TIME manual script that seeds starting
--- master data (vendors, storage locations, purchase orders, invoices) so
+-- master data (vendors, purchase orders, invoices) so
 -- every role has something real to work with when walking the actual app
 -- flow end to end.
 --
@@ -28,25 +28,9 @@ insert into vendors (code, name, contact_mobile) values
   ('BHARAT-G', 'Bharat General Supplies',    '9812300004')
 on conflict (code) do nothing;
 
--- ---------------------------------------------------------------------------
--- Storage locations — Z-AA-RR-LL-BB (DECISIONS.md §6)
--- Zone A fast-moving, B bulk, C high-value cage, Q quarantine.
--- ---------------------------------------------------------------------------
-
-insert into locations (code, description)
-select
-  format('%s-%s-%s-%s-01', z.zone, lpad(a::text, 2, '0'), lpad(r::text, 2, '0'), lpad(l::text, 2, '0')),
-  z.label
-from (values ('A', 'Fast moving'), ('B', 'Bulk storage'), ('C', 'High value cage')) as z(zone, label),
-     generate_series(1, 3) a,
-     generate_series(1, 4) r,
-     generate_series(1, 3) l
-on conflict (code) do nothing;
-
-insert into locations (code, description) values
-  ('Q-01-01-01-01', 'Quarantine — damaged / disputed goods'),
-  ('Q-01-01-01-02', 'Quarantine — pending Ops decision')
-on conflict (code) do nothing;
+-- No storage locations. Racks were master data for the putaway step, retired in
+-- 0042_retire_putaway.sql — `locations` keeps its historical rows and nothing
+-- writes to it any more.
 
 -- ---------------------------------------------------------------------------
 -- Purchase orders

@@ -14,7 +14,9 @@ import type { Reconciliation } from '@/types'
  * The warehouse figure is shown but not editable: it is derived from the scan
  * ledger, and letting anyone type over it would make the comparison
  * meaningless. The offloading team enters their own independent count, and a
- * disagreement blocks putaway rather than being averaged away.
+ * disagreement holds the entry open rather than being averaged away. Since
+ * putaway was retired this is the last step of the inbound process, so it is
+ * what decides whether the truck's paperwork closes.
  */
 export function ReconciliationPage() {
   const { t } = useTranslation()
@@ -63,7 +65,7 @@ export function ReconciliationPage() {
     // reply is not proof the counts were not recorded, and on a cold backend
     // the reply is exactly what gets lost. Reporting failure for a submission
     // that landed is worse than useless here — it sits directly above this
-    // page's own "Counts match — ready for putaway", so the operator is told
+    // page's own "Counts match — receiving is complete", so the operator is told
     // both that it failed and that it worked.
     onError: async (err) => {
       const apiError = err as ApiError
@@ -111,7 +113,7 @@ export function ReconciliationPage() {
         title={submit.data?.message ?? reconciliation.data.message}
       >
         {submit.data?.exception_code &&
-          `Exception ${submit.data.exception_code} raised. Putaway is blocked until the counts agree.`}
+          `Exception ${submit.data.exception_code} raised. The entry stays open until the counts agree.`}
       </Banner>
 
       {lines.map((line) => {
@@ -175,10 +177,10 @@ export function ReconciliationPage() {
           type="button"
           className="btn-primary w-full"
           // Disabled once the counts agree: CONTROL POINT 4 is satisfied and
-          // putaway is the next step, so leaving a live "Submit counts"
-          // sitting under a green "ready for putaway" banner only invites a
-          // second submission of the same numbers and leaves the operator
-          // unsure whether the first one registered. A *mismatch* still
+          // receiving is done, so leaving a live "Submit counts" sitting under
+          // a green "receiving is complete" banner only invites a second
+          // submission of the same numbers and leaves the operator unsure
+          // whether the first one registered. A *mismatch* still
           // leaves it pressable, because that is the recount loop
           // `inbound_update`'s policy exists to allow (0005_rls.sql).
           disabled={!allEntered || submit.isPending || reconciliation.data.all_matched}

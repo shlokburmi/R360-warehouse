@@ -336,7 +336,11 @@ async def submit_reconciliation(
     conn: AsyncConnection = Depends(get_db),
     user: CurrentUser = Depends(inbound_or_ops),
 ):
-    """CONTROL POINT 4. A mismatch blocks putaway and logs an exception."""
+    """CONTROL POINT 4. A mismatch holds the entry open and logs an exception.
+
+    The last step of the inbound process since putaway was retired (0042):
+    what this decides is whether the truck's paperwork closes.
+    """
     result = await exc_service.reconcile(conn, entry_id, payload)
     if not result["all_matched"]:
         response.status_code = status.HTTP_409_CONFLICT

@@ -9,11 +9,14 @@ from pydantic import BaseModel, Field, field_validator
 # The roles an Admin may assign. Deliberately the full enum: there is no
 # "Admin cannot create another Admin" rule, because the alternative is a
 # warehouse with exactly one person who can fix anything, on leave.
+# No "warehouse_staff": putaway was the only thing that role did, and it was
+# retired in 0042_retire_putaway.sql. The enum value still exists in the
+# database (Postgres cannot drop one) and an account may still hold it, so
+# ROLE_LABELS still names it — this list is only what can be *assigned*.
 ASSIGNABLE_ROLES = (
     "security_guard",
     "ops_manager",
     "offloading",
-    "warehouse_staff",
     "invoice_matcher",
     "packer",
     "admin",

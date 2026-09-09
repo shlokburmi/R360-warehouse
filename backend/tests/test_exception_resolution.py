@@ -183,8 +183,8 @@ class TestApproveAndProceed:
     async def test_control_point_4_cannot_be_approved_away(self, db, actors, gate_entry):
         """The inbound team's count and the warehouse's still disagree.
 
-        Putaway is blocked by the reconciliation itself (CONTROL POINT 4), so
-        approving cannot release it. Re-entering the count can, and that is
+        The entry is held open by the reconciliation itself (CONTROL POINT 4),
+        so approving cannot release it. Re-entering the count can, and that is
         what the refusal says.
         """
         await act_as(db, actors["admin"])

@@ -189,66 +189,6 @@ export type Reconciliation = {
   exception_code?: string | null
 }
 
-// --- Phase 2: putaway ------------------------------------------------------
-
-export type PutawayTask = {
-  box_id: string
-  gate_entry_id: string
-  box_number: number
-  box_status: string
-  stock_remaining: number
-  quarantine_remaining: number
-  entry_code: string
-  vehicle_number: string
-  vendor_name: string
-  po_number: string | null
-  sku: string | null
-  description: string | null
-}
-
-export type Location = {
-  id: string
-  code: string
-  zone: string
-  description: string | null
-  is_quarantine: boolean
-}
-
-export type BoxPutawayStatus = {
-  box_id: string
-  box_number: number
-  box_status: string
-  scanned_units: number
-  quarantined_units: number
-  stock_units: number
-  stock_placed: number
-  quarantine_placed: number
-  stock_remaining: number
-  quarantine_remaining: number
-  sku: string | null
-  description: string | null
-  entry_code: string
-  entry_status: string
-}
-
-export type PutawayResult = {
-  box: BoxPutawayStatus
-  location: Location
-  units_placed: number
-  complete: boolean
-  message: string
-}
-
-export type StockRow = {
-  location_code: string
-  zone: string
-  is_quarantine: boolean
-  sku: string
-  description: string
-  units: number
-  last_movement: string | null
-}
-
 // --- Phase 3: invoice matching, packing, batches ---------------------------
 
 export type BadgeHolder = {

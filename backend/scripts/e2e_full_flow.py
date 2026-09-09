@@ -3,10 +3,9 @@
     python scripts/e2e_full_flow.py [api_base_url]
 
 A truck arrives and is registered, approved, admitted, counted, stickered,
-scanned, closed, reconciled and shelved; then a carton is invoiced, assigned,
-packed, batched, out-scanned, counted, released, loaded and driven out. Twenty
-two steps, seven roles, one continuous chain — the same sequence the screens
-walk an operator through.
+scanned, closed and reconciled; then a carton is invoiced, assigned, packed,
+batched, out-scanned, counted, released, loaded and driven out. One continuous
+chain, six roles, the same sequence the screens walk an operator through.
 
 Why this exists alongside the pytest suite: those tests drive Postgres directly,
 so they prove the triggers and policies hold but not that the routes are wired,
@@ -44,7 +43,6 @@ ACCOUNTS = {
     "guard": ("guard@r360.local", "Guard@2026!"),
     "ops": ("boopathi@r360.local", "OpsMgr@2026!"),
     "offload": ("offload@r360.local", "Offload@2026!"),
-    "store": ("store@r360.local", "Store@2026!"),
     "packer": ("pack1@r360.local", "Pack1@2026!"),
     "packer_b": ("pack2@r360.local", "Pack2@2026!"),
     "admin": ("admin@r360.local", "Adm!n#2026$Xk9Qz"),
@@ -340,7 +338,7 @@ def main():
                   "inbound_count": line["warehouse_count"] + 1} for line in recon["lines"]]
         r = client.post(f"{API}/entries/{entry_id}/reconciliation", headers=who["offload"],
                         json={"lines": wrong})
-        ok("a disagreement blocks putaway and raises an exception",
+        ok("a disagreement holds the entry open and raises an exception",
            r.status_code == 409 and r.json().get("exception_code"), r.text[:300])
 
         right = [{"purchase_order_line_id": line["purchase_order_line_id"],
@@ -351,37 +349,7 @@ def main():
            r.status_code == 200 and r.json()["all_matched"] is True, r.text[:300])
 
         # ------------------------------------------------------------------
-        print("\n10. Warehouse staff shelve it")
-        r = client.get(f"{API}/putaway/queue", headers=who["store"])
-        ok("the putaway queue has this truck's boxes",
-           r.status_code == 200 and any(t["entry_code"] == entry["entry_code"] for t in r.json()),
-           r.text[:250])
-        tasks = [t for t in r.json() if t["entry_code"] == entry["entry_code"]]
-
-        r = client.get(f"{API}/locations/resolve", headers=who["store"],
-                       params={"code": sql("select code from locations where not is_quarantine "
-                                           "order by code limit 1")})
-        ok("a rack code resolves", r.status_code == 200, r.text[:250])
-        rack = r.json()["code"]
-
-        for task in tasks:
-            units = task["stock_remaining"]
-            if units <= 0:
-                continue
-            r = client.post(
-                f"{API}/boxes/{task['box_id']}/putaway", headers=who["store"],
-                json={"location_code": rack, "units": units, "disposition": "stock"},
-            )
-            ok(f"box {task['box_number']}: {units} units placed at {rack}",
-               r.status_code == 201, r.text[:250])
-
-        r = client.get(f"{API}/stock", headers=who["store"])
-        ok("stock reports them at that rack",
-           r.status_code == 200 and any(row["location_code"] == rack for row in r.json()),
-           r.text[:250])
-
-        # ------------------------------------------------------------------
-        print("\n11. Packer scans the physical invoice (PRD §5.4, 0035/0036)")
+        print("\n10. Packer scans the physical invoice (PRD §5.4, 0035/0036)")
         order_no = f"CP{random.randint(100000000, 999999999)}_{random.randint(1000, 9999)}"
         r = client.post(
             f"{API}/invoices/from-order-no", headers=who["packer"],
@@ -406,7 +374,7 @@ def main():
         ok("the same Order No cannot create a second invoice", r.status_code == 409, r.text[:250])
 
         # ------------------------------------------------------------------
-        print("\n12. Handover to a different packing lady (CONTROL POINT 5)")
+        print("\n11. Handover to a different packing lady (CONTROL POINT 5)")
         own_badge = badge_of("EMP-P01")
         other_badge = badge_of("EMP-P02")
         ok("both badges were read from the database", bool(own_badge and other_badge))
@@ -446,7 +414,7 @@ def main():
         ok("the assignee packs it", r.status_code == 200, r.text[:300])
 
         # ------------------------------------------------------------------
-        print("\n13. Ops batches and out-scans it (CONTROL POINT 6)")
+        print("\n12. Ops batches and out-scans it (CONTROL POINT 6)")
         r = client.get(f"{API}/packing/ready", headers=who["ops"])
         ok("it is ready to batch",
            r.status_code == 200 and any(i["invoice_id"] == invoice_id for i in r.json()),
@@ -468,7 +436,7 @@ def main():
         ok("CP6 passes", r.status_code == 200 and r.json()["completed"] is True, r.text[:250])
 
         # ------------------------------------------------------------------
-        print("\n14. Guard counts the bay, Ops decides (A1/A2)")
+        print("\n13. Guard counts the bay, Ops decides (A1/A2)")
         r = client.post(f"{API}/batches/{batch_id}/release", headers=who["ops"])
         ok("release is refused before a count exists", r.status_code == 409, r.text[:250])
 
@@ -494,7 +462,7 @@ def main():
         ok("now the batch releases", r.status_code == 200, r.text[:300])
 
         # ------------------------------------------------------------------
-        print("\n15. Collection vehicle, load, exit (CONTROL POINT 7 + A4)")
+        print("\n14. Collection vehicle, load, exit (CONTROL POINT 7 + A4)")
         pickup_mobile = f"9{random.randint(100000000, 999999999)}"
         pickup_photo, up = id_photo(client, who["guard"], pickup_mobile)
         ok("the collector's identity photo uploads", pickup_photo is not None,
@@ -550,7 +518,7 @@ def main():
         # not a wrong number — POST /pickups did exactly that for months because
         # `sku` stopped being collected in 0036 — and a 500 is invisible until
         # something asks for the real shape.
-        print("\n16. Every screen's own reads, against real rows")
+        print("\n15. Every screen's own reads, against real rows")
         r = client.get(f"{API}/gate/entries/{entry_id}", headers=who["ops"])
         ok("truck detail (Trucks, Box counting, Scan units)", r.status_code == 200, r.text[:200])
 
@@ -563,13 +531,6 @@ def main():
 
         r = client.get(f"{API}/entries/{entry_id}/unit-progress", headers=who["packer"])
         ok("unit progress (Scan units)", r.status_code == 200, r.text[:200])
-
-        r = client.get(f"{API}/entries/{entry_id}/boxes", headers=who["packer"])
-        a_box = r.json()[0]
-        r = client.get(f"{API}/boxes/{a_box['id']}/putaway", headers=who["store"])
-        ok("box putaway status (Putaway)", r.status_code == 200, r.text[:200])
-        r = client.get(f"{API}/boxes/{a_box['id']}/putaway/history", headers=who["store"])
-        ok("putaway history (Putaway)", r.status_code == 200, r.text[:200])
 
         r = client.get(f"{API}/batches/{batch_id}", headers=who["ops"])
         ok("batch detail (Out-scan)", r.status_code == 200, r.text[:200])
@@ -586,8 +547,6 @@ def main():
         ok("packing state (Packing)", r.status_code == 200, r.text[:200])
         r = client.get(f"{API}/invoices", headers=who["ops"])
         ok("invoice list", r.status_code == 200, r.text[:200])
-        r = client.get(f"{API}/locations", headers=who["store"])
-        ok("rack list (Putaway)", r.status_code == 200, r.text[:200])
         r = client.get(f"{API}/badges/mine", headers=who["packer"])
         ok("her own badge QR (About me)", r.status_code == 200, r.text[:200])
         r = client.get(f"{API}/admin/meta", headers=who["ops"])
@@ -601,7 +560,7 @@ def main():
             ok("and one can be dismissed", r.status_code in (200, 204), r.text[:200])
 
         # ------------------------------------------------------------------
-        print("\n17. What the oversight screens show afterwards")
+        print("\n16. What the oversight screens show afterwards")
         r = client.get(f"{API}/dashboard", headers=who["ops"])
         ok("the dashboard loads", r.status_code == 200, r.text[:200])
 
@@ -641,10 +600,10 @@ def main():
         r = client.get(f"{API}/notifications", headers=who["ops"])
         ok("notifications loaded", r.status_code == 200, r.text[:200])
 
-        r = client.get(f"{API}/me", headers=who["store"])
+        r = client.get(f"{API}/me", headers=who["offload"])
         me = r.json()
         ok("/me hands the app its page lists",
-           r.status_code == 200 and "putaway" in me["nav_pages"]
+           r.status_code == 200 and "reconciliation" in me["nav_pages"]
            and me["can_hold_badge"] is False, r.text[:250])
         r = client.get(f"{API}/me", headers=who["admin"])
         ok("and Admin can open every page while keeping a short nav",
