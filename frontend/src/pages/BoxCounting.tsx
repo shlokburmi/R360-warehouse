@@ -81,9 +81,14 @@ export function BoxCountingPage() {
     refetchInterval: 10_000,
   })
 
+  // Polled as a fallback behind the realtime subscription below: until this
+  // returns a box sheet, whoever is scanning sees "waiting for Ops to issue
+  // stickers", and Ops issues it from a different device — so nothing local
+  // would otherwise bring this back.
   const sheets = useQuery({
     queryKey: ['sheets', entryId],
     queryFn: () => get<StickerSheet[]>(`/entries/${entryId}/sticker-sheets`),
+    refetchInterval: 10_000,
   })
 
   const boxSheetId = sheets.data?.find((s) => s.sticker_type === 'box')?.id
@@ -108,6 +113,11 @@ export function BoxCountingPage() {
   useRealtimeInvalidate(
     'boxes',
     [['boxes', entryId], ['box-progress', entryId]],
+    `gate_entry_id=eq.${entryId}`,
+  )
+  useRealtimeInvalidate(
+    'sticker_sheets',
+    [['sheets', entryId], ['entry', entryId]],
     `gate_entry_id=eq.${entryId}`,
   )
 

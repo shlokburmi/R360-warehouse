@@ -63,10 +63,24 @@ export function UnitScanningPage() {
     [['boxes', entryId], ['unit-progress', entryId]],
     `gate_entry_id=eq.${entryId}`,
   )
+  // The sheet Ops issues from another phone is what unblocks this screen, so
+  // it gets pushed rather than waited for (0040 publishes the table).
+  useRealtimeInvalidate(
+    'sticker_sheets',
+    [['sheets', entryId], ['entry', entryId]],
+    `gate_entry_id=eq.${entryId}`,
+  )
 
+  // Polled like every other live query on this page, and for a sharper reason
+  // than most: until this returns a unit sheet, the packer is looking at
+  // "waiting for Ops to issue stickers" and cannot start. Ops issues it from
+  // a different phone, so nothing local will ever cause this to refetch. The
+  // realtime subscription below is what makes it immediate; this is the
+  // fallback for a dropped socket, same belt-and-braces shape 0026 describes.
   const sheets = useQuery({
     queryKey: ['sheets', entryId],
     queryFn: () => get<StickerSheet[]>(`/entries/${entryId}/sticker-sheets`),
+    refetchInterval: 10_000,
   })
 
   const unitSheetId = sheets.data?.find((s) => s.sticker_type === 'unit')?.id
