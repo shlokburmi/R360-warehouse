@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useIsMutating } from '@tanstack/react-query'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 
@@ -47,7 +48,22 @@ export function UpdatePrompt() {
   // is work the reload would abandon halfway.
   const mutating = useIsMutating()
 
+  // Changing page is the most common safe moment there is: the screen being
+  // left is unmounting anyway, so its in-progress state is already gone and
+  // a reload costs nothing extra. Without this, an operator working steadily
+  // on one visible screen keeps resetting the idle timer below and never
+  // gets the update at all — which is exactly what happened while testing a
+  // fix that had already shipped.
+  const { pathname } = useLocation()
+
   const lastInteraction = useRef(Date.now())
+
+  // The route this component last saw. Needed because the effect below also
+  // re-runs when `needRefresh` first flips true — which can happen while the
+  // operator is mid-task on a page they have not left. Treating that as a
+  // navigation would reload out from under them, the exact interruption this
+  // component exists to avoid, so only a genuine change of path counts.
+  const seenPath = useRef(pathname)
 
   useEffect(() => {
     const touch = () => {
@@ -68,29 +84,35 @@ export function UpdatePrompt() {
 
     let done = false
 
-    const attempt = () => {
+    const attempt = ({ navigated = false } = {}) => {
       if (done) return
       if (mutating > 0 || isAppBusy()) return
 
+      // A page change needs no idle wait — the screen being left is
+      // unmounting regardless, so there is nothing left to interrupt.
       const idleFor = Date.now() - lastInteraction.current
-      if (!document.hidden && idleFor < IDLE_BEFORE_RELOAD_MS) return
+      if (!navigated && !document.hidden && idleFor < IDLE_BEFORE_RELOAD_MS) return
 
       done = true
       // `true` reloads the page once the new service worker takes control.
       void updateServiceWorker(true)
     }
 
-    // Check now, on every tab hide/show, and on a slow timer for the case
-    // where the operator simply puts the phone down on a visible screen.
-    attempt()
-    const timer = window.setInterval(attempt, CHECK_INTERVAL_MS)
-    document.addEventListener('visibilitychange', attempt)
+    // On arrival at a *different* route, on every tab hide/show, and on a
+    // slow timer for the case where the operator simply puts the phone down
+    // on a visible screen.
+    const navigated = seenPath.current !== pathname
+    seenPath.current = pathname
+    attempt({ navigated })
+    const onVisibility = () => attempt()
+    const timer = window.setInterval(() => attempt(), CHECK_INTERVAL_MS)
+    document.addEventListener('visibilitychange', onVisibility)
 
     return () => {
       window.clearInterval(timer)
-      document.removeEventListener('visibilitychange', attempt)
+      document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [needRefresh, mutating, updateServiceWorker])
+  }, [needRefresh, mutating, pathname, updateServiceWorker])
 
   // Nothing to render: the whole point is that this is invisible.
   return null
