@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { ApiError, post } from '@/lib/api'
 import { newUuid } from '@/lib/ids'
-import { deviceLabel, enqueue, newScanId } from '@/lib/offlineQueue'
+import { deviceLabel, enqueue, flushQueue, newScanId } from '@/lib/offlineQueue'
 import type { ScanResult } from '@/types'
 
 export type ScanFeedback = {
@@ -172,7 +172,35 @@ export function useScanning(contextId: string, scanType: ScanContext) {
               entry_id: entryId,
               attempts: 0,
             })
-            settle(pendingId, { tone: 'warn', message: 'Saved on device — will sync when online' })
+
+            // `isOffline` covers two different situations that must not be
+            // reported with the same sentence. A dropped connection really is
+            // "will sync when online". A *timeout* — the server took longer
+            // than the request was willing to wait, which a cold Render
+            // instance does routinely — happens with the wifi working fine,
+            // and telling that operator to wait for the network to come back
+            // is both wrong and alarming: they can see it is already up.
+            const offline = !navigator.onLine || error.code === 'network'
+
+            settle(pendingId, {
+              tone: 'warn',
+              message: offline
+                ? 'Saved on device — will sync when online'
+                : 'Server was slow — saved, retrying now',
+            })
+
+            if (!offline) {
+              // Retry straight away rather than waiting up to 30s for
+              // startAutoFlush's timer: the connection is up, so the only
+              // reason to sit on this scan would be the timer's own cadence.
+              // The counters are refreshed after, since a successful sync is
+              // what moves them.
+              void flushQueue().then(() => {
+                void queryClient.invalidateQueries({ queryKey: ['box-progress', entryId] })
+                void queryClient.invalidateQueries({ queryKey: ['unit-progress', entryId] })
+                void queryClient.invalidateQueries({ queryKey: ['boxes', entryId] })
+              })
+            }
           } catch {
             // enqueue() itself can fail (IndexedDB blocked in private
             // browsing, quota exhausted after a long shift of queued
