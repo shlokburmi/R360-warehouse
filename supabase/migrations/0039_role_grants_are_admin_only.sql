@@ -61,6 +61,12 @@ begin
 end;
 $$;
 
+-- Dropped first so the whole file is re-runnable: `create trigger` has no
+-- `or replace`, and this is the one statement here that would fail on a second
+-- pass — which matters if it is ever applied by hand in the SQL editor before
+-- `supabase db push` catches up. Same reasoning as 0040.
+drop trigger if exists trg_profiles_role_grant_guard on profiles;
+
 create trigger trg_profiles_role_grant_guard
   before insert or update on profiles
   for each row execute function fn_role_grant_guard();
