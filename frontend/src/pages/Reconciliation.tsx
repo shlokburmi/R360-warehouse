@@ -46,8 +46,16 @@ export function ReconciliationPage() {
           inbound_count: Number(value),
         })),
       }),
-    onSuccess: () => {
+    onSuccess: (result) => {
       setError(null)
+      // The response *is* the new reconciliation state (CONTROL POINT 4
+      // answers with the compared lines either way), so apply it directly
+      // rather than throwing it away and waiting on a refetch to learn what
+      // we were already told. That second round trip was the whole delay
+      // between tapping Submit and the page acknowledging it — on a slow
+      // connection or a cold backend, long enough to look like nothing
+      // happened. The invalidate still runs behind this.
+      queryClient.setQueryData(['reconciliation', entryId], result)
       void queryClient.invalidateQueries({ queryKey: ['reconciliation', entryId] })
       void queryClient.invalidateQueries({ queryKey: ['entry', entryId] })
     },
@@ -146,10 +154,21 @@ export function ReconciliationPage() {
         <button
           type="button"
           className="btn-primary w-full"
-          disabled={!allEntered || submit.isPending}
+          // Disabled once the counts agree: CONTROL POINT 4 is satisfied and
+          // putaway is the next step, so leaving a live "Submit counts"
+          // sitting under a green "ready for putaway" banner only invites a
+          // second submission of the same numbers and leaves the operator
+          // unsure whether the first one registered. A *mismatch* still
+          // leaves it pressable, because that is the recount loop
+          // `inbound_update`'s policy exists to allow (0005_rls.sql).
+          disabled={!allEntered || submit.isPending || reconciliation.data.all_matched}
           onClick={() => submit.mutate()}
         >
-          {submit.isPending ? 'Submitting…' : 'Submit counts'}
+          {reconciliation.data.all_matched
+            ? t('recon.submitted')
+            : submit.isPending
+              ? 'Submitting…'
+              : 'Submit counts'}
         </button>
       ) : (
         <Banner tone="info" title={t('recon.waiting_inbound')}>

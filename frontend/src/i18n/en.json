@@ -367,6 +367,7 @@
     "packed": "Packed",
     "never_received": "Never received",
     "received_not_packed": "Received, not packed",
+    "submitted": "Counts submitted",
     "waiting_inbound": "Waiting for the inbound team's count",
     "waiting_inbound_body": "CONTROL POINT 4 compares the warehouse's own figure against an independent count entered by the offloading team."
   },
